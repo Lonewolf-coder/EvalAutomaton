@@ -1,0 +1,295 @@
+{
+  "manifest_id": "travel-agent-basic-v1",
+  "manifest_version": "1.0",
+  "assessment_name": "Travel Agent Bot — Basic Assessment",
+  "assessment_type": "travel",
+  "description": "Evaluates a candidate's travel agent chatbot. Tests flight booking, retrieval, modification, cancellation, and FAQ capabilities.",
+  "webhook_url": "",
+  "mock_api_base_url": "",
+  "conversation_starter": "Hi",
+  "tasks": [
+    {
+      "task_id": "task1",
+      "task_name": "Welcome Message",
+      "pattern": "CREATE",
+      "dialog_name": "Welcome",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [
+        { "node_type": "message", "label": "Welcome greeting message", "required": true }
+      ],
+      "required_greeting_text": "Welcome",
+      "required_menu_items": ["book", "flight", "retrieve", "modify", "cancel"],
+      "conversation_starter": "Hello",
+      "weight": 0.5
+    },
+    {
+      "task_id": "task2_booking1",
+      "task_name": "Book a Flight — Happy Path",
+      "pattern": "CREATE",
+      "dialog_name": "Book a Flight",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "passengerName",
+          "semantic_hint": "passenger's full name",
+          "value_pool": ["Alice Thompson", "James Brown", "Maria Garcia"]
+        },
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "contact phone number",
+          "value_pool": ["9876543210", "8765432109", "7654321098"],
+          "validation_required": true
+        },
+        {
+          "entity_key": "departureCity",
+          "semantic_hint": "departure city",
+          "value_pool": ["New York", "London", "Dubai"]
+        },
+        {
+          "entity_key": "destinationCity",
+          "semantic_hint": "destination city",
+          "value_pool": ["Los Angeles", "Paris", "Singapore"]
+        },
+        {
+          "entity_key": "travelDate",
+          "semantic_hint": "travel date",
+          "value_pool": ["2026-04-15", "2026-05-01", "2026-06-10"]
+        },
+        {
+          "entity_key": "seatPreference",
+          "semantic_hint": "seat preference",
+          "value_pool": ["Window", "Aisle", "Middle"]
+        }
+      ],
+      "required_nodes": [
+        { "node_type": "aiassist", "label": "Agent Node for entity handling", "required": true },
+        { "node_type": "service", "label": "POST service node for booking", "service_method": "POST", "required": true },
+        { "node_type": "entity", "label": "Entity collection nodes", "required": true }
+      ],
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {
+          "passengerName": "passengerName",
+          "contactNumber": "contactNumber",
+          "departureCity": "departureCity",
+          "destinationCity": "destinationCity"
+        }
+      },
+      "record_alias": "Booking1",
+      "weight": 1.0
+    },
+    {
+      "task_id": "task2_booking2",
+      "task_name": "Book a Flight — Amendment",
+      "pattern": "CREATE_WITH_AMENDMENT",
+      "dialog_name": "Book a Flight",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "passengerName",
+          "semantic_hint": "passenger name",
+          "value_pool": ["David Lee", "Sophia Patel", "Carlos Rodriguez"]
+        },
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "contact number",
+          "value_pool": ["6543210987", "5432109876", "4321098765"]
+        },
+        {
+          "entity_key": "departureCity",
+          "semantic_hint": "departure city",
+          "value_pool": ["Chicago", "Toronto", "Berlin"]
+        },
+        {
+          "entity_key": "destinationCity",
+          "semantic_hint": "destination city",
+          "value_pool": ["Miami", "Tokyo", "Rome"]
+        },
+        {
+          "entity_key": "travelDate",
+          "semantic_hint": "travel date",
+          "value_pool": ["2026-05-15", "2026-06-01", "2026-07-10"]
+        },
+        {
+          "entity_key": "seatPreference",
+          "semantic_hint": "seat preference",
+          "value_pool": ["Window", "Aisle"]
+        }
+      ],
+      "required_nodes": [
+        { "node_type": "aiassist", "label": "Agent Node for amendment", "required": true }
+      ],
+      "amendment_config": {
+        "target_entity": "contactNumber",
+        "amendment_utterance_template": "Actually, change my contact number to {amended_value}",
+        "amended_value_pool": ["1111111111", "2222222222", "3333333333"]
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {
+          "passengerName": "passengerName",
+          "contactNumber": "contactNumber"
+        }
+      },
+      "record_alias": "Booking2",
+      "co_reference_test": true,
+      "weight": 1.0
+    },
+    {
+      "task_id": "task3_retrieve",
+      "task_name": "Retrieve Booking Details",
+      "pattern": "RETRIEVE",
+      "dialog_name": "Retrieve Booking",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "contact number for lookup",
+          "value_pool": []
+        }
+      ],
+      "required_nodes": [
+        { "node_type": "service", "label": "GET service node", "service_method": "GET", "required": true },
+        { "node_type": "entity", "label": "Contact number entity", "required": true }
+      ],
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking1",
+          "source_record_alias": "Booking1",
+          "source_field": "contactNumber"
+        }
+      },
+      "weight": 1.0
+    },
+    {
+      "task_id": "task3_edge",
+      "task_name": "Retrieve Booking — Invalid Contact",
+      "pattern": "EDGE_CASE",
+      "dialog_name": "Retrieve Booking",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [],
+      "negative_tests": [
+        {
+          "invalid_value_pool": ["0000000000", "abcdefghij", "123"],
+          "expected_error_pattern": "not found|no booking|invalid|does not exist",
+          "requires_re_entry_prompt": true
+        }
+      ],
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking1",
+          "source_record_alias": "Booking1",
+          "source_field": "contactNumber"
+        }
+      },
+      "weight": 0.5
+    },
+    {
+      "task_id": "task4_modify",
+      "task_name": "Modify Flight Details",
+      "pattern": "MODIFY",
+      "dialog_name": "Modify Flight",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [
+        { "node_type": "service", "label": "GET service node", "service_method": "GET", "required": true },
+        { "node_type": "service", "label": "PUT service node", "service_method": "PUT", "required": true }
+      ],
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking1",
+          "source_record_alias": "Booking1",
+          "source_field": "contactNumber"
+        }
+      },
+      "modifiable_fields": ["travelDate", "seatPreference", "destinationCity"],
+      "modified_value_pool": {
+        "travelDate": ["2026-07-01", "2026-08-15"],
+        "seatPreference": ["Window", "Aisle"],
+        "destinationCity": ["Barcelona", "Sydney"]
+      },
+      "weight": 1.0
+    },
+    {
+      "task_id": "task4_cancel",
+      "task_name": "Cancel Booking 2",
+      "pattern": "DELETE",
+      "dialog_name": "Cancel Flight",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [
+        { "node_type": "service", "label": "DELETE service node", "service_method": "DELETE", "required": true }
+      ],
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking2",
+          "source_record_alias": "Booking2",
+          "source_field": "contactNumber"
+        }
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {},
+        "expect_deletion": true
+      },
+      "weight": 1.0
+    }
+  ],
+  "faq_config": {
+    "required_faqs": [
+      {
+        "primary_question": "What is the baggage allowance?",
+        "ground_truth_answer": "Economy class allows 1 checked bag of 23 kg and 1 carry-on of 7 kg.",
+        "required_keywords": ["baggage", "23 kg", "carry-on"],
+        "alternate_questions": [
+          "How much luggage can I bring?",
+          "What's the weight limit for checked bags?"
+        ]
+      },
+      {
+        "primary_question": "Can I change my flight after booking?",
+        "ground_truth_answer": "Yes, you can modify your booking by providing your contact number.",
+        "required_keywords": ["modify", "change", "contact number"],
+        "alternate_questions": [
+          "How do I reschedule my flight?",
+          "Is it possible to change my travel date?"
+        ]
+      }
+    ],
+    "min_alternate_questions": 2,
+    "semantic_similarity_threshold": 0.80
+  },
+  "compliance_checks": [
+    {
+      "check_id": "compliance_dialoggpt",
+      "label": "DialogGPT is enabled",
+      "cbm_field": "dialogGPTSettings[0].dialogGPTLLMConfig.enable",
+      "required_state": "enabled",
+      "critical": true,
+      "tooltip": "DialogGPT must be enabled for the Agent Node to function correctly."
+    }
+  ],
+  "scoring_config": {
+    "cbm_structural_weight": 0.40,
+    "webhook_functional_weight": 0.40,
+    "compliance_weight": 0.10,
+    "faq_weight": 0.10,
+    "pass_threshold": 0.70
+  },
+  "tooltips": [
+    { "node_type": "aiassist", "text": "Agent Node — enables LLM-powered entity handling and amendment support." },
+    { "node_type": "service", "text": "Service Node — makes API calls to external services." },
+    { "node_type": "entity", "text": "Entity Node — collects information from the user." },
+    { "node_type": "message", "text": "Message Node — displays a message to the user." }
+  ],
+  "created_by": "GovernIQ Admin",
+  "notes": "Travel Agent Bot basic assessment. Same engine, different manifest — zero code changes."
+}
