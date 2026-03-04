@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}Review — {{ sc.candidate_id }} — Admin{% endblock %}
+
+{% block content %}
+<div class="container-wide">
+    <div class="flex-between spacer no-print">
+        <div>
+            <h1>Evaluator Review</h1>
+            <p class="text-muted">{{ sc.assessment_name }} &mdash; Candidate: {{ sc.candidate_id or 'N/A' }} &mdash; Session: {{ sc.session_id }}</p>
+        </div>
+        <div class="flex gap-2">
+            <a href="/admin/" class="btn btn-outline">Back to Dashboard</a>
+            <button onclick="window.print()" class="btn btn-primary">Print Report</button>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VERDICT BANNER -->
+    <!-- ============================================================ -->
+    <div class="card spacer">
+        <div class="card-body" style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap;">
+            <div class="score-ring score-ring--lg {% if sc.overall_score >= 0.7 %}score-ring--pass{% elif sc.overall_score >= 0.5 %}score-ring--warn{% else %}score-ring--fail{% endif %}">
+                {{ (sc.overall_score * 100) | round(1) }}%
+            </div>
+            <div style="flex:1; min-width:250px;">
+                <h2 style="margin-bottom:.5rem;">
+                    {% if sc.has_critical_failures %}Critical Compliance Failure{% elif sc.overall_score >= 0.7 %}Assessment Passed{% elif sc.overall_score >= 0.5 %}Needs Improvement{% else %}Assessment Not Passed{% endif %}
+                </h2>
+                <p class="text-muted">Candidate: <strong>{{ sc.candidate_id or 'N/A' }}</strong></p>
+                <div class="progress-bar" style="max-width:400px; margin-top:.5rem;">
+                    <div class="progress-fill {% if sc.overall_score >= 0.7 %}progress-fill--pass{% elif sc.overall_score >= 0.5 %}progress-fill--warn{% else %}progress-fill--fail{% endif %}" style="width:{{ (sc.overall_score * 100) | round(1) }}%"></div>
+                </div>
+            </div>
+            <div>
+                <div class="grid-2" style="gap:.5rem;">
+                    <div class="stat-box card" style="padding:.75rem 1rem;"><div class="stat-value" style="font-size:1.1rem;">{{ task_summary.passed }}/{{ task_summary.total }}</div><div class="stat-label">Tasks</div></div>
+                    <div class="stat-box card" style="padding:.75rem 1rem;"><div class="stat-value" style="font-size:1.1rem;">{{ compliance_summary.passed }}/{{ compliance_summary.total }}</div><div class="stat-label">Compliance</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if sc.has_critical_failures %}
+    <div class="alert alert-danger"><strong>Critical:</strong> This submission has critical compliance failures. Manual evaluator review is required before any pass decision.</div>
+    {% endif %}
+    {% if sc.state_seeded %}
+    <div class="alert alert-warning"><strong>State Seeded:</strong> Tasks 3/4 were tested against engine-seeded data because the bot did not create records through conversation in Task 2. This is flagged for evaluator awareness.</div>
+    {% endif %}
+
+    <!-- ============================================================ -->
+    <!-- COMPLIANCE (evaluator sees this prominently) -->
+    <!-- ============================================================ -->
+    {% if sc.compliance_results %}
+    <div class="card spacer">
+        <div class="card-header"><div class="flex-between"><h3>Compliance Checks</h3><span class="badge {% if compliance_summary.all_passed %}badge-pass{% else %}badge-fail{% endif %}">{{ compliance_summary.passed }}/{{ compliance_summary.total }}</span></div></div>
+        <div class="card-body">
+            {% for cr in sc.compliance_results %}
+            <div class="check-row">
+                <div class="check-icon check-icon--{% if cr.status == 'pass' %}pass{% elif cr.status == 'fail' %}fail{% else %}warn{% endif %}">
+                    {% if cr.status == 'pass' %}&#10003;{% elif cr.status == 'fail' %}&#10007;{% else %}!{% endif %}
+                </div>
+                <div style="flex:1;">
+                    <div class="check-label">{{ cr.label }} {% if cr.critical %}<span class="badge badge-fail">CRITICAL</span>{% endif %}</div>
+                    <div class="check-detail">Required: <strong>{{ cr.required_state }}</strong> | Found: <strong>{{ cr.actual_value if cr.actual_value is not none else 'not found' }}</strong></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ============================================================ -->
+    <!-- PER-TASK: Two-column layout with CBM Reference Panel ALWAYS visible -->
+    <!-- ============================================================ -->
+    {% for ts in sc.task_scores %}
+    <div class="card spacer">
+        <div class="card-header">
+            <div class="flex-between" style="flex-wrap:wrap; gap:.5rem;">
+                <h3>{{ ts.task_name }}</h3>
+                <div class="flex gap-1">
+                    <span class="badge badge-info">CBM: {{ (ts.cbm_score * 100) | round(0) }}%</span>
+                    <span class="badge" style="background:#f3e8ff; color:#7c3aed;">Webhook: {{ (ts.webhook_score * 100) | round(0) }}%</span>
+                    {% if ts.all_passed %}<span class="badge badge-pass">PASSED</span>{% else %}<span class="badge badge-fail">REVIEW</span>{% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <!-- TWO-COLUMN: Webhook left, CBM Reference Panel right (ALWAYS VISIBLE per spec) -->
+            <div class="grid-2">
+                <div style="border-left:3px solid #7c3aed; padding-left:1rem;">
+                    <h4 style="color:#7c3aed; margin-bottom:.75rem;">Webhook Results</h4>
+                    {% if ts.webhook_checks %}
+                        {% for check in ts.webhook_checks %}
+                        <div class="check-row">
+                            <div class="check-icon check-icon--{% if check.status == 'pass' %}pass{% elif check.status == 'fail' %}fail{% elif check.status == 'warning' %}warn{% else %}info{% endif %}">{% if check.status == 'pass' %}&#10003;{% elif check.status == 'fail' %}&#10007;{% elif check.status == 'warning' %}!{% else %}i{% endif %}</div>
+                            <div><div class="check-label">{{ check.label }}</div><div class="check-detail">{{ check.details }}</div></div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-small text-muted" style="font-style:italic;">No webhook data &mdash; CBM-only evaluation.</p>
+                    {% endif %}
+                </div>
+
+                <!-- CBM Evaluator Reference Panel — ALWAYS VISIBLE (not behind a click) -->
+                <div style="border-left:3px solid #1e40af; padding-left:1rem;">
+                    <h4 style="color:#1e40af; margin-bottom:.75rem;">CBM Evaluator Reference Panel</h4>
+                    {% for check in ts.cbm_checks %}
+                    <div class="check-row">
+                        <div class="check-icon check-icon--{% if check.status == 'pass' %}pass{% elif check.status == 'fail' %}fail{% elif check.status == 'warning' %}warn{% else %}info{% endif %}">{% if check.status == 'pass' %}&#10003;{% elif check.status == 'fail' %}&#10007;{% elif check.status == 'warning' %}!{% else %}i{% endif %}</div>
+                        <div><div class="check-label">{{ check.label }}</div><div class="check-detail">{{ check.details }}</div></div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Evidence Cards for this task -->
+            {% if ts.evidence_cards %}
+            <div class="divider"></div>
+            <h4 style="margin-bottom:.75rem;">Evidence Cards</h4>
+            {% for card in ts.evidence_cards %}
+            <div class="evidence evidence--{{ card.color }}">
+                <div class="evidence-header" onclick="this.nextElementSibling.classList.toggle('hidden')">
+                    <strong>{{ card.title }}</strong>
+                    <span class="evidence-pipe">{{ card.pipeline }}</span>
+                </div>
+                <div class="evidence-body">
+                    <pre>{{ card.content }}</pre>
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- Raw JSON -->
+    <details class="spacer no-print">
+        <summary style="cursor:pointer; font-weight:600; color:var(--primary); padding:.5rem 0;">Raw Scorecard JSON</summary>
+        <div class="card" style="margin-top:.5rem;">
+            <div class="card-body">
+                <pre style="font-size:.75rem; overflow-x:auto; max-height:400px; overflow-y:auto; background:#0f172a; color:#e2e8f0; padding:1rem; border-radius:var(--radius);">{{ sc | tojson(indent=2) }}</pre>
+            </div>
+        </div>
+    </details>
+</div>
+{% endblock %}
