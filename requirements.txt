@@ -1,0 +1,37 @@
+# GovernIQ Universal Evaluation Platform
+# Core
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Template rendering
+jinja2>=3.1.3
+python-multipart>=0.0.6
+
+# HTTP / Async
+httpx>=0.27.0
+aiohttp>=3.9.0
+websockets>=12.0
+
+# LLM Integration
+openai>=1.12.0
+
+# Data processing
+python-docx>=1.1.0
+orjson>=3.9.0
+pyyaml>=6.0.1
+
+# Semantic similarity
+sentence-transformers>=2.3.0
+numpy>=1.26.0
+
+# Utilities
+python-dateutil>=2.8.2
+rich>=13.7.0
+click>=8.1.7
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-cov>=4.1.0

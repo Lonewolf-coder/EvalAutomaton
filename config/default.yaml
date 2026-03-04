@@ -1,0 +1,55 @@
+# GovernIQ Universal Evaluation Platform - Default Configuration
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  debug: true
+
+evaluation:
+  # Semantic similarity threshold for FAQ matching
+  semantic_similarity_threshold: 0.80
+  # Maximum conversation turns before timeout
+  max_conversation_turns: 50
+  # Conversation timeout in seconds
+  conversation_timeout_seconds: 120
+
+llm:
+  # Provider: openai, anthropic
+  provider: "openai"
+  model: "gpt-4o"
+  temperature: 0.3
+  max_tokens: 1024
+
+webhook:
+  # Timeout for individual webhook calls (seconds)
+  call_timeout: 30
+  # Retry count for failed webhook calls
+  retry_count: 3
+  # Delay between retries (seconds)
+  retry_delay: 2
+
+state_inspector:
+  # Timeout for mock API calls (seconds)
+  api_timeout: 10
+  # Retry count for API verification
+  retry_count: 2
+
+scoring:
+  # Default weights for scoring categories
+  weights:
+    cbm_structural: 0.40
+    webhook_functional: 0.40
+    compliance: 0.10
+    faq: 0.10
+
+dashboard:
+  # Results per page
+  results_per_page: 20
+  # Evidence card display mode
+  evidence_display: "inline"
+
+runtime_context:
+  # Directory for persisting RuntimeContext between tasks
+  persist_dir: "./data/runtime_contexts"
+  # Directory for evaluation results
+  results_dir: "./data/results"

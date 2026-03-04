@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Evaluation {{ scorecard.session_id }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ scorecard.assessment_name }}</h2>
+    <p>Session: {{ scorecard.session_id }} | Candidate: {{ scorecard.candidate_id or 'N/A' }}</p>
+</div>
+
+<!-- Bot Health Scorecard -->
+<section class="scorecard-summary">
+    <div class="score-banner {% if scorecard.overall_score >= 0.7 %}score-banner--pass{% else %}score-banner--fail{% endif %}">
+        <div class="score-circle-large">
+            <span class="score-value-large">{{ (scorecard.overall_score * 100) | round(1) }}%</span>
+        </div>
+        <div class="score-label">Overall Score</div>
+    </div>
+
+    {% if scorecard.has_critical_failures %}
+    <div class="alert alert-critical">
+        Critical compliance failure detected — manual review required.
+    </div>
+    {% endif %}
+
+    {% if scorecard.state_seeded %}
+    <div class="alert alert-warning">
+        Tasks tested against seeded data — the bot did not create the record through conversation.
+    </div>
+    {% endif %}
+</section>
+
+<!-- Compliance Results -->
+{% if scorecard.compliance_results %}
+<section class="section">
+    <h3>Compliance Checks</h3>
+    <div class="compliance-grid">
+        {% for cr in scorecard.compliance_results %}
+        <div class="compliance-item compliance-item--{{ cr.status }}">
+            <span class="compliance-icon">
+                {% if cr.status == 'pass' %}&#10004;{% elif cr.status == 'fail' %}&#10008;{% else %}&#9888;{% endif %}
+            </span>
+            <div class="compliance-detail">
+                <strong>{{ cr.label }}</strong>
+                <span class="compliance-field">{{ cr.cbm_field }}</span>
+                <span class="compliance-state">Required: {{ cr.required_state }} | Actual: {{ cr.actual_value }}</span>
+                {% if cr.critical %}<span class="critical-badge">CRITICAL</span>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<!-- Per-Task Results: Two-Column Layout -->
+{% for ts in scorecard.task_scores %}
+<section class="section task-section">
+    <div class="task-header">
+        <h3>{{ ts.task_name }}</h3>
+        <div class="task-scores">
+            <span class="badge badge--cbm">CBM: {{ (ts.cbm_score * 100) | round(1) }}%</span>
+            <span class="badge badge--webhook">Webhook: {{ (ts.webhook_score * 100) | round(1) }}%</span>
+            <span class="badge {% if ts.all_passed %}badge--pass{% else %}badge--fail{% endif %}">
+                {{ 'PASS' if ts.all_passed else 'NEEDS REVIEW' }}
+            </span>
+        </div>
+    </div>
+
+    <div class="two-column-layout">
+        <!-- Left: Webhook Results -->
+        <div class="column column--webhook">
+            <h4>Webhook Results</h4>
+            {% for check in ts.webhook_checks %}
+            <div class="check-item check-item--{{ check.status }}">
+                <span class="check-icon">
+                    {% if check.status == 'pass' %}&#10004;{% elif check.status == 'fail' %}&#10008;{% elif check.status == 'warning' %}&#9888;{% else %}&#8505;{% endif %}
+                </span>
+                <div>
+                    <strong>{{ check.label }}</strong>
+                    <p class="check-detail">{{ check.details }}</p>
+                </div>
+            </div>
+            {% endfor %}
+            {% if not ts.webhook_checks %}
+            <p class="empty-message">No webhook results — CBM-only evaluation.</p>
+            {% endif %}
+        </div>
+
+        <!-- Right: CBM Evaluator Reference Panel (Always Visible) -->
+        <div class="column column--cbm">
+            <h4>CBM Evaluator Reference Panel</h4>
+            {% for check in ts.cbm_checks %}
+            <div class="check-item check-item--{{ check.status }}">
+                <span class="check-icon">
+                    {% if check.status == 'pass' %}&#10004;{% elif check.status == 'fail' %}&#10008;{% elif check.status == 'warning' %}&#9888;{% else %}&#8505;{% endif %}
+                </span>
+                <div>
+                    <strong>{{ check.label }}</strong>
+                    <p class="check-detail">{{ check.details }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Evidence Cards -->
+    {% if ts.evidence_cards %}
+    <div class="evidence-timeline">
+        <h4>Evidence</h4>
+        {% for card in ts.evidence_cards %}
+        <div class="evidence-card evidence-card--{{ card.color }}">
+            <div class="evidence-card__header">
+                <strong>{{ card.title }}</strong>
+                <span class="evidence-pipeline">{{ card.pipeline }}</span>
+            </div>
+            <div class="evidence-card__content">
+                <pre>{{ card.content }}</pre>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endfor %}
+
+<!-- Raw JSON toggle (for technical review) -->
+<section class="section">
+    <details>
+        <summary>Raw Scorecard JSON (technical review)</summary>
+        <pre class="json-block">{{ scorecard | tojson(indent=2) }}</pre>
+    </details>
+</section>
+{% endblock %}

@@ -1,0 +1,366 @@
+{
+  "botInfo": {
+    "name": "Medical Appointment Bot",
+    "description": "A chatbot for booking and managing medical appointments",
+    "defaultLanguage": "en"
+  },
+  "dialogs": [
+    {
+      "name": "Welcome",
+      "_id": "dialog_welcome",
+      "nodes": [
+        {
+          "nodeId": "node_welcome_msg",
+          "type": "message",
+          "name": "WelcomeMessage",
+          "component": {
+            "message": "Welcome to the Medical Appointment Bot! I can help you with:\n- Book an appointment\n- Retrieve appointment details\n- Modify or cancel appointments\n- Answer frequently asked questions"
+          },
+          "transitions": []
+        }
+      ]
+    },
+    {
+      "name": "Book Appointment",
+      "_id": "dialog_book",
+      "nodes": [
+        {
+          "nodeId": "node_patient_name",
+          "type": "entity",
+          "name": "patientName",
+          "component": {
+            "entityType": "string",
+            "message": "Please provide the patient's full name."
+          },
+          "validationRules": [
+            { "rule": "minLength", "value": 3 },
+            { "rule": "containsSpace", "value": true }
+          ],
+          "transitions": [{ "target": "node_contact" }]
+        },
+        {
+          "nodeId": "node_contact",
+          "type": "entity",
+          "name": "contactNumber",
+          "component": {
+            "entityType": "phone",
+            "message": "What is the contact phone number?"
+          },
+          "validationRules": [
+            { "rule": "pattern", "value": "^\\d{10}$" }
+          ],
+          "transitions": [{ "target": "node_doctor" }]
+        },
+        {
+          "nodeId": "node_doctor",
+          "type": "entity",
+          "name": "doctorType",
+          "component": {
+            "entityType": "list",
+            "message": "What type of doctor would you like to see?"
+          },
+          "transitions": [{ "target": "node_date" }]
+        },
+        {
+          "nodeId": "node_date",
+          "type": "entity",
+          "name": "preferredDate",
+          "component": {
+            "entityType": "date",
+            "message": "What is your preferred appointment date?"
+          },
+          "transitions": [{ "target": "node_time" }]
+        },
+        {
+          "nodeId": "node_time",
+          "type": "entity",
+          "name": "preferredTime",
+          "component": {
+            "entityType": "time",
+            "message": "What time would you prefer?"
+          },
+          "transitions": [{ "target": "node_reason" }]
+        },
+        {
+          "nodeId": "node_reason",
+          "type": "entity",
+          "name": "reasonForVisit",
+          "component": {
+            "entityType": "string",
+            "message": "What is the reason for your visit?"
+          },
+          "transitions": [{ "target": "node_agent" }]
+        },
+        {
+          "nodeId": "node_agent",
+          "type": "aiassist",
+          "name": "BookingAgent",
+          "component": {
+            "instructions": "Help the user book an appointment with the provided details.",
+            "exitScenario": { "enabled": true }
+          },
+          "transitions": [{ "target": "node_summary" }]
+        },
+        {
+          "nodeId": "node_summary",
+          "type": "prompt",
+          "name": "BookingSummary",
+          "component": {
+            "message": "Here is your booking summary:\nPatient: {{patientName}}\nDoctor: {{doctorType}}\nDate: {{preferredDate}}\nTime: {{preferredTime}}\nWould you like to confirm?"
+          },
+          "transitions": [{ "target": "node_post" }]
+        },
+        {
+          "nodeId": "node_post",
+          "type": "service",
+          "name": "CreateBooking",
+          "component": {
+            "serviceType": "rest",
+            "method": "POST",
+            "url": "https://mockapi.io/appointments"
+          },
+          "transitions": [{ "target": "node_confirm_msg" }]
+        },
+        {
+          "nodeId": "node_confirm_msg",
+          "type": "message",
+          "name": "BookingConfirmation",
+          "component": {
+            "message": "Your appointment has been booked successfully!"
+          },
+          "transitions": []
+        }
+      ]
+    },
+    {
+      "name": "Get Appointment Details",
+      "_id": "dialog_get",
+      "nodes": [
+        {
+          "nodeId": "node_get_contact",
+          "type": "entity",
+          "name": "contactNumber",
+          "component": {
+            "entityType": "phone",
+            "message": "Please provide the contact number associated with your appointment."
+          },
+          "transitions": [{ "target": "node_get_confirm" }]
+        },
+        {
+          "nodeId": "node_get_confirm",
+          "type": "confirmation",
+          "name": "ConfirmNumber",
+          "component": {
+            "message": "You entered {{contactNumber}}. Is that correct?"
+          },
+          "transitions": [{ "target": "node_get_service" }]
+        },
+        {
+          "nodeId": "node_get_service",
+          "type": "service",
+          "name": "GetAppointment",
+          "component": {
+            "serviceType": "rest",
+            "method": "GET",
+            "url": "https://mockapi.io/appointments?contactNumber={{contactNumber}}"
+          },
+          "transitions": [{ "target": "node_get_display" }, { "target": "node_not_found" }]
+        },
+        {
+          "nodeId": "node_get_display",
+          "type": "message",
+          "name": "DisplayAppointment",
+          "component": {
+            "message": "Here are your appointment details:\nPatient: {{response.patientName}}\nDoctor: {{response.doctorType}}\nDate: {{response.preferredDate}}\nTime: {{response.preferredTime}}"
+          },
+          "transitions": []
+        },
+        {
+          "nodeId": "node_not_found",
+          "type": "message",
+          "name": "NotFoundMessage",
+          "component": {
+            "message": "Sorry, no appointment was found with that contact number. Please check and try again."
+          },
+          "transitions": []
+        }
+      ]
+    },
+    {
+      "name": "Modify Appointment Details",
+      "_id": "dialog_modify",
+      "nodes": [
+        {
+          "nodeId": "node_mod_contact",
+          "type": "entity",
+          "name": "contactNumber",
+          "component": {
+            "entityType": "phone",
+            "message": "Please provide the contact number for the appointment you want to modify."
+          },
+          "transitions": [{ "target": "node_mod_get" }]
+        },
+        {
+          "nodeId": "node_mod_get",
+          "type": "service",
+          "name": "GetForModify",
+          "component": {
+            "serviceType": "rest",
+            "method": "GET",
+            "url": "https://mockapi.io/appointments?contactNumber={{contactNumber}}"
+          },
+          "transitions": [{ "target": "node_mod_field" }]
+        },
+        {
+          "nodeId": "node_mod_field",
+          "type": "entity",
+          "name": "modifyField",
+          "component": {
+            "entityType": "list",
+            "message": "Which field would you like to modify?"
+          },
+          "transitions": [{ "target": "node_mod_value" }]
+        },
+        {
+          "nodeId": "node_mod_value",
+          "type": "entity",
+          "name": "newValue",
+          "component": {
+            "entityType": "string",
+            "message": "What is the new value?"
+          },
+          "transitions": [{ "target": "node_mod_confirm" }]
+        },
+        {
+          "nodeId": "node_mod_confirm",
+          "type": "confirmation",
+          "name": "ConfirmModification",
+          "component": {
+            "message": "You want to update {{modifyField}} to {{newValue}}. Confirm?"
+          },
+          "transitions": [{ "target": "node_mod_put" }]
+        },
+        {
+          "nodeId": "node_mod_put",
+          "type": "service",
+          "name": "UpdateAppointment",
+          "component": {
+            "serviceType": "rest",
+            "method": "PUT",
+            "url": "https://mockapi.io/appointments/{{appointmentId}}"
+          },
+          "transitions": [{ "target": "node_mod_success" }]
+        },
+        {
+          "nodeId": "node_mod_success",
+          "type": "message",
+          "name": "ModifySuccess",
+          "component": {
+            "message": "Your appointment has been updated successfully!"
+          },
+          "transitions": []
+        },
+        {
+          "nodeId": "node_cancel_confirm",
+          "type": "confirmation",
+          "name": "ConfirmCancellation",
+          "component": {
+            "message": "Are you sure you want to cancel this appointment?"
+          },
+          "transitions": [{ "target": "node_cancel_delete" }]
+        },
+        {
+          "nodeId": "node_cancel_delete",
+          "type": "service",
+          "name": "DeleteAppointment",
+          "component": {
+            "serviceType": "rest",
+            "method": "DELETE",
+            "url": "https://mockapi.io/appointments/{{appointmentId}}"
+          },
+          "transitions": [{ "target": "node_cancel_success" }]
+        },
+        {
+          "nodeId": "node_cancel_success",
+          "type": "message",
+          "name": "CancelSuccess",
+          "component": {
+            "message": "Your appointment has been cancelled successfully."
+          },
+          "transitions": []
+        }
+      ]
+    }
+  ],
+  "knowledgeTasks": [
+    {
+      "name": "Medical FAQ",
+      "faqs": {
+        "faqs": [
+          {
+            "question": "What are your working hours?",
+            "answer": "Our clinic is open Monday to Friday from 9 AM to 6 PM, and Saturday from 9 AM to 1 PM. We are closed on Sundays and public holidays.",
+            "alternateQuestions": [
+              "When is the clinic open?",
+              "What time do you open and close?",
+              "What are the operating hours?"
+            ]
+          },
+          {
+            "question": "Do you accept insurance?",
+            "answer": "Yes, we accept most major insurance providers including Blue Cross, Aetna, and United Healthcare. Please bring your insurance card to your appointment.",
+            "alternateQuestions": [
+              "Can I use my health insurance?",
+              "Which insurance plans do you take?",
+              "Is insurance accepted here?"
+            ]
+          },
+          {
+            "question": "How do I cancel my appointment?",
+            "answer": "You can cancel your appointment by providing your contact number. We request at least 24 hours notice for cancellations to avoid a no-show fee.",
+            "alternateQuestions": [
+              "I need to cancel my visit",
+              "How to cancel a booking?",
+              "Can I cancel my scheduled appointment?"
+            ]
+          },
+          {
+            "question": "What should I bring to my appointment?",
+            "answer": "Please bring a valid photo ID, your insurance card, any relevant medical records, and a list of current medications.",
+            "alternateQuestions": [
+              "What do I need for my visit?",
+              "What documents should I carry?"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "dialogGPTSettings": [
+    {
+      "dialogGPTLLMConfig": {
+        "enable": true,
+        "model": "gpt-4",
+        "temperature": 0.3
+      }
+    }
+  ],
+  "componentMap": {
+    "dialog_welcome": "Welcome",
+    "dialog_book": "Book Appointment",
+    "dialog_get": "Get Appointment Details",
+    "dialog_modify": "Modify Appointment Details"
+  },
+  "channels": [
+    { "type": "web", "enabled": true },
+    { "type": "webhook", "enabled": true }
+  ],
+  "trainingData": {
+    "utterances": [
+      { "intent": "Book Appointment", "utterance": "I want to book an appointment" },
+      { "intent": "Book Appointment", "utterance": "Schedule a visit" },
+      { "intent": "Get Appointment Details", "utterance": "Get my appointment" },
+      { "intent": "Modify Appointment Details", "utterance": "Change my appointment" }
+    ]
+  }
+}

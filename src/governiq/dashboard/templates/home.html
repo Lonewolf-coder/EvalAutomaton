@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>Evaluation Dashboard</h2>
+    <p>All candidate assessment evaluations</p>
+</div>
+
+{% if evaluations %}
+<div class="evaluations-grid">
+    {% for eval in evaluations %}
+    <div class="eval-card {% if eval.has_critical_failures %}eval-card--critical{% endif %}">
+        <div class="eval-card__header">
+            <h3>{{ eval.assessment_name }}</h3>
+            <span class="session-id">Session: {{ eval.session_id }}</span>
+        </div>
+        <div class="eval-card__body">
+            <div class="score-circle {% if eval.overall_score >= 0.7 %}score--pass{% else %}score--fail{% endif %}">
+                <span class="score-value">{{ (eval.overall_score * 100) | round(1) }}%</span>
+            </div>
+            <div class="eval-meta">
+                <p><strong>Candidate:</strong> {{ eval.candidate_id or 'N/A' }}</p>
+                <p><strong>Tasks:</strong> {{ eval.task_scores | length }}</p>
+                {% if eval.state_seeded %}
+                <p class="state-seeded-flag">⚠ State seeded — some tasks used synthetic data</p>
+                {% endif %}
+                {% if eval.has_critical_failures %}
+                <p class="critical-flag">Critical compliance failure detected</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="eval-card__footer">
+            <a href="/evaluation/{{ eval.session_id }}" class="btn btn-primary">View Details</a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <h3>No evaluations yet</h3>
+    <p>Submit a bot export and manifest to the API to start an evaluation.</p>
+    <pre>POST /api/v1/evaluate
+{
+  "manifest": { ... },
+  "bot_export": { ... },
+  "candidate_id": "candidate-001",
+  "cbm_only": true
+}</pre>
+</div>
+{% endif %}
+{% endblock %}
