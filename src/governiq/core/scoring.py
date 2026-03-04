@@ -140,6 +140,9 @@ class Scorecard:
     state_seeded: bool = False
     state_seed_tasks: list[str] = field(default_factory=list)
 
+    # Kore.ai public API insights (bot details, analytics, intent stats)
+    kore_api_insights: dict[str, Any] = field(default_factory=dict)
+
     @property
     def overall_score(self) -> float:
         """Compute weighted overall score.
@@ -266,4 +269,5 @@ class Scorecard:
                 for cr in self.compliance_results
             ],
             "faq_score": round(self.faq_score, 4),
+            "kore_api_insights": self.kore_api_insights,
         }

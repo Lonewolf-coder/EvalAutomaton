@@ -39,6 +39,8 @@ from ..cbm.evaluator import (
 from ..cbm.parser import CBMObject, parse_bot_export, parse_bot_export_file
 from ..patterns import get_pattern_executor
 from ..webhook.driver import KoreWebhookClient, LLMConversationDriver
+from ..webhook.jwt_auth import KoreCredentials
+from ..webhook.kore_api import KoreAPIClient
 from ..webhook.state_inspector import StateInspector
 
 logger = logging.getLogger(__name__)
@@ -60,11 +62,13 @@ class EvaluationEngine:
         llm_api_format: str = "anthropic",
         persist_dir: str = "./data",
         kore_bearer_token: str = "",
+        kore_credentials: KoreCredentials | None = None,
     ):
         self.manifest = manifest
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
         self.kore_bearer_token = kore_bearer_token
+        self.kore_credentials = kore_credentials
 
         self.driver = LLMConversationDriver(
             api_key=llm_api_key,
@@ -72,8 +76,15 @@ class EvaluationEngine:
             base_url=llm_base_url,
             api_format=llm_api_format,
         )
-        self.webhook_client = KoreWebhookClient(webhook_url=manifest.webhook_url)
+        self.webhook_client = KoreWebhookClient(
+            webhook_url=manifest.webhook_url,
+            bearer_token=kore_bearer_token,
+            kore_credentials=kore_credentials,
+        )
         self.state_inspector = StateInspector()
+        self.kore_api_client: KoreAPIClient | None = None
+        if kore_credentials and kore_bearer_token:
+            self.kore_api_client = KoreAPIClient(kore_credentials)
 
     async def run_full_evaluation(
         self,
@@ -149,12 +160,23 @@ class EvaluationEngine:
 
         # Step 6: Run Webhook Pipeline (Pipeline B) — all tasks
         logger.info("=== Pipeline B: Webhook Journey ===")
-        if self.manifest.webhook_url:
+        if self.manifest.webhook_url or self.kore_bearer_token:
             await self._run_webhook_pipeline(context, scorecard)
         else:
-            logger.info("No webhook URL configured — skipping webhook pipeline.")
+            logger.info("No webhook URL or Kore credentials — skipping webhook pipeline.")
 
-        # Step 7: Persist context and results
+        # Step 7: Fetch Kore.ai public API insights
+        if self.kore_api_client:
+            logger.info("=== Kore.ai Public API Insights ===")
+            try:
+                insights = await self.kore_api_client.get_all_insights()
+                scorecard.kore_api_insights = insights
+                logger.info("Kore.ai API insights captured: %s", list(insights.keys()))
+            except Exception as e:
+                logger.warning("Failed to fetch Kore.ai API insights: %s", e)
+                scorecard.kore_api_insights = {"error": str(e)}
+
+        # Step 8: Persist context and results
         context.save(self.persist_dir / "runtime_contexts")
         self._save_scorecard(scorecard)
 

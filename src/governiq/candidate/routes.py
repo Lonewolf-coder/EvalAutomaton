@@ -149,6 +149,7 @@ async def candidate_submit(
     mock_api_schema: str = Form(""),
     webhook_url: str = Form(""),
     bot_id: str = Form(""),
+    bot_name: str = Form(""),
     client_id: str = Form(""),
     client_secret: str = Form(""),
     bot_export: UploadFile = File(...),
@@ -207,18 +208,29 @@ async def candidate_submit(
             "error": f"Invalid bot export file: {e}. Please upload a valid JSON file.",
         })
 
-    # JWT Authentication for webhook testing
+    # JWT Authentication for webhook testing and Kore.ai API access
     kore_bearer_token = ""
-    if webhook_url and bot_id and client_id and client_secret:
+    kore_creds = None
+    if bot_id and client_id and client_secret:
         try:
-            creds = KoreCredentials(
+            kore_creds = KoreCredentials(
                 bot_id=bot_id,
                 client_id=client_id,
                 client_secret=client_secret,
+                bot_name=bot_name,
             )
-            kore_bearer_token = await get_kore_bearer_token(creds)
+            kore_bearer_token = await get_kore_bearer_token(kore_creds)
+            logger.info("Kore.ai bearer token obtained successfully for bot %s", bot_id)
         except Exception as e:
             logger.warning("JWT token generation failed: %s — proceeding without auth", e)
+            # Still keep credentials for potential direct webhook fallback
+            if not kore_creds:
+                kore_creds = KoreCredentials(
+                    bot_id=bot_id,
+                    client_id=client_id,
+                    client_secret=client_secret,
+                    bot_name=bot_name,
+                )
 
     # Load LLM config from admin settings
     llm_config = load_llm_config()
@@ -231,9 +243,11 @@ async def candidate_submit(
         llm_base_url=llm_config.base_url,
         llm_api_format=llm_config.api_format,
         kore_bearer_token=kore_bearer_token,
+        kore_credentials=kore_creds,
     )
     try:
-        if webhook_url:
+        # Run full evaluation if webhook URL or Kore credentials are available
+        if webhook_url or kore_bearer_token:
             scorecard = await engine.run_full_evaluation(
                 bot_export=bot_export_data,
                 candidate_id=candidate_id,

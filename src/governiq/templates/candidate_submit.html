@@ -77,25 +77,34 @@
                         <div class="alert alert-info" style="margin-bottom:1rem;">
                             These credentials are used to generate a JWT token for authenticating with your bot's webhook and Kore.ai APIs. Find them under Bot Settings &rarr; API Extensions &rarr; JWT App.
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Bot ID</label>
-                            <input type="text" name="bot_id" class="form-input" placeholder="e.g. st-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-                            <div class="form-hint">Your bot's unique ID from Kore.ai platform.</div>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label">Bot ID</label>
+                                <input type="text" name="bot_id" class="form-input" placeholder="e.g. st-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                                <div class="form-hint">Your bot's unique ID from Kore.ai platform.</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Bot Name <span class="badge badge-grey">Optional</span></label>
+                                <input type="text" name="bot_name" class="form-input" placeholder="e.g. Medical Appointment Bot">
+                                <div class="form-hint">Human-readable bot name. If blank, Bot ID will be used.</div>
+                            </div>
+                        </div>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label">Client ID</label>
+                                <input type="text" name="client_id" class="form-input" placeholder="e.g. cs-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                                <div class="form-hint">The Client ID from your JWT app credentials.</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Client Secret</label>
+                                <input type="password" name="client_secret" class="form-input" placeholder="Your client secret key">
+                                <div class="form-hint">The Client Secret from your JWT app. Used to sign the JWT token.</div>
+                            </div>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Client ID</label>
-                            <input type="text" name="client_id" class="form-input" placeholder="e.g. cs-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
-                            <div class="form-hint">The Client ID from your JWT app credentials.</div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Client Secret</label>
-                            <input type="password" name="client_secret" class="form-input" placeholder="Your client secret key">
-                            <div class="form-hint">The Client Secret from your JWT app. Used to sign the JWT token.</div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Bot Webhook URL</label>
+                            <label class="form-label">Bot Webhook URL <span class="badge badge-grey">Optional if using Kore credentials</span></label>
                             <input type="url" name="webhook_url" class="form-input" placeholder="e.g. https://bots.kore.ai/hooks/...">
-                            <div class="form-hint">Your bot's webhook URL for live conversation testing.</div>
+                            <div class="form-hint">Your bot's webhook URL. If Bot ID + Client ID + Client Secret are provided, the system uses Kore.ai's BotMessages API directly (recommended). The webhook URL serves as a fallback.</div>
                         </div>
                     </div>
                 </div>

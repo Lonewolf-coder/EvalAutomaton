@@ -253,6 +253,81 @@
     {% endif %}
 
     <!-- ============================================================ -->
+    <!-- KORE.AI PLATFORM INSIGHTS -->
+    <!-- ============================================================ -->
+    {% if sc.kore_api_insights and sc.kore_api_insights.keys() | list | length > 0 and not sc.kore_api_insights.get('error') %}
+    <div class="card spacer">
+        <div class="card-header">
+            <div class="flex-between">
+                <h3>Kore.ai Platform Insights</h3>
+                <span class="badge badge-info">Public API</span>
+            </div>
+        </div>
+        <div class="card-body">
+            <p class="text-small text-muted spacer">Data retrieved from the Kore.ai platform APIs for this bot submission.</p>
+            <div class="grid-3">
+                {% if sc.kore_api_insights.get('bot_details') and not sc.kore_api_insights.bot_details.get('error') %}
+                <div class="card">
+                    <div class="card-header"><h4>Bot Details</h4></div>
+                    <div class="card-body text-small">
+                        {% set bd = sc.kore_api_insights.bot_details %}
+                        <p><strong>Name:</strong> {{ bd.get('name', bd.get('botName', 'N/A')) }}</p>
+                        <p><strong>Description:</strong> {{ bd.get('description', 'N/A') }}</p>
+                        <p><strong>Type:</strong> {{ bd.get('type', bd.get('botType', 'N/A')) }}</p>
+                        <p><strong>Language:</strong> {{ bd.get('defaultLanguage', bd.get('language', 'N/A')) }}</p>
+                        {% if bd.get('channels') %}
+                        <p><strong>Channels:</strong> {{ bd.channels | length if bd.channels is iterable else bd.channels }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if sc.kore_api_insights.get('analytics') and not sc.kore_api_insights.analytics.get('error') %}
+                <div class="card">
+                    <div class="card-header"><h4>Analytics (30 days)</h4></div>
+                    <div class="card-body text-small">
+                        {% set an = sc.kore_api_insights.analytics %}
+                        <p><strong>Total Conversations:</strong> {{ an.get('totalConversations', an.get('total', 'N/A')) }}</p>
+                        <p><strong>Successful:</strong> {{ an.get('successfulConversations', an.get('successful', 'N/A')) }}</p>
+                        <p><strong>Failed:</strong> {{ an.get('failedConversations', an.get('failed', 'N/A')) }}</p>
+                        <p><strong>Unique Users:</strong> {{ an.get('uniqueUsers', an.get('users', 'N/A')) }}</p>
+                        {% if an.get('successRate') %}
+                        <p><strong>Success Rate:</strong> {{ an.successRate }}%</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if sc.kore_api_insights.get('intent_stats') and not sc.kore_api_insights.intent_stats.get('error') %}
+                <div class="card">
+                    <div class="card-header"><h4>Intent Detection</h4></div>
+                    <div class="card-body text-small">
+                        {% set it = sc.kore_api_insights.intent_stats %}
+                        {% if it.get('intents') %}
+                        <p><strong>Total Intents:</strong> {{ it.intents | length if it.intents is iterable else it.intents }}</p>
+                        {% endif %}
+                        {% if it.get('accuracy') %}
+                        <p><strong>Detection Accuracy:</strong> {{ it.accuracy }}%</p>
+                        {% endif %}
+                        {% if it.get('unhandledUtterances') %}
+                        <p><strong>Unhandled:</strong> {{ it.unhandledUtterances }}</p>
+                        {% endif %}
+                        <p class="text-muted" style="margin-top:.5rem;">NLP performance metrics from the platform.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if sc.kore_api_insights.get('bot_details') and sc.kore_api_insights.bot_details.get('error') %}
+            <div class="alert alert-warning" style="margin-top:1rem;">
+                <strong>Bot Details:</strong> {{ sc.kore_api_insights.bot_details.error }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ============================================================ -->
     <!-- EVALUATION METHODOLOGY -->
     <!-- ============================================================ -->
     <div class="card spacer">

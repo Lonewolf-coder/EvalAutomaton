@@ -241,16 +241,36 @@ class LLMConversationDriver:
 
 
 class KoreWebhookClient:
-    """Client for communicating with a Kore.ai bot via webhook.
+    """Client for communicating with a Kore.ai bot.
 
-    Handles session management, message sending, and response parsing.
+    Supports two modes:
+    1. **BotMessages API** (preferred): Uses bearer token from JWT auth flow.
+       Sends messages via POST /api/1.1/botmessages and polls for responses.
+    2. **Direct Webhook**: Sends messages to the webhook URL (fallback for
+       non-Kore bots or when JWT auth is not available).
+
+    The bearer_token and kore_credentials params enable BotMessages API mode.
     """
 
-    def __init__(self, webhook_url: str, timeout: float = 30.0):
+    def __init__(
+        self,
+        webhook_url: str,
+        timeout: float = 30.0,
+        bearer_token: str = "",
+        kore_credentials: Any = None,
+    ):
         self.webhook_url = webhook_url
         self.timeout = timeout
+        self.bearer_token = bearer_token
+        self.kore_credentials = kore_credentials
         self._client: httpx.AsyncClient | None = None
         self._session_id: str | None = None
+        self._user_id: str = ""
+
+    @property
+    def uses_bot_api(self) -> bool:
+        """True if using BotMessages API (JWT auth), False if direct webhook."""
+        return bool(self.bearer_token and self.kore_credentials)
 
     async def _get_client(self) -> httpx.AsyncClient:
         if not self._client:
@@ -261,9 +281,87 @@ class KoreWebhookClient:
         """Start a new conversation session with the bot."""
         import uuid
         self._session_id = str(uuid.uuid4())
+        self._user_id = f"eval-{uuid.uuid4().hex[:8]}"
 
     async def send_message(self, message: str) -> str:
-        """Send a message to the bot webhook and return the response."""
+        """Send a message to the bot and return the response.
+
+        Uses BotMessages API when bearer token is available,
+        falls back to direct webhook otherwise.
+        """
+        if self.uses_bot_api:
+            return await self._send_via_bot_api(message)
+        return await self._send_via_webhook(message)
+
+    async def _send_via_bot_api(self, message: str) -> str:
+        """Send message via Kore.ai BotMessages API (authenticated)."""
+        import asyncio
+
+        client = await self._get_client()
+        creds = self.kore_credentials
+        bot_name = getattr(creds, 'bot_name', '') or creds.bot_id
+        platform_url = creds.platform_url
+
+        # Send message
+        send_url = f"{platform_url}/api/1.1/botmessages"
+        payload = {
+            "message": {"type": "text", "val": message},
+            "from": {"id": self._user_id or "eval-driver"},
+            "botInfo": {
+                "chatBot": bot_name,
+                "taskBotId": creds.bot_id,
+            },
+        }
+
+        try:
+            response = await client.post(
+                send_url,
+                json=payload,
+                headers={
+                    "Authorization": f"bearer {self.bearer_token}",
+                    "Content-Type": "application/json",
+                },
+            )
+            response.raise_for_status()
+            send_data = response.json()
+        except httpx.HTTPStatusError as e:
+            logger.error("BotMessages API send failed: HTTP %s — %s",
+                         e.response.status_code, e.response.text[:200])
+            # Fall back to webhook if BotMessages API fails
+            if self.webhook_url:
+                logger.info("Falling back to direct webhook")
+                return await self._send_via_webhook(message)
+            raise
+
+        # Poll for bot response
+        poll_url = f"{platform_url}/api/1.1/botmessages"
+        params = {"botId": creds.bot_id, "userId": self._user_id or "eval-driver"}
+
+        for attempt in range(5):
+            await asyncio.sleep(1.5 + attempt * 0.5)
+            try:
+                response = await client.get(
+                    poll_url,
+                    params=params,
+                    headers={
+                        "Authorization": f"bearer {self.bearer_token}",
+                        "Content-Type": "application/json",
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                messages = data if isinstance(data, list) else data.get("messages", [])
+                if messages:
+                    return self._extract_bot_text(messages)
+            except Exception as e:
+                logger.debug("Poll attempt %d: %s", attempt + 1, e)
+
+        # If polling returns nothing, return the send response
+        return self._extract_bot_text(send_data)
+
+    async def _send_via_webhook(self, message: str) -> str:
+        """Send message via direct webhook URL (unauthenticated or pre-auth'd URL)."""
         client = await self._get_client()
 
         payload = {
@@ -272,34 +370,61 @@ class KoreWebhookClient:
             "from": {"id": self._session_id or "eval-driver"},
         }
 
+        headers: dict[str, str] = {}
+        if self.bearer_token:
+            headers["Authorization"] = f"bearer {self.bearer_token}"
+
         try:
-            response = await client.post(self.webhook_url, json=payload)
+            response = await client.post(
+                self.webhook_url, json=payload, headers=headers
+            )
             response.raise_for_status()
             data = response.json()
-
-            # Parse Kore.ai webhook response format
-            if isinstance(data, dict):
-                # Try common response formats
-                if "text" in data:
-                    return data["text"]
-                if "data" in data and isinstance(data["data"], list):
-                    return " ".join(
-                        item.get("val", "") for item in data["data"]
-                        if isinstance(item, dict)
-                    )
-                if "message" in data:
-                    return str(data["message"])
-            if isinstance(data, list) and data:
-                return str(data[0].get("text", data[0].get("val", str(data[0]))))
-
-            return str(data)
-
+            return self._extract_bot_text(data)
         except httpx.HTTPStatusError as e:
             logger.error("Webhook HTTP error: %s", e)
             raise
         except Exception as e:
             logger.error("Webhook error: %s", e)
             raise
+
+    def _extract_bot_text(self, data: Any) -> str:
+        """Extract human-readable text from various Kore.ai response formats."""
+        if isinstance(data, str):
+            return data
+
+        if isinstance(data, dict):
+            if "text" in data:
+                return data["text"]
+            if "data" in data and isinstance(data["data"], list):
+                texts = [
+                    item.get("val", "") or item.get("text", "")
+                    for item in data["data"] if isinstance(item, dict)
+                ]
+                return " ".join(t for t in texts if t)
+            if "message" in data:
+                msg = data["message"]
+                if isinstance(msg, dict):
+                    return msg.get("val", "") or msg.get("text", "") or str(msg)
+                return str(msg)
+            if "val" in data:
+                return data["val"]
+
+        if isinstance(data, list) and data:
+            parts = []
+            for item in data:
+                if isinstance(item, dict):
+                    parts.append(
+                        item.get("text", "")
+                        or item.get("val", "")
+                        or item.get("message", {}).get("val", "")
+                        or str(item)
+                    )
+                else:
+                    parts.append(str(item))
+            return " ".join(parts)
+
+        return str(data)
 
     async def close(self) -> None:
         if self._client:

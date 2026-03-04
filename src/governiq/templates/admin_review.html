@@ -133,6 +133,48 @@
     </div>
     {% endfor %}
 
+    <!-- Kore.ai Platform Insights -->
+    {% if sc.kore_api_insights and sc.kore_api_insights.keys() | list | length > 0 and not sc.kore_api_insights.get('error') %}
+    <div class="card spacer">
+        <div class="card-header">
+            <div class="flex-between">
+                <h3>Kore.ai Platform Insights</h3>
+                <span class="badge badge-info">Public API Data</span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="grid-3">
+                {% if sc.kore_api_insights.get('bot_details') and not sc.kore_api_insights.bot_details.get('error') %}
+                <div>
+                    <h4>Bot Details</h4>
+                    {% set bd = sc.kore_api_insights.bot_details %}
+                    <p class="text-small"><strong>Name:</strong> {{ bd.get('name', bd.get('botName', 'N/A')) }}</p>
+                    <p class="text-small"><strong>Type:</strong> {{ bd.get('type', bd.get('botType', 'N/A')) }}</p>
+                    <p class="text-small"><strong>Language:</strong> {{ bd.get('defaultLanguage', 'N/A') }}</p>
+                </div>
+                {% endif %}
+                {% if sc.kore_api_insights.get('analytics') and not sc.kore_api_insights.analytics.get('error') %}
+                <div>
+                    <h4>Analytics (30d)</h4>
+                    {% set an = sc.kore_api_insights.analytics %}
+                    <p class="text-small"><strong>Conversations:</strong> {{ an.get('totalConversations', 'N/A') }}</p>
+                    <p class="text-small"><strong>Success:</strong> {{ an.get('successfulConversations', 'N/A') }}</p>
+                    <p class="text-small"><strong>Users:</strong> {{ an.get('uniqueUsers', 'N/A') }}</p>
+                </div>
+                {% endif %}
+                {% if sc.kore_api_insights.get('intent_stats') and not sc.kore_api_insights.intent_stats.get('error') %}
+                <div>
+                    <h4>Intent Detection</h4>
+                    {% set it = sc.kore_api_insights.intent_stats %}
+                    <p class="text-small"><strong>Intents:</strong> {{ it.get('intents', 'N/A') }}</p>
+                    <p class="text-small"><strong>Accuracy:</strong> {{ it.get('accuracy', 'N/A') }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Raw JSON -->
     <details class="spacer no-print">
         <summary style="cursor:pointer; font-weight:600; color:var(--primary); padding:.5rem 0;">Raw Scorecard JSON</summary>

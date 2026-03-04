@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if manifest_data else 'Create' }} Manifest — Admin{% endblock %}
+
+{% block content %}
+<div class="container-wide">
+    <div class="flex-between spacer">
+        <div>
+            <h1>{{ 'Edit Manifest' if manifest_data else 'Create New Manifest' }}</h1>
+            <p class="text-muted">{% if manifest_data %}Editing: {{ manifest_data.manifest_id }}{% else %}Define a new assessment evaluation manifest.{% endif %}</p>
+        </div>
+        <div class="flex gap-2">
+            <span class="portal-badge portal-badge--admin">Admin</span>
+            <a href="/admin/" class="btn btn-outline">Back to Dashboard</a>
+        </div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+    {% if success %}
+    <div class="alert alert-success">{{ success }}</div>
+    {% endif %}
+
+    <!-- Mode Tabs: Form vs JSON -->
+    <div class="card spacer">
+        <div class="card-header" style="display:flex; gap:0;">
+            <button class="btn btn-primary" id="tabForm" onclick="showTab('form')" style="border-radius:var(--radius) 0 0 var(--radius);">Form Editor</button>
+            <button class="btn btn-outline" id="tabJson" onclick="showTab('json')" style="border-radius:0 var(--radius) var(--radius) 0;">JSON Editor</button>
+            <div style="margin-left:auto; display:flex; gap:.5rem;">
+                <label class="btn btn-outline" style="cursor:pointer;">
+                    Upload JSON <input type="file" accept=".json" id="jsonUpload" style="display:none;" onchange="handleJsonUpload(event)">
+                </label>
+                <button class="btn btn-outline" onclick="downloadJson()">Download JSON</button>
+                <a href="/admin/manifest/schema" class="btn btn-outline" target="_blank">View Schema Reference</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==== FORM MODE ==== -->
+    <form id="manifestForm" action="/admin/manifest/save" method="post" class="formMode">
+        <input type="hidden" name="original_id" value="{{ manifest_data.manifest_id if manifest_data else '' }}">
+
+        <!-- Basic Info -->
+        <div class="card spacer">
+            <div class="card-header"><h3>Basic Information</h3></div>
+            <div class="card-body">
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Manifest ID</label>
+                        <input type="text" name="manifest_id" class="form-input" value="{{ manifest_data.manifest_id if manifest_data else '' }}" placeholder="e.g. medical_appointment_basic" required>
+                        <div class="form-hint">Unique identifier. Use lowercase with underscores. Used as the filename.</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Assessment Name</label>
+                        <input type="text" name="assessment_name" class="form-input" value="{{ manifest_data.assessment_name if manifest_data else '' }}" placeholder="e.g. Medical Appointment Bot - Basic" required>
+                    </div>
+                </div>
+                <div class="grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Assessment Type</label>
+                        <input type="text" name="assessment_type" class="form-input" value="{{ manifest_data.assessment_type if manifest_data else '' }}" placeholder="e.g. medical, travel, hr">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Version</label>
+                        <input type="text" name="manifest_version" class="form-input" value="{{ manifest_data.manifest_version if manifest_data else '1.0' }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Created By</label>
+                        <input type="text" name="created_by" class="form-input" value="{{ manifest_data.created_by if manifest_data else '' }}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea name="description" class="form-textarea" rows="2">{{ manifest_data.description if manifest_data else '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes (internal)</label>
+                    <textarea name="notes" class="form-textarea" rows="2">{{ manifest_data.notes if manifest_data else '' }}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Conversation Starter -->
+        <div class="card spacer">
+            <div class="card-header"><h3>Conversation Settings</h3></div>
+            <div class="card-body">
+                <div class="form-group">
+                    <label class="form-label">Conversation Starter (fallback)</label>
+                    <input type="text" name="conversation_starter" class="form-input" value="{{ manifest_data.conversation_starter if manifest_data else 'Hi' }}">
+                    <div class="form-hint">Fallback opening message. The LLM generates a natural opener — this is only used if LLM is unavailable.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scoring Config -->
+        <div class="card spacer">
+            <div class="card-header"><h3>Scoring Configuration</h3></div>
+            <div class="card-body">
+                <div class="grid-3" style="grid-template-columns: repeat(5, 1fr);">
+                    <div class="form-group">
+                        <label class="form-label">CBM Weight</label>
+                        <input type="number" name="cbm_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.cbm_structural_weight if manifest_data and manifest_data.scoring_config else 0.40 }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Webhook Weight</label>
+                        <input type="number" name="webhook_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.webhook_functional_weight if manifest_data and manifest_data.scoring_config else 0.40 }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Compliance Weight</label>
+                        <input type="number" name="compliance_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.compliance_weight if manifest_data and manifest_data.scoring_config else 0.10 }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">FAQ Weight</label>
+                        <input type="number" name="faq_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.faq_weight if manifest_data and manifest_data.scoring_config else 0.10 }}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Pass Threshold</label>
+                        <input type="number" name="pass_threshold" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.pass_threshold if manifest_data and manifest_data.scoring_config else 0.70 }}">
+                    </div>
+                </div>
+                <div class="form-hint">Weights should sum to 1.0. Webhook is the scoring authority; CBM weight is for informational reference.</div>
+            </div>
+        </div>
+
+        <!-- Tasks, Compliance, FAQs — use JSON editor for complex nested data -->
+        <div class="card spacer">
+            <div class="card-header">
+                <div class="flex-between">
+                    <h3>Tasks, Compliance Checks &amp; FAQs</h3>
+                    <span class="badge badge-info">Edit via JSON</span>
+                </div>
+            </div>
+            <div class="card-body">
+                <p class="text-small text-muted spacer">Tasks, compliance checks, and FAQs have complex nested structures. Use the JSON editor tab above, or edit the JSON below directly.</p>
+                <div class="form-group">
+                    <label class="form-label">Tasks (JSON array)</label>
+                    <textarea name="tasks_json" class="form-textarea" rows="12" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ tasks_json }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Compliance Checks (JSON array)</label>
+                    <textarea name="compliance_json" class="form-textarea" rows="6" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ compliance_json }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">FAQ Config (JSON object)</label>
+                    <textarea name="faq_json" class="form-textarea" rows="6" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ faq_json }}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex gap-2">
+            <button type="submit" class="btn btn-primary btn-lg">Save Manifest</button>
+            {% if manifest_data %}
+            <a href="/admin/manifest/archive/{{ manifest_data.manifest_id }}" class="btn btn-danger" onclick="return confirm('Archive this manifest? It will be moved to manifests/archived/')">Archive Manifest</a>
+            {% endif %}
+        </div>
+    </form>
+
+    <!-- ==== JSON MODE ==== -->
+    <div class="jsonMode hidden">
+        <div class="card spacer">
+            <div class="card-header"><h3>Full Manifest JSON</h3></div>
+            <div class="card-body">
+                <textarea id="fullJsonEditor" class="form-textarea" rows="40" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ full_json }}</textarea>
+            </div>
+            <div class="card-footer">
+                <div class="flex gap-2">
+                    <button class="btn btn-primary" onclick="saveFromJson()">Save JSON</button>
+                    <button class="btn btn-outline" onclick="validateJson()">Validate</button>
+                    <span id="jsonValidationMsg" class="text-small" style="line-height:2.5;"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showTab(tab) {
+    document.querySelectorAll('.formMode').forEach(el => el.classList.toggle('hidden', tab !== 'form'));
+    document.querySelectorAll('.jsonMode').forEach(el => el.classList.toggle('hidden', tab !== 'json'));
+    document.getElementById('tabForm').className = tab === 'form' ? 'btn btn-primary' : 'btn btn-outline';
+    document.getElementById('tabJson').className = tab === 'json' ? 'btn btn-primary' : 'btn btn-outline';
+    // Sync form → JSON when switching to JSON tab
+    if (tab === 'json') syncFormToJson();
+}
+
+function syncFormToJson() {
+    try {
+        const form = document.getElementById('manifestForm');
+        const fd = new FormData(form);
+        const obj = {
+            manifest_id: fd.get('manifest_id') || '',
+            manifest_version: fd.get('manifest_version') || '1.0',
+            assessment_name: fd.get('assessment_name') || '',
+            assessment_type: fd.get('assessment_type') || '',
+            description: fd.get('description') || '',
+            conversation_starter: fd.get('conversation_starter') || 'Hi',
+            created_by: fd.get('created_by') || '',
+            notes: fd.get('notes') || '',
+            scoring_config: {
+                cbm_structural_weight: parseFloat(fd.get('cbm_weight')) || 0.4,
+                webhook_functional_weight: parseFloat(fd.get('webhook_weight')) || 0.4,
+                compliance_weight: parseFloat(fd.get('compliance_weight')) || 0.1,
+                faq_weight: parseFloat(fd.get('faq_weight')) || 0.1,
+                pass_threshold: parseFloat(fd.get('pass_threshold')) || 0.7,
+            },
+            tasks: JSON.parse(fd.get('tasks_json') || '[]'),
+            compliance_checks: JSON.parse(fd.get('compliance_json') || '[]'),
+            faq_config: JSON.parse(fd.get('faq_json') || '{}'),
+        };
+        document.getElementById('fullJsonEditor').value = JSON.stringify(obj, null, 2);
+    } catch(e) {
+        // If parse fails keep what's there
+    }
+}
+
+function validateJson() {
+    const el = document.getElementById('fullJsonEditor');
+    const msg = document.getElementById('jsonValidationMsg');
+    try {
+        const parsed = JSON.parse(el.value);
+        if (!parsed.manifest_id) throw new Error('manifest_id is required');
+        if (!parsed.assessment_name) throw new Error('assessment_name is required');
+        if (!parsed.tasks || !parsed.tasks.length) throw new Error('At least one task is required');
+        msg.textContent = 'Valid JSON — ' + parsed.tasks.length + ' task(s)';
+        msg.style.color = 'var(--pass)';
+    } catch(e) {
+        msg.textContent = 'Invalid: ' + e.message;
+        msg.style.color = 'var(--fail)';
+    }
+}
+
+function saveFromJson() {
+    const el = document.getElementById('fullJsonEditor');
+    try {
+        const parsed = JSON.parse(el.value);
+        // Submit as hidden form
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/admin/manifest/save-json';
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'manifest_json';
+        input.value = el.value;
+        form.appendChild(input);
+        document.body.appendChild(form);
+        form.submit();
+    } catch(e) {
+        alert('Invalid JSON: ' + e.message);
+    }
+}
+
+function handleJsonUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            document.getElementById('fullJsonEditor').value = JSON.stringify(data, null, 2);
+            showTab('json');
+            validateJson();
+        } catch(err) {
+            alert('Invalid JSON file: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+}
+
+function downloadJson() {
+    syncFormToJson();
+    const el = document.getElementById('fullJsonEditor');
+    const blob = new Blob([el.value], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const form = document.getElementById('manifestForm');
+    const id = form ? new FormData(form).get('manifest_id') || 'manifest' : 'manifest';
+    a.href = url;
+    a.download = id + '.json';
+    a.click();
+    URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}

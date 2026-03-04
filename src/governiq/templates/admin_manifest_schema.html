@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Manifest Schema Reference — Admin{% endblock %}
+
+{% block content %}
+<div class="container-wide">
+    <div class="flex-between spacer">
+        <div>
+            <h1>Manifest Schema Reference</h1>
+            <p class="text-muted">Complete documentation for creating assessment manifests.</p>
+        </div>
+        <div class="flex gap-2">
+            <span class="portal-badge portal-badge--admin">Admin</span>
+            <a href="/admin/manifest/new" class="btn btn-primary">Create New Manifest</a>
+            <a href="/admin/manifests" class="btn btn-outline">Back to Manifests</a>
+        </div>
+    </div>
+
+    <!-- Quick Start -->
+    <div class="card spacer">
+        <div class="card-header"><h3>Quick Start</h3></div>
+        <div class="card-body">
+            <p class="spacer">A manifest defines <strong>what to evaluate</strong> in a chatbot submission. The engine is domain-agnostic — the manifest provides all domain-specific configuration.</p>
+            <div class="grid-3">
+                <div class="method-card">
+                    <div class="method-num">1</div>
+                    <div><div class="method-title">Required Fields</div><div class="method-desc">manifest_id, assessment_name, assessment_type, and at least one task.</div></div>
+                </div>
+                <div class="method-card">
+                    <div class="method-num">2</div>
+                    <div><div class="method-title">Six Engine Patterns</div><div class="method-desc">CREATE, CREATE_WITH_AMENDMENT, RETRIEVE, MODIFY, DELETE, EDGE_CASE.</div></div>
+                </div>
+                <div class="method-card">
+                    <div class="method-num">3</div>
+                    <div><div class="method-title">Save &amp; Evaluate</div><div class="method-desc">Save your manifest and candidates can start submitting bots for evaluation.</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top-Level Properties -->
+    <div class="card spacer">
+        <div class="card-header">
+            <div class="flex-between">
+                <h3>Top-Level Properties</h3>
+                <span class="badge badge-info">Root Object</span>
+            </div>
+        </div>
+        {% if schema.get('properties') %}
+        <table class="table">
+            <thead>
+                <tr><th>Property</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+                {% for name, prop in schema.get('properties', {}).items() %}
+                <tr>
+                    <td><code style="font-weight:600; color:var(--primary);">{{ name }}</code></td>
+                    <td><span class="badge badge-grey">{{ prop.get('type', prop.get('$ref', '').split('/')[-1]) }}</span></td>
+                    <td>{% if name in schema.get('required', []) %}<span class="badge badge-fail">required</span>{% else %}<span class="text-muted">optional</span>{% endif %}</td>
+                    <td class="text-small text-muted">{{ prop.get('default', '—') }}</td>
+                    <td class="text-small">{{ prop.get('description', '') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+
+    <!-- Sub-Model Definitions -->
+    {% if schema.get('$defs') %}
+    {% for def_name, def_schema in schema.get('$defs', {}).items() %}
+    <div class="card spacer" id="def-{{ def_name }}">
+        <div class="card-header">
+            <div class="flex-between">
+                <h3>{{ def_name }}</h3>
+                <span class="badge badge-info">{{ def_schema.get('type', 'object') }}</span>
+            </div>
+            {% if def_schema.get('description') %}
+            <p class="text-small text-muted" style="margin-top:.5rem;">{{ def_schema.get('description') }}</p>
+            {% endif %}
+        </div>
+        {% if def_schema.get('properties') %}
+        <table class="table">
+            <thead>
+                <tr><th>Property</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+                {% for name, prop in def_schema.get('properties', {}).items() %}
+                <tr>
+                    <td><code style="font-weight:600;">{{ name }}</code></td>
+                    <td>
+                        {% if prop.get('$ref') %}
+                        <a href="#def-{{ prop['$ref'].split('/')[-1] }}" class="badge badge-info" style="text-decoration:none;">{{ prop['$ref'].split('/')[-1] }}</a>
+                        {% elif prop.get('items', {}).get('$ref') %}
+                        <span class="badge badge-grey">array</span>
+                        <a href="#def-{{ prop['items']['$ref'].split('/')[-1] }}" class="badge badge-info" style="text-decoration:none;">{{ prop['items']['$ref'].split('/')[-1] }}[]</a>
+                        {% elif prop.get('enum') %}
+                        <span class="badge badge-grey">enum</span>
+                        {% else %}
+                        <span class="badge badge-grey">{{ prop.get('type', '?') }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{% if name in def_schema.get('required', []) %}<span class="badge badge-fail">required</span>{% else %}<span class="text-muted">optional</span>{% endif %}</td>
+                    <td class="text-small text-muted">
+                        {% if prop.get('enum') %}
+                        {{ prop.get('enum') | join(' | ') }}
+                        {% else %}
+                        {{ prop.get('default', '—') }}
+                        {% endif %}
+                    </td>
+                    <td class="text-small">{{ prop.get('description', '') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- Engine Patterns Reference -->
+    <div class="card spacer">
+        <div class="card-header"><h3>Engine Patterns Reference</h3></div>
+        <div class="card-body">
+            <div class="grid-2">
+                <div>
+                    <h4 style="margin-bottom:.75rem;">Task Patterns</h4>
+                    <div class="method-card"><div class="method-num" style="background:#dcfce7; color:var(--pass);">C</div><div><div class="method-title">CREATE</div><div class="method-desc">Tests entity collection, service call, confirmation flow. Bot should create a new record.</div></div></div>
+                    <div class="method-card"><div class="method-num" style="background:#dbeafe; color:var(--info);">CA</div><div><div class="method-title">CREATE_WITH_AMENDMENT</div><div class="method-desc">CREATE + amendment: bot creates, user requests change, bot amends via agent node.</div></div></div>
+                    <div class="method-card"><div class="method-num" style="background:#f0fdf4; color:#166534;">R</div><div><div class="method-title">RETRIEVE</div><div class="method-desc">Tests lookup/search. Bot should retrieve and display existing records.</div></div></div>
+                </div>
+                <div>
+                    <h4 style="margin-bottom:.75rem;">&nbsp;</h4>
+                    <div class="method-card"><div class="method-num" style="background:#fef3c7; color:var(--warn);">M</div><div><div class="method-title">MODIFY</div><div class="method-desc">Tests update/change. Bot should modify an existing record.</div></div></div>
+                    <div class="method-card"><div class="method-num" style="background:#fef2f2; color:var(--fail);">D</div><div><div class="method-title">DELETE</div><div class="method-desc">Tests deletion with confirmation. Bot should delete a record after user confirms.</div></div></div>
+                    <div class="method-card"><div class="method-num" style="background:#f1f5f9; color:#475569;">E</div><div><div class="method-title">EDGE_CASE</div><div class="method-desc">Tests error handling. Intentionally sends invalid data to test bot's error responses.</div></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Raw JSON Schema -->
+    <div class="card spacer">
+        <div class="card-header">
+            <div class="flex-between">
+                <h3>Raw JSON Schema</h3>
+                <button class="btn btn-outline" onclick="copySchema()" style="font-size:.75rem; padding:.3rem .6rem;">Copy to Clipboard</button>
+            </div>
+        </div>
+        <div class="card-body">
+            <pre id="rawSchema" style="background:#f8fafc; padding:1rem; border-radius:var(--radius); overflow:auto; max-height:500px; font-size:.75rem; line-height:1.5;">{{ schema_json }}</pre>
+        </div>
+    </div>
+</div>
+
+<script>
+function copySchema() {
+    const text = document.getElementById('rawSchema').textContent;
+    navigator.clipboard.writeText(text).then(() => alert('Schema copied to clipboard'));
+}
+</script>
+{% endblock %}
