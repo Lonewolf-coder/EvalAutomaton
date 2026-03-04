@@ -34,9 +34,9 @@
                             <input type="text" name="candidate_name" class="form-input" placeholder="e.g. Jane Smith" required>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Candidate ID</label>
-                            <input type="text" name="candidate_id" class="form-input" placeholder="e.g. CAND-2026-042" required>
-                            <div class="form-hint">The ID provided to you in your assessment brief.</div>
+                            <label class="form-label">Email Address</label>
+                            <input type="email" name="candidate_email" class="form-input" placeholder="e.g. jane.smith@example.com" required>
+                            <div class="form-hint">Your email will be used as your unique identifier for all submissions.</div>
                         </div>
                     </div>
                 </div>
@@ -72,17 +72,46 @@
                 </div>
 
                 <div class="card spacer">
-                    <div class="card-header"><h3>Mock API Details <span class="badge badge-grey">Optional for CBM-only</span></h3></div>
+                    <div class="card-header"><h3>Kore.ai Platform Credentials <span class="badge badge-warn">Required for Webhook Testing</span></h3></div>
                     <div class="card-body">
+                        <div class="alert alert-info" style="margin-bottom:1rem;">
+                            These credentials are used to generate a JWT token for authenticating with your bot's webhook and Kore.ai APIs. Find them under Bot Settings &rarr; API Extensions &rarr; JWT App.
+                        </div>
                         <div class="form-group">
-                            <label class="form-label">Mock API Base URL</label>
-                            <input type="url" name="mock_api_url" class="form-input" placeholder="e.g. https://mockapi.io/projects/abc123/appointments">
-                            <div class="form-hint">The base URL of your mockapi.io endpoint. Required for full webhook evaluation.</div>
+                            <label class="form-label">Bot ID</label>
+                            <input type="text" name="bot_id" class="form-input" placeholder="e.g. st-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                            <div class="form-hint">Your bot's unique ID from Kore.ai platform.</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Client ID</label>
+                            <input type="text" name="client_id" class="form-input" placeholder="e.g. cs-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                            <div class="form-hint">The Client ID from your JWT app credentials.</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Client Secret</label>
+                            <input type="password" name="client_secret" class="form-input" placeholder="Your client secret key">
+                            <div class="form-hint">The Client Secret from your JWT app. Used to sign the JWT token.</div>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Bot Webhook URL</label>
                             <input type="url" name="webhook_url" class="form-input" placeholder="e.g. https://bots.kore.ai/hooks/...">
-                            <div class="form-hint">Your bot's webhook URL for live conversation testing. Leave blank for structural-only evaluation.</div>
+                            <div class="form-hint">Your bot's webhook URL for live conversation testing.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card spacer">
+                    <div class="card-header"><h3>Mock API Details <span class="badge badge-grey">Optional</span></h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label">Mock API Base URL</label>
+                            <input type="url" name="mock_api_url" class="form-input" placeholder="e.g. https://mockapi.io/projects/abc123/appointments">
+                            <div class="form-hint">The base URL of your mockapi.io endpoint. Used for API state verification.</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Mock API Record Schema (JSON)</label>
+                            <textarea name="mock_api_schema" class="form-textarea" rows="6" placeholder='e.g. {"patientName": "string", "contactNumber": "string", "appointmentDate": "string", "appointmentTime": "string"}'></textarea>
+                            <div class="form-hint">Provide the JSON field schema your Mock API expects. Since the bot uses Agent Node (LLM-powered), we cannot infer the schema automatically. This is used for state seeding if the booking flow doesn't create a record.</div>
                         </div>
                     </div>
                 </div>

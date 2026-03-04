@@ -66,6 +66,11 @@
     </div>
 
     <!-- Alerts -->
+    {% if not sc.any_webhook_tested %}
+    <div class="alert alert-warning">
+        <strong>CBM Structural Analysis Only:</strong> No webhook testing was performed. The structural findings below are <strong>informational only</strong> and do not determine pass/fail. To get a qualified evaluation, resubmit with your bot's webhook URL and Kore.ai credentials (Bot ID, Client ID, Client Secret).
+    </div>
+    {% endif %}
     {% if sc.has_critical_failures %}
     <div class="alert alert-danger">
         <strong>Critical Compliance Failure:</strong> One or more critical compliance checks have failed. This overrides the overall score. Please review the compliance section below and fix the issues before resubmitting.
@@ -148,12 +153,16 @@
             <div class="flex-between" style="flex-wrap:wrap; gap:.5rem;">
                 <h3>{{ ts.task_name }}</h3>
                 <div class="flex gap-1">
-                    <span class="badge badge-info">CBM: {{ (ts.cbm_score * 100) | round(0) }}%</span>
-                    <span class="badge" style="background:#f3e8ff; color:#7c3aed;">Webhook: {{ (ts.webhook_score * 100) | round(0) }}%</span>
-                    {% if ts.all_passed %}
-                        <span class="badge badge-pass">PASSED</span>
+                    <span class="badge badge-grey">CBM: {{ (ts.cbm_score * 100) | round(0) }}%</span>
+                    {% if ts.webhook_tested %}
+                        <span class="badge" style="background:#f3e8ff; color:#7c3aed;">Webhook: {{ (ts.webhook_score * 100) | round(0) }}%</span>
+                        {% if ts.all_passed %}
+                            <span class="badge badge-pass">PASSED</span>
+                        {% else %}
+                            <span class="badge badge-fail">NEEDS REVIEW</span>
+                        {% endif %}
                     {% else %}
-                        <span class="badge badge-fail">NEEDS REVIEW</span>
+                        <span class="badge badge-warn">UNTESTED</span>
                     {% endif %}
                 </div>
             </div>
@@ -261,9 +270,10 @@
             </div>
             <div class="divider"></div>
             <p class="text-small text-muted">
-                <strong>Scoring:</strong> CBM Structural (40%) + Webhook Functional (40%) + Compliance (10%) + FAQs (10%).
+                <strong>Scoring:</strong> Webhook functional testing is the <strong>authority</strong> for pass/fail decisions. CBM structural analysis is <strong>informational only</strong> &mdash; it shows what your bot contains but cannot qualify a pass by itself.
+                Webhook results (80%) + Compliance (10%) + FAQs (10%).
                 Pass threshold is 70% with no critical compliance failures.
-                Both pipelines are independent &mdash; a structural pass with a webhook fail (or vice versa) still counts toward the total score.
+                Without webhook testing, the assessment is considered untested.
             </p>
         </div>
     </div>

@@ -143,14 +143,22 @@ async def candidate_submit_page(request: Request):
 async def candidate_submit(
     request: Request,
     candidate_name: str = Form(""),
-    candidate_id: str = Form(""),
+    candidate_email: str = Form(""),
     assessment_type: str = Form(""),
     mock_api_url: str = Form(""),
+    mock_api_schema: str = Form(""),
     webhook_url: str = Form(""),
+    bot_id: str = Form(""),
+    client_id: str = Form(""),
+    client_secret: str = Form(""),
     bot_export: UploadFile = File(...),
 ):
     """Handle candidate submission — run evaluation and redirect to report."""
+    from ..webhook.jwt_auth import KoreCredentials, get_kore_bearer_token
+    from ..core.llm_config import load_llm_config
+
     available = _load_available_manifests()
+    candidate_id = candidate_email  # Email is the primary identifier
 
     # Validate assessment selection
     if not assessment_type:
@@ -199,8 +207,31 @@ async def candidate_submit(
             "error": f"Invalid bot export file: {e}. Please upload a valid JSON file.",
         })
 
+    # JWT Authentication for webhook testing
+    kore_bearer_token = ""
+    if webhook_url and bot_id and client_id and client_secret:
+        try:
+            creds = KoreCredentials(
+                bot_id=bot_id,
+                client_id=client_id,
+                client_secret=client_secret,
+            )
+            kore_bearer_token = await get_kore_bearer_token(creds)
+        except Exception as e:
+            logger.warning("JWT token generation failed: %s — proceeding without auth", e)
+
+    # Load LLM config from admin settings
+    llm_config = load_llm_config()
+
     # Run evaluation
-    engine = EvaluationEngine(manifest=manifest)
+    engine = EvaluationEngine(
+        manifest=manifest,
+        llm_api_key=llm_config.api_key,
+        llm_model=llm_config.model,
+        llm_base_url=llm_config.base_url,
+        llm_api_format=llm_config.api_format,
+        kore_bearer_token=kore_bearer_token,
+    )
     try:
         if webhook_url:
             scorecard = await engine.run_full_evaluation(

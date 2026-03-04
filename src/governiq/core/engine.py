@@ -48,20 +48,30 @@ class EvaluationEngine:
     """The GovernIQ Universal Evaluation Engine.
 
     Domain-agnostic. Knows six patterns. Manifest tells it everything else.
+    Webhook is the authority for pass/fail. CBM is informational only.
     """
 
     def __init__(
         self,
         manifest: Manifest,
         llm_api_key: str = "",
-        llm_model: str = "gpt-4o",
+        llm_model: str = "claude-haiku-4-5-20251001",
+        llm_base_url: str = "https://api.anthropic.com/v1",
+        llm_api_format: str = "anthropic",
         persist_dir: str = "./data",
+        kore_bearer_token: str = "",
     ):
         self.manifest = manifest
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
+        self.kore_bearer_token = kore_bearer_token
 
-        self.driver = LLMConversationDriver(api_key=llm_api_key, model=llm_model)
+        self.driver = LLMConversationDriver(
+            api_key=llm_api_key,
+            model=llm_model,
+            base_url=llm_base_url,
+            api_format=llm_api_format,
+        )
         self.webhook_client = KoreWebhookClient(webhook_url=manifest.webhook_url)
         self.state_inspector = StateInspector()
 
@@ -126,12 +136,16 @@ class EvaluationEngine:
         # Step 5: FAQ structural checks
         logger.info("=== FAQ Structural Checks ===")
         faq_checks, faq_cards = evaluate_faqs_structural(cbm, self.manifest)
-        # Add FAQ results to a dedicated task score
         if faq_checks:
             faq_task_score = TaskScore(task_id="faq", task_name="FAQs")
             faq_task_score.cbm_checks = faq_checks
             faq_task_score.evidence_cards = faq_cards
             scorecard.task_scores.append(faq_task_score)
+            # Compute faq_score from the FAQ check results
+            scored = [c for c in faq_checks if c.status != CheckStatus.UNTESTABLE]
+            if scored:
+                total_w = sum(c.weight for c in scored)
+                scorecard.faq_score = sum(c.score * c.weight for c in scored) / total_w if total_w else 0.0
 
         # Step 6: Run Webhook Pipeline (Pipeline B) — all tasks
         logger.info("=== Pipeline B: Webhook Journey ===")
@@ -190,6 +204,10 @@ class EvaluationEngine:
             faq_task_score.cbm_checks = faq_checks
             faq_task_score.evidence_cards = faq_cards
             scorecard.task_scores.append(faq_task_score)
+            scored = [c for c in faq_checks if c.status != CheckStatus.UNTESTABLE]
+            if scored:
+                total_w = sum(c.weight for c in scored)
+                scorecard.faq_score = sum(c.score * c.weight for c in scored) / total_w if total_w else 0.0
 
         self._save_scorecard(scorecard)
         return scorecard

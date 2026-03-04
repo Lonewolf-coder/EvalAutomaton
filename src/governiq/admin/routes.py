@@ -1,4 +1,4 @@
-"""Admin / Evaluator Portal Routes — Dashboard, review, manifest management."""
+"""Admin / Evaluator Portal Routes — Dashboard, review, manifest management, LLM config."""
 
 from __future__ import annotations
 
@@ -7,9 +7,17 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Form, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+
+from ..core.llm_config import (
+    LLMConfig,
+    get_provider_info,
+    load_llm_config,
+    save_llm_config,
+    PROVIDER_DEFAULTS,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -82,13 +90,40 @@ async def admin_dashboard(request: Request):
     evaluations = _load_all_evaluations()
     manifests = _load_manifests_summary()
     stats = _build_stats(evaluations)
+    llm_config = load_llm_config()
     return templates.TemplateResponse("admin_dashboard.html", {
         "request": request,
         "portal": "admin",
         "evaluations": evaluations,
         "manifests": manifests,
         "stats": stats,
+        "llm_config": llm_config,
+        "providers": get_provider_info(),
     })
+
+
+@router.post("/llm-config")
+async def save_llm_settings(
+    request: Request,
+    provider: str = Form("anthropic"),
+    api_key: str = Form(""),
+    model: str = Form(""),
+    base_url: str = Form(""),
+    temperature: str = Form("0.3"),
+):
+    """Save LLM provider configuration from admin dashboard."""
+    defaults = PROVIDER_DEFAULTS.get(provider, {})
+
+    config = LLMConfig(
+        provider=provider,
+        api_key=api_key,
+        model=model or defaults.get("default_model", ""),
+        base_url=base_url or defaults.get("base_url", ""),
+        api_format=defaults.get("api_format", "openai"),
+        temperature=float(temperature),
+    )
+    save_llm_config(config)
+    return RedirectResponse(url="/admin/", status_code=303)
 
 
 @router.get("/review/{session_id}", response_class=HTMLResponse)

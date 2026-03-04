@@ -83,19 +83,31 @@ class TaskScore:
 
     @property
     def combined_score(self) -> float:
-        scores = []
-        if self.cbm_checks:
-            scores.append(self.cbm_score)
+        """Webhook is the authority for scoring. CBM is informational only.
+
+        If webhook checks exist, score comes from webhook only.
+        If no webhook checks exist, the task is untested (score = 0).
+        CBM score is still computed and shown in the report for reference,
+        but it does NOT contribute to the pass/fail decision.
+        """
         if self.webhook_checks:
-            scores.append(self.webhook_score)
-        return sum(scores) / len(scores) if scores else 0.0
+            return self.webhook_score
+        # No webhook = untested = cannot pass
+        return 0.0
+
+    @property
+    def webhook_tested(self) -> bool:
+        """Whether this task has been tested via webhook."""
+        return bool(self.webhook_checks)
 
     @property
     def all_passed(self) -> bool:
-        all_checks = self.cbm_checks + self.webhook_checks
+        """A task passes only if webhook tests pass. CBM alone cannot qualify."""
+        if not self.webhook_checks:
+            return False  # Cannot pass without webhook testing
         return all(
             c.status in (CheckStatus.PASS, CheckStatus.INFO, CheckStatus.UNTESTABLE)
-            for c in all_checks
+            for c in self.webhook_checks
         )
 
 
@@ -130,13 +142,26 @@ class Scorecard:
 
     @property
     def overall_score(self) -> float:
-        """Compute weighted overall score."""
+        """Compute weighted overall score.
+
+        Webhook is the authority. CBM is informational.
+        Tasks without webhook testing score 0 (untested).
+        """
         if not self.task_scores:
             return 0.0
-        task_avg = sum(t.combined_score for t in self.task_scores) / len(self.task_scores)
+        # Exclude FAQ task from main task scoring (it has its own weight)
+        main_tasks = [t for t in self.task_scores if t.task_id != "faq"]
+        if main_tasks:
+            task_avg = sum(t.combined_score for t in main_tasks) / len(main_tasks)
+        else:
+            task_avg = 0.0
         compliance_score = self._compliance_score()
-        # Simple weighted average — weights come from manifest scoring_config
         return task_avg * 0.80 + compliance_score * 0.10 + self.faq_score * 0.10
+
+    @property
+    def any_webhook_tested(self) -> bool:
+        """Whether any task was tested via webhook."""
+        return any(t.webhook_tested for t in self.task_scores)
 
     def compute_weighted_score(
         self,
@@ -184,6 +209,7 @@ class Scorecard:
             "assessment_name": self.assessment_name,
             "overall_score": round(self.overall_score, 4),
             "has_critical_failures": self.has_critical_failures,
+            "any_webhook_tested": self.any_webhook_tested,
             "state_seeded": self.state_seeded,
             "task_scores": [
                 {
@@ -193,6 +219,7 @@ class Scorecard:
                     "webhook_score": round(ts.webhook_score, 4),
                     "combined_score": round(ts.combined_score, 4),
                     "all_passed": ts.all_passed,
+                    "webhook_tested": ts.webhook_tested,
                     "cbm_checks": [
                         {
                             "check_id": c.check_id,

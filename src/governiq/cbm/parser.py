@@ -64,6 +64,18 @@ class CBMNode:
         return None
 
     @property
+    def user_label(self) -> str:
+        """The user-visible label for this node (what the bot builder named it).
+
+        Tries multiple locations since Kore.ai stores display names inconsistently.
+        """
+        for key in ("title", "displayName", "label"):
+            val = self.raw.get(key) or self.component.get(key)
+            if val:
+                return str(val)
+        return self.name
+
+    @property
     def message_text(self) -> str:
         """Extract message text from component, handling multiple formats."""
         comp = self.component
@@ -74,6 +86,34 @@ class CBMNode:
                 if isinstance(val, list):
                     return " ".join(str(v) for v in val)
                 return str(val)
+        return ""
+
+    @property
+    def content_summary(self) -> str:
+        """Human-readable content summary showing what's inside the node."""
+        if self.is_message_node:
+            return self.message_text[:200] if self.message_text else ""
+        if self.is_entity_node:
+            prompt = ""
+            for key in ("prompt", "question", "message"):
+                val = self.component.get(key) or self.raw.get(key)
+                if val:
+                    prompt = str(val)[:150]
+                    break
+            entity_t = self.entity_type or "unknown"
+            return f"[{entity_t}] {prompt}" if prompt else f"[{entity_t}]"
+        if self.is_service_node:
+            method = self.service_method or "unknown"
+            url = self.component.get("url") or self.raw.get("url") or ""
+            return f"{method} {url[:120]}" if url else method
+        if self.node_type == "script":
+            code = self.component.get("script") or self.raw.get("script") or ""
+            if isinstance(code, str) and code.strip():
+                lines = [l.strip() for l in code.strip().split("\n") if l.strip()]
+                return lines[0][:150] if lines else ""
+            return ""
+        if self.is_agent_node:
+            return "Agent Node (aiassist) — handles amendments"
         return ""
 
     @property
