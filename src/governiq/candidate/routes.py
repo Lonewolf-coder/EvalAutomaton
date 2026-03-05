@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import json
 import logging
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -196,16 +198,38 @@ async def candidate_submit(
             "error": f"Manifest error: {e}",
         })
 
-    # Parse bot export
+    # Parse bot export — supports JSON file or ZIP archive containing JSON
     try:
         content = await bot_export.read()
-        bot_export_data = json.loads(content)
+        filename = (bot_export.filename or "").lower()
+
+        # Detect ZIP by filename extension or magic bytes (PK\x03\x04)
+        if filename.endswith(".zip") or content[:4] == b"PK\x03\x04":
+            try:
+                with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                    # Find JSON files, skip macOS/system junk
+                    json_files = [
+                        n for n in zf.namelist()
+                        if n.endswith(".json")
+                        and not n.startswith("__MACOSX")
+                        and not n.startswith(".")
+                    ]
+                    if not json_files:
+                        raise ValueError("No JSON file found inside the ZIP archive.")
+                    # Prefer the largest JSON file (most likely the bot export)
+                    json_files.sort(key=lambda n: zf.getinfo(n).file_size, reverse=True)
+                    with zf.open(json_files[0]) as jf:
+                        bot_export_data = json.loads(jf.read())
+            except zipfile.BadZipFile:
+                raise ValueError("The uploaded file is not a valid ZIP archive.")
+        else:
+            bot_export_data = json.loads(content)
     except Exception as e:
         return templates.TemplateResponse("candidate_submit.html", {
             "request": request,
             "portal": "candidate",
             "available_manifests": available,
-            "error": f"Invalid bot export file: {e}. Please upload a valid JSON file.",
+            "error": f"Invalid bot export file: {e}. Please upload a valid JSON file or ZIP archive.",
         })
 
     # JWT Authentication

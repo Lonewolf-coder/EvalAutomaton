@@ -6,6 +6,7 @@ Supports multiple providers:
 - Azure OpenAI
 - Google Gemini
 - Mistral AI
+- Ollama (local models — no API key needed)
 
 Default: Claude Haiku (lite model for cost optimization).
 Admin portal can change the provider at runtime.
@@ -31,6 +32,7 @@ class LLMProvider(str, Enum):
     AZURE_OPENAI = "azure_openai"
     GEMINI = "gemini"
     MISTRAL = "mistral"
+    OLLAMA = "ollama"
 
 
 # Provider-specific defaults
@@ -69,6 +71,12 @@ PROVIDER_DEFAULTS: dict[str, dict[str, Any]] = {
         "default_model": "mistral-small-latest",
         "models": ["mistral-small-latest", "mistral-medium-latest", "mistral-large-latest"],
         "api_format": "openai",
+    },
+    "ollama": {
+        "base_url": "http://localhost:11434/v1",
+        "default_model": "llama3.2",
+        "models": ["llama3.2", "llama3.1", "mistral", "phi3", "gemma2", "qwen2.5", "codellama"],
+        "api_format": "openai",  # Ollama exposes OpenAI-compatible API at /v1
     },
 }
 

@@ -120,7 +120,14 @@ def _build_task_summary(scorecard: dict[str, Any]) -> dict[str, Any]:
     tasks = scorecard.get("task_scores", [])
     total = len(tasks)
     passed = sum(1 for t in tasks if t.get("all_passed"))
-    return {"total": total, "passed": passed}
+    checks_total = 0
+    checks_passed = 0
+    for t in tasks:
+        for c in t.get("cbm_checks", []) + t.get("webhook_checks", []):
+            checks_total += 1
+            if c.get("status") == "pass":
+                checks_passed += 1
+    return {"total": total, "passed": passed, "checks_total": checks_total, "checks_passed": checks_passed}
 
 
 def _build_compliance_summary(scorecard: dict[str, Any]) -> dict[str, Any]:
@@ -210,35 +217,226 @@ async def manifest_list(request: Request):
     })
 
 
+_SAMPLE_MANIFEST: dict = {
+    "manifest_id": "my_bot_assessment_v1",
+    "manifest_version": "1.0",
+    "assessment_name": "My Bot Assessment — Basic",
+    "assessment_type": "custom",
+    "description": "Evaluates a bot for Create, Retrieve, Modify, Delete, and FAQ capabilities.",
+    "webhook_url": "",
+    "mock_api_base_url": "",
+    "conversation_starter": "Hi",
+    "created_by": "",
+    "notes": "",
+    "scoring_config": {
+        "cbm_structural_weight": 0.40,
+        "webhook_functional_weight": 0.40,
+        "compliance_weight": 0.10,
+        "faq_weight": 0.10,
+        "pass_threshold": 0.70,
+    },
+    "compliance_checks": [
+        {
+            "check_id": "compliance_dialoggpt",
+            "label": "DialogGPT is enabled",
+            "cbm_field": "dialogGPTSettings[0].dialogGPTLLMConfig.enable",
+            "required_state": "enabled",
+            "critical": True,
+            "tooltip": "DialogGPT must be enabled for the Agent Node to function correctly.",
+        }
+    ],
+    "faq_config": {
+        "required_faqs": [
+            {
+                "primary_question": "What are your working hours?",
+                "ground_truth_answer": "We are open Monday to Friday from 9 AM to 6 PM.",
+                "required_keywords": ["Monday", "Friday", "9 AM", "6 PM"],
+                "alternate_questions": [
+                    "When are you open?",
+                    "What time do you close?",
+                ],
+            }
+        ],
+        "min_alternate_questions": 2,
+        "semantic_similarity_threshold": 0.80,
+    },
+    "tasks": [
+        {
+            "task_id": "task_create",
+            "task_name": "Create Record — Happy Path",
+            "pattern": "CREATE",
+            "dialog_name": "Create Record",
+            "dialog_name_policy": "contains",
+            "required_entities": [
+                {
+                    "entity_key": "customerName",
+                    "semantic_hint": "customer full name",
+                    "value_pool": ["Alice Smith", "Bob Johnson"],
+                    "validation_required": True,
+                    "validation_description": "Must contain first and last name",
+                },
+                {
+                    "entity_key": "phoneNumber",
+                    "semantic_hint": "contact phone number",
+                    "value_pool": ["9876543210", "8765432109"],
+                    "validation_required": True,
+                    "validation_description": "Must be 10-digit phone number",
+                },
+            ],
+            "required_nodes": [
+                {"node_type": "aiassist", "label": "Agent Node for entity handling", "required": True},
+                {"node_type": "service", "label": "POST service node", "service_method": "POST", "required": True},
+                {"node_type": "entity", "label": "Entity collection nodes", "required": True},
+            ],
+            "state_assertion": {
+                "enabled": True,
+                "verify_endpoint": "",
+                "filter_field": "phoneNumber",
+                "field_assertions": {"customerName": "customerName", "phoneNumber": "phoneNumber"},
+            },
+            "record_alias": "Record1",
+            "weight": 1.0,
+        },
+        {
+            "task_id": "task_create_amend",
+            "task_name": "Create Record — Amendment Test",
+            "pattern": "CREATE_WITH_AMENDMENT",
+            "dialog_name": "Create Record",
+            "dialog_name_policy": "contains",
+            "required_entities": [
+                {"entity_key": "customerName", "semantic_hint": "customer full name", "value_pool": ["Carol White", "Dave Brown"]},
+                {"entity_key": "phoneNumber", "semantic_hint": "contact phone number", "value_pool": ["7654321098", "6543210987"]},
+            ],
+            "required_nodes": [
+                {"node_type": "aiassist", "label": "Agent Node for amendment", "required": True},
+            ],
+            "amendment_config": {
+                "target_entity": "phoneNumber",
+                "amendment_utterance_template": "Actually, change the phone number to {amended_value}",
+                "amended_value_pool": ["1111111111", "2222222222"],
+            },
+            "state_assertion": {
+                "enabled": True,
+                "verify_endpoint": "",
+                "filter_field": "phoneNumber",
+                "field_assertions": {"phoneNumber": "phoneNumber"},
+            },
+            "record_alias": "Record2",
+            "co_reference_test": True,
+            "weight": 1.0,
+        },
+        {
+            "task_id": "task_retrieve",
+            "task_name": "Retrieve Record",
+            "pattern": "RETRIEVE",
+            "dialog_name": "Get Record",
+            "dialog_name_policy": "contains",
+            "required_entities": [
+                {"entity_key": "phoneNumber", "semantic_hint": "phone number for lookup", "value_pool": []}
+            ],
+            "required_nodes": [
+                {"node_type": "service", "label": "GET service node", "service_method": "GET", "required": True},
+            ],
+            "cross_task_refs": {
+                "lookup": {"source_task_id": "task_create", "source_record_alias": "Record1", "source_field": "phoneNumber"}
+            },
+            "state_assertion": {
+                "enabled": True,
+                "verify_endpoint": "",
+                "filter_field": "phoneNumber",
+                "field_assertions": {"phoneNumber": "phoneNumber"},
+            },
+            "weight": 1.0,
+        },
+        {
+            "task_id": "task_edge_case",
+            "task_name": "Retrieve — Invalid Input Edge Case",
+            "pattern": "EDGE_CASE",
+            "dialog_name": "Get Record",
+            "dialog_name_policy": "contains",
+            "required_entities": [],
+            "required_nodes": [],
+            "negative_tests": [
+                {
+                    "invalid_value_pool": ["0000000000", "invalid"],
+                    "expected_error_pattern": "not found|no record|does not exist",
+                    "requires_re_entry_prompt": True,
+                }
+            ],
+            "weight": 0.5,
+        },
+        {
+            "task_id": "task_modify",
+            "task_name": "Modify Record",
+            "pattern": "MODIFY",
+            "dialog_name": "Modify Record",
+            "dialog_name_policy": "contains",
+            "required_entities": [
+                {"entity_key": "phoneNumber", "semantic_hint": "phone number for lookup", "value_pool": []}
+            ],
+            "required_nodes": [
+                {"node_type": "service", "label": "GET service node", "service_method": "GET", "required": True},
+                {"node_type": "service", "label": "PUT service node", "service_method": "PUT", "required": True},
+            ],
+            "cross_task_refs": {
+                "lookup": {"source_task_id": "task_create", "source_record_alias": "Record1", "source_field": "phoneNumber"}
+            },
+            "modifiable_fields": ["customerName"],
+            "modified_value_pool": {"customerName": ["Updated Name One", "Updated Name Two"]},
+            "state_assertion": {
+                "enabled": True,
+                "verify_endpoint": "",
+                "filter_field": "phoneNumber",
+                "field_assertions": {"phoneNumber": "phoneNumber"},
+            },
+            "weight": 1.0,
+        },
+        {
+            "task_id": "task_delete",
+            "task_name": "Delete Record",
+            "pattern": "DELETE",
+            "dialog_name": "Delete Record",
+            "dialog_name_policy": "contains",
+            "required_entities": [],
+            "required_nodes": [
+                {"node_type": "service", "label": "DELETE service node", "service_method": "DELETE", "required": True},
+            ],
+            "cross_task_refs": {
+                "lookup": {"source_task_id": "task_create_amend", "source_record_alias": "Record2", "source_field": "phoneNumber"}
+            },
+            "state_assertion": {
+                "enabled": True,
+                "verify_endpoint": "",
+                "filter_field": "phoneNumber",
+                "field_assertions": {},
+                "expect_deletion": True,
+            },
+            "weight": 1.0,
+        },
+    ],
+    "state_seeding_config": {"enabled": True, "schema_validation": True, "seed_endpoint": ""},
+    "tooltips": [
+        {"node_type": "aiassist", "text": "Agent Node — enables LLM-powered entity handling and amendment support."},
+        {"node_type": "service", "text": "Service Node — makes API calls (GET, POST, PUT, DELETE)."},
+        {"node_type": "entity", "text": "Entity Node — collects a specific piece of information from the user."},
+    ],
+}
+
+
 @router.get("/manifest/new", response_class=HTMLResponse)
 async def manifest_new(request: Request):
-    """Create a new manifest."""
+    """Create a new manifest — pre-populated with a comprehensive sample."""
+    error = request.query_params.get("error", "")
+    sample = _SAMPLE_MANIFEST
     return templates.TemplateResponse("admin_manifest_editor.html", {
         "request": request,
         "portal": "admin",
         "manifest_data": None,
-        "tasks_json": "[]",
-        "compliance_json": "[]",
-        "faq_json": "{}",
-        "full_json": json.dumps({
-            "manifest_id": "",
-            "manifest_version": "1.0",
-            "assessment_name": "",
-            "assessment_type": "",
-            "description": "",
-            "conversation_starter": "Hi",
-            "tasks": [],
-            "compliance_checks": [],
-            "faq_config": {},
-            "scoring_config": {
-                "cbm_structural_weight": 0.40,
-                "webhook_functional_weight": 0.40,
-                "compliance_weight": 0.10,
-                "faq_weight": 0.10,
-                "pass_threshold": 0.70,
-            },
-        }, indent=2),
-        "error": None,
+        "tasks_json": json.dumps(sample["tasks"], indent=2),
+        "compliance_json": json.dumps(sample["compliance_checks"], indent=2),
+        "faq_json": json.dumps(sample["faq_config"], indent=2),
+        "full_json": json.dumps(sample, indent=2),
+        "error": error or None,
         "success": None,
     })
 
@@ -248,7 +446,13 @@ async def manifest_edit(request: Request, manifest_id: str):
     """Edit an existing manifest."""
     data = _load_manifest(manifest_id)
     if not data:
-        return HTMLResponse("<h1>Manifest not found</h1>", status_code=404)
+        return HTMLResponse(
+            "<h1>Manifest not found</h1><p>The manifest may have been archived or deleted.</p>",
+            status_code=404,
+        )
+
+    error = request.query_params.get("error", "")
+    success = request.query_params.get("success", "")
 
     # Convert to SimpleNamespace-like dict for template dot access
     class _D(dict):
@@ -267,8 +471,8 @@ async def manifest_edit(request: Request, manifest_id: str):
         "compliance_json": json.dumps(data.get("compliance_checks", []), indent=2),
         "faq_json": json.dumps(data.get("faq_config", {}), indent=2),
         "full_json": json.dumps(data, indent=2),
-        "error": None,
-        "success": None,
+        "error": error or None,
+        "success": success or None,
     })
 
 
@@ -332,7 +536,11 @@ async def manifest_save_form(
             old_path.unlink()
 
     _save_manifest(data)
-    return RedirectResponse(url=f"/admin/manifests?message=Manifest+'{manifest_id}'+saved+successfully", status_code=303)
+    # Redirect to edit page with success message so user stays in context
+    return RedirectResponse(
+        url=f"/admin/manifest/edit/{manifest_id}?success=Manifest+saved+successfully",
+        status_code=303,
+    )
 
 
 @router.post("/manifest/save-json")
@@ -351,7 +559,10 @@ async def manifest_save_json(
         return RedirectResponse(url="/admin/manifest/new?error=manifest_id+is+required", status_code=303)
 
     _save_manifest(data)
-    return RedirectResponse(url=f"/admin/manifests?message=Manifest+'{manifest_id}'+saved+from+JSON", status_code=303)
+    return RedirectResponse(
+        url=f"/admin/manifest/edit/{manifest_id}?success=Manifest+saved+from+JSON+editor",
+        status_code=303,
+    )
 
 
 @router.get("/manifest/archive/{manifest_id}")

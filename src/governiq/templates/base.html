@@ -333,15 +333,47 @@
         <div class="topnav-brand">
             <div class="brand-icon"><i data-lucide="shield-check" style="width:16px;height:16px;"></i></div>
             GovernIQ
+            {% if portal == 'candidate' %}
+            <span class="portal-badge portal-badge--candidate" style="margin-left:.5rem;">Candidate</span>
+            {% elif portal == 'admin' %}
+            <span class="portal-badge portal-badge--admin" style="margin-left:.5rem;">Admin</span>
+            {% endif %}
         </div>
         <div class="topnav-links">
-            <a href="/"><i data-lucide="home" class="icon icon-sm"></i> Home</a>
-            <a href="/candidate/" {% if portal == 'candidate' %}class="active"{% endif %}><i data-lucide="file-text" class="icon icon-sm"></i> Candidate</a>
-            <a href="/admin/" {% if portal == 'admin' %}class="active"{% endif %}><i data-lucide="layout-dashboard" class="icon icon-sm"></i> Admin</a>
-            <div class="topnav-divider"></div>
-            <a href="/admin/manifests"><i data-lucide="file-cog" class="icon icon-sm"></i> Manifests</a>
-            <a href="/admin/compare"><i data-lucide="git-compare" class="icon icon-sm"></i> Compare</a>
+
+            {% if portal == 'candidate' %}
+            <!-- Candidate Portal Navigation -->
+            <a href="/candidate/" {% if request.url.path == '/candidate/' %}class="active"{% endif %}>
+                <i data-lucide="upload-cloud" class="icon icon-sm"></i> Submit
+            </a>
+            <a href="/candidate/history" {% if '/history' in request.url.path %}class="active"{% endif %}>
+                <i data-lucide="history" class="icon icon-sm"></i> My Submissions
+            </a>
             <a href="/how-it-works"><i data-lucide="info" class="icon icon-sm"></i> How It Works</a>
+            <div class="topnav-divider"></div>
+            <a href="/admin/" style="opacity:.6; font-size:.75rem;"><i data-lucide="shield" class="icon icon-sm"></i> Admin Portal</a>
+
+            {% elif portal == 'admin' %}
+            <!-- Admin Portal Navigation -->
+            <a href="/admin/" {% if request.url.path == '/admin/' %}class="active"{% endif %}>
+                <i data-lucide="layout-dashboard" class="icon icon-sm"></i> Dashboard
+            </a>
+            <a href="/admin/manifests" {% if '/manifests' in request.url.path %}class="active"{% endif %}>
+                <i data-lucide="file-cog" class="icon icon-sm"></i> Manifests
+            </a>
+            <a href="/admin/compare" {% if '/compare' in request.url.path %}class="active"{% endif %}>
+                <i data-lucide="git-compare" class="icon icon-sm"></i> Compare
+            </a>
+            <div class="topnav-divider"></div>
+            <a href="/candidate/" style="opacity:.6; font-size:.75rem;"><i data-lucide="user" class="icon icon-sm"></i> Candidate Portal</a>
+
+            {% else %}
+            <!-- Landing / Public Navigation -->
+            <a href="/candidate/"><i data-lucide="upload-cloud" class="icon icon-sm"></i> Submit Assessment</a>
+            <a href="/admin/"><i data-lucide="layout-dashboard" class="icon icon-sm"></i> Admin</a>
+            <a href="/how-it-works"><i data-lucide="info" class="icon icon-sm"></i> How It Works</a>
+            {% endif %}
+
             <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark/light mode">
                 <i data-lucide="moon" class="icon icon-sm" id="themeIcon"></i>
                 <span id="themeLabel">Dark</span>

@@ -10,7 +10,8 @@
         </div>
         <div class="flex gap-2">
             <span class="portal-badge portal-badge--admin">Admin</span>
-            <a href="/admin/" class="btn btn-outline"><i data-lucide="arrow-left" class="icon icon-sm"></i> Back to Dashboard</a>
+            <a href="/admin/manifests" class="btn btn-outline"><i data-lucide="list" class="icon icon-sm"></i> All Manifests</a>
+            <a href="/admin/" class="btn btn-outline"><i data-lucide="arrow-left" class="icon icon-sm"></i> Dashboard</a>
         </div>
     </div>
 
@@ -19,6 +20,16 @@
     {% endif %}
     {% if success %}
     <div class="alert alert-success"><i data-lucide="check-circle-2" class="icon icon-sm" style="flex-shrink:0;"></i> {{ success }}</div>
+    {% endif %}
+    {% if not manifest_data %}
+    <div class="alert alert-info">
+        <i data-lucide="info" class="icon icon-sm" style="flex-shrink:0;margin-top:2px;"></i>
+        <div>
+            <strong>Pre-filled with a comprehensive sample.</strong> This form is pre-populated with a full 6-pattern sample manifest (CREATE, CREATE_WITH_AMENDMENT, RETRIEVE, EDGE_CASE, MODIFY, DELETE).
+            Use the <strong>JSON Editor</strong> tab to paste your own JSON directly. Change the <strong>manifest_id</strong> and <strong>Assessment Name</strong> before saving.
+            See the <a href="/admin/manifest/schema" target="_blank" style="color:var(--info-text);text-decoration:underline;">Schema Reference</a> for all available fields.
+        </div>
+    </div>
     {% endif %}
 
     <!-- Mode Tabs: Form vs JSON -->
@@ -134,15 +145,15 @@
                 <p class="text-small text-muted spacer">Tasks, compliance checks, and FAQs have complex nested structures. Use the JSON editor tab above, or edit the JSON below directly.</p>
                 <div class="form-group">
                     <label class="form-label"><i data-lucide="clipboard-list" class="icon icon-sm"></i> Tasks (JSON array)</label>
-                    <textarea name="tasks_json" class="form-textarea" rows="12" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ tasks_json }}</textarea>
+                    <textarea name="tasks_json" class="form-textarea" rows="12" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ tasks_json | safe }}</textarea>
                 </div>
                 <div class="form-group">
                     <label class="form-label"><i data-lucide="shield" class="icon icon-sm"></i> Compliance Checks (JSON array)</label>
-                    <textarea name="compliance_json" class="form-textarea" rows="6" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ compliance_json }}</textarea>
+                    <textarea name="compliance_json" class="form-textarea" rows="6" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ compliance_json | safe }}</textarea>
                 </div>
                 <div class="form-group">
                     <label class="form-label"><i data-lucide="help-circle" class="icon icon-sm"></i> FAQ Config (JSON object)</label>
-                    <textarea name="faq_json" class="form-textarea" rows="6" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ faq_json }}</textarea>
+                    <textarea name="faq_json" class="form-textarea" rows="6" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ faq_json | safe }}</textarea>
                 </div>
             </div>
         </div>
@@ -160,7 +171,7 @@
         <div class="card spacer">
             <div class="card-header"><h3><i data-lucide="braces" class="icon" style="margin-right:.4rem;"></i> Full Manifest JSON</h3></div>
             <div class="card-body">
-                <textarea id="fullJsonEditor" class="form-textarea" rows="40" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ full_json }}</textarea>
+                <textarea id="fullJsonEditor" class="form-textarea" rows="40" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ full_json | safe }}</textarea>
             </div>
             <div class="card-footer">
                 <div class="flex gap-2">
