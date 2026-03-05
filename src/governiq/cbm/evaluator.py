@@ -376,27 +376,34 @@ def _build_reference_panel_card(dialog: CBMDialog, task: TaskDefinition) -> Evid
     """Build the CBM Evaluator Reference Panel card for a task.
 
     Always visible alongside webhook results — not on demand.
+    Shows user-labeled node names and content text inside each node.
     """
     lines = [f"**Dialog: {dialog.name}**", ""]
     lines.append("**Node Sequence:**")
 
     for i, node in enumerate(dialog.nodes, 1):
         type_label = node.node_type.upper()
+        label = node.user_label
         extra = ""
+
         if node.is_entity_node:
             extra = f" (type: {node.entity_type or 'unknown'})"
             if node.validation_rules:
-                extra += f" [has validation rules]"
+                extra += " [has validation rules]"
         elif node.is_service_node:
             extra = f" (method: {node.service_method or 'unknown'})"
         elif node.is_agent_node:
             extra = " (Agent Node - aiassist)"
-        elif node.is_message_node:
-            msg = node.message_text[:80]
-            if msg:
-                extra = f': "{msg}..."' if len(node.message_text) > 80 else f': "{msg}"'
 
-        lines.append(f"  {i}. [{type_label}] {node.name}{extra}")
+        lines.append(f"  {i}. [{type_label}] {label}{extra}")
+
+        # Show content text if available
+        content_text = node.content_summary
+        if content_text:
+            display = content_text[:120]
+            if len(content_text) > 120:
+                display += "..."
+            lines.append(f"       └─ {display}")
 
     content = "\n".join(lines)
     return EvidenceCard(
@@ -410,6 +417,7 @@ def _build_reference_panel_card(dialog: CBMDialog, task: TaskDefinition) -> Evid
             "dialog_name": dialog.name,
             "node_count": len(dialog.nodes),
             "node_types": [n.node_type for n in dialog.nodes],
+            "node_labels": [n.user_label for n in dialog.nodes],
         },
     )
 

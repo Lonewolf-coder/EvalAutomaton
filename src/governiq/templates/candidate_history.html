@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}My Submissions — Candidate Portal{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="flex-between spacer">
+        <div>
+            <h1>My Submissions</h1>
+            <p class="text-muted">View all your assessment evaluation results.</p>
+        </div>
+        <div class="flex gap-2">
+            <span class="portal-badge portal-badge--candidate">Candidate Portal</span>
+            <a href="/candidate/" class="btn btn-primary no-print">New Submission</a>
+        </div>
+    </div>
+
+    {% if submissions %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Assessment</th>
+                <th>Email</th>
+                <th>Score</th>
+                <th>Verdict</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in submissions %}
+            <tr>
+                <td>{{ s.submitted_at or 'N/A' }}</td>
+                <td>{{ s.assessment_name }}</td>
+                <td>{{ s.candidate_id or 'N/A' }}</td>
+                <td>
+                    <strong class="{% if s.overall_score >= 0.7 %}text-pass{% else %}text-fail{% endif %}">
+                        {{ (s.overall_score * 100) | round(1) }}%
+                    </strong>
+                </td>
+                <td>
+                    {% if s.has_critical_failures %}
+                        <span class="badge badge-fail">CRITICAL FAILURE</span>
+                    {% elif s.overall_score >= 0.7 %}
+                        <span class="badge badge-pass">PASS</span>
+                    {% elif s.overall_score >= 0.5 %}
+                        <span class="badge badge-warn">NEEDS IMPROVEMENT</span>
+                    {% else %}
+                        <span class="badge badge-fail">FAIL</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <a href="/candidate/report/{{ s.session_id }}" class="btn btn-outline" style="font-size:.8rem; padding:.35rem .75rem;">View Report</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="card">
+        <div class="card-body" style="text-align:center; padding:3rem;">
+            <div style="font-size:2rem; margin-bottom:1rem;">&#128203;</div>
+            <h3>No submissions yet</h3>
+            <p class="text-muted" style="margin-bottom:1rem;">Submit your bot export to get started.</p>
+            <a href="/candidate/" class="btn btn-primary">Submit Assessment</a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

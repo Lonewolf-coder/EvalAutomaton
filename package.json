@@ -1,0 +1,15 @@
+{
+  "name": "governiq-eval-automaton",
+  "version": "0.1.0",
+  "description": "GovernIQ Universal Evaluation Platform — automates evaluation of certification assessments",
+  "scripts": {
+    "start": "PYTHONPATH=src python -m uvicorn governiq.main:app --host 0.0.0.0 --port 8000 --reload",
+    "install:python": "pip install -r requirements.txt",
+    "postinstall": "PYTHONPATH=src pip install -r requirements.txt -q",
+    "test": "PYTHONPATH=src python -m pytest tests/ -v",
+    "test:coverage": "PYTHONPATH=src python -m pytest tests/ --cov=governiq --cov-report=term-missing"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

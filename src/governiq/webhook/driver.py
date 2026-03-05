@@ -25,53 +25,87 @@ logger = logging.getLogger(__name__)
 class LLMConversationDriver:
     """LLM-powered conversation driver for webhook interactions.
 
-    Uses an LLM (OpenAI-compatible API) to generate natural conversation
-    responses and classify bot intents. Falls back to rule-based heuristics
-    when LLM is unavailable.
+    Supports multiple API formats:
+    - "openai": OpenAI, Azure, Gemini, Mistral (all OpenAI-compatible)
+    - "anthropic": Anthropic Claude (Messages API)
+
+    Falls back to rule-based heuristics when LLM is unavailable.
     """
 
     def __init__(
         self,
         api_key: str = "",
-        model: str = "gpt-4o",
-        base_url: str = "https://api.openai.com/v1",
+        model: str = "claude-haiku-4-5-20251001",
+        base_url: str = "https://api.anthropic.com/v1",
         temperature: float = 0.3,
+        api_format: str = "anthropic",
     ):
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
         self.temperature = temperature
+        self.api_format = api_format  # "openai" or "anthropic"
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         if not self._client:
+            headers: dict[str, str] = {}
+            if self.api_format == "anthropic":
+                headers["x-api-key"] = self.api_key
+                headers["anthropic-version"] = "2023-06-01"
+                headers["content-type"] = "application/json"
+            else:
+                headers["Authorization"] = f"Bearer {self.api_key}"
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
-                headers={"Authorization": f"Bearer {self.api_key}"},
+                headers=headers,
                 timeout=30.0,
             )
         return self._client
 
     async def _llm_call(self, system_prompt: str, user_prompt: str) -> str | None:
-        """Make an LLM API call. Returns None if unavailable."""
+        """Make an LLM API call. Supports both Anthropic and OpenAI formats."""
         if not self.api_key:
             return None
         try:
             client = await self._get_client()
-            response = await client.post(
-                "/chat/completions",
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": self.temperature,
-                    "max_tokens": 256,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
+
+            if self.api_format == "anthropic":
+                response = await client.post(
+                    "/messages",
+                    json={
+                        "model": self.model,
+                        "max_tokens": 256,
+                        "system": system_prompt,
+                        "messages": [
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "temperature": self.temperature,
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
+                # Anthropic Messages API format
+                content = data.get("content", [])
+                if content and isinstance(content, list):
+                    return content[0].get("text", "").strip()
+                return None
+            else:
+                # OpenAI-compatible format (OpenAI, Azure, Gemini, Mistral)
+                response = await client.post(
+                    "/chat/completions",
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "temperature": self.temperature,
+                        "max_tokens": 256,
+                    },
+                )
+                response.raise_for_status()
+                data = response.json()
             return data["choices"][0]["message"]["content"].strip()
         except Exception as e:
             logger.warning("LLM call failed, falling back to rules: %s", e)

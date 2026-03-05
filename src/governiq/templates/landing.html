@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}GovernIQ — Assessment Evaluation Platform{% endblock %}
+
+{% block content %}
+<div class="container" style="text-align:center; padding-top:3rem;">
+    <h1 style="font-size:2.5rem; margin-bottom:.5rem;">GovernIQ</h1>
+    <p style="font-size:1.15rem; color:var(--muted); max-width:600px; margin:0 auto 2.5rem;">
+        Automated evaluation of chatbot assessments submitted for certification.
+        Upload your bot, get a detailed report.
+    </p>
+
+    <div class="grid-2" style="max-width:700px; margin:0 auto 3rem;">
+        <a href="/candidate/" class="card" style="text-decoration:none; color:inherit; transition: box-shadow .2s;">
+            <div class="card-body" style="padding:2rem; text-align:center;">
+                <div style="font-size:2.5rem; margin-bottom:.75rem;">&#128221;</div>
+                <h2>Candidate Portal</h2>
+                <p class="text-muted text-small" style="margin-top:.5rem;">
+                    Submit your bot export for evaluation and view your detailed results report.
+                </p>
+                <span class="btn btn-primary" style="margin-top:1rem;">Go to Submission</span>
+            </div>
+        </a>
+        <a href="/admin/" class="card" style="text-decoration:none; color:inherit; transition: box-shadow .2s;">
+            <div class="card-body" style="padding:2rem; text-align:center;">
+                <div style="font-size:2.5rem; margin-bottom:.75rem;">&#128736;</div>
+                <h2>Admin / Evaluator</h2>
+                <p class="text-muted text-small" style="margin-top:.5rem;">
+                    Review all submissions, manage assessments, and approve or flag candidates.
+                </p>
+                <span class="btn btn-outline" style="margin-top:1rem;">Go to Dashboard</span>
+            </div>
+        </a>
+    </div>
+
+    <!-- How Evaluation Works -->
+    <div style="text-align:left; max-width:800px; margin:0 auto;">
+        <h2 style="text-align:center; margin-bottom:1.5rem;">How Evaluation Works</h2>
+
+        <div class="method-card">
+            <div class="method-num">1</div>
+            <div>
+                <div class="method-title">Candidate Submits Bot Export</div>
+                <div class="method-desc">The candidate exports their chatbot from the Kore.ai XO Platform as a JSON file and uploads it along with their Mock API URL.</div>
+            </div>
+        </div>
+        <div class="method-card">
+            <div class="method-num">2</div>
+            <div>
+                <div class="method-title">Pipeline A &mdash; Structural Analysis (CBM Audit)</div>
+                <div class="method-desc">The engine parses the bot export and checks it against the assessment manifest: Does the bot have the required dialogs? Are all entity nodes present? Is the Agent Node configured? Are service nodes (POST, GET, PUT, DELETE) wired correctly? Are FAQs complete with alternate phrasings? This produces deterministic, reproducible results.</div>
+            </div>
+        </div>
+        <div class="method-card">
+            <div class="method-num">3</div>
+            <div>
+                <div class="method-title">Pipeline B &mdash; Live Conversation Testing (Webhook Journey)</div>
+                <div class="method-desc">An LLM-powered conversation driver talks to the candidate's live bot through its webhook. It tests booking flows, retrieval, modification, cancellation, amendment handling, edge cases, and FAQs &mdash; exactly like a human QA tester would.</div>
+            </div>
+        </div>
+        <div class="method-card">
+            <div class="method-num">4</div>
+            <div>
+                <div class="method-title">API State Verification</div>
+                <div class="method-desc">After each conversation, the State Inspector checks the candidate's Mock API to verify that data was actually persisted correctly. A bot can say all the right things but still fail to save data &mdash; this catches that.</div>
+            </div>
+        </div>
+        <div class="method-card">
+            <div class="method-num">5</div>
+            <div>
+                <div class="method-title">Compliance Checks</div>
+                <div class="method-desc">Platform configuration is verified: Is DialogGPT enabled? Are required channels configured? Language settings correct? Critical compliance failures can override the overall score.</div>
+            </div>
+        </div>
+        <div class="method-card">
+            <div class="method-num">6</div>
+            <div>
+                <div class="method-title">Detailed Report Generated</div>
+                <div class="method-desc">Both pipelines merge into a single scorecard. Every finding is explained in plain English. The candidate sees exactly what passed, what failed, and what to fix. The evaluator sees evidence cards and the CBM reference panel side by side.</div>
+            </div>
+        </div>
+
+        <div class="card spacer" style="margin-top:2rem;">
+            <div class="card-body">
+                <h3 style="margin-bottom:.75rem;">Six Evaluation Patterns</h3>
+                <p class="text-small text-muted" style="margin-bottom:1rem;">Every task in every assessment maps to one of these patterns. The engine is domain-agnostic &mdash; it works the same for Travel, Medical, HR, or any future assessment type.</p>
+                <table class="table">
+                    <thead>
+                        <tr><th>Pattern</th><th>What It Tests</th><th>Example</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><span class="badge badge-info">CREATE</span></td><td>Collect entities and POST a new record</td><td>Book a flight, Schedule appointment</td></tr>
+                        <tr><td><span class="badge badge-info">CREATE + AMEND</span></td><td>Same as CREATE, but change one entity mid-conversation before confirmation</td><td>Book flight, then change contact number before confirming</td></tr>
+                        <tr><td><span class="badge badge-info">RETRIEVE</span></td><td>Look up an existing record by identifier</td><td>Get appointment details by phone number</td></tr>
+                        <tr><td><span class="badge badge-info">MODIFY</span></td><td>Retrieve then update one or more fields</td><td>Change travel date on existing booking</td></tr>
+                        <tr><td><span class="badge badge-info">DELETE</span></td><td>Cancel / remove a record and verify it's gone</td><td>Cancel a booking</td></tr>
+                        <tr><td><span class="badge badge-info">EDGE CASE</span></td><td>Inject invalid values and verify graceful error handling</td><td>Enter fake phone number for retrieval</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card spacer">
+            <div class="card-body">
+                <h3 style="margin-bottom:.75rem;">Scoring Breakdown</h3>
+                <div class="grid-2" style="gap:1rem;">
+                    <div>
+                        <h4>CBM Structural (40%)</h4>
+                        <p class="text-small text-muted">Does the bot have the right structure? Correct dialogs, nodes, entities, service calls, and FAQs.</p>
+                    </div>
+                    <div>
+                        <h4>Webhook Functional (40%)</h4>
+                        <p class="text-small text-muted">Does the bot actually work? Can it complete conversations, handle amendments, and persist data?</p>
+                    </div>
+                    <div>
+                        <h4>Compliance (10%)</h4>
+                        <p class="text-small text-muted">Are platform settings correct? DialogGPT enabled, language configured, channels set up.</p>
+                    </div>
+                    <div>
+                        <h4>FAQs (10%)</h4>
+                        <p class="text-small text-muted">Are all required FAQs implemented with correct answers and alternate phrasings?</p>
+                    </div>
+                </div>
+                <div class="divider"></div>
+                <p class="text-small"><strong>Pass threshold:</strong> 70% overall score with no critical compliance failures.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
