@@ -2,126 +2,158 @@
 {% block title %}GovernIQ — Assessment Evaluation Platform{% endblock %}
 
 {% block content %}
-<div class="container" style="text-align:center; padding-top:3rem;">
-    <h1 style="font-size:2.5rem; margin-bottom:.5rem;">GovernIQ</h1>
-    <p style="font-size:1.15rem; color:var(--muted); max-width:600px; margin:0 auto 2.5rem;">
-        Automated evaluation of chatbot assessments submitted for certification.
-        Upload your bot, get a detailed report.
-    </p>
+<div class="container" style="padding-top:3rem;">
+    <!-- Hero Section -->
+    <div style="text-align:center; margin-bottom:3.5rem;">
+        <div style="display:inline-flex; align-items:center; gap:.5rem; padding:.4rem 1rem; border-radius:20px; background:var(--primary-bg); color:var(--primary); font-size:.75rem; font-weight:600; margin-bottom:1.25rem; letter-spacing:.3px;">
+            <i data-lucide="zap" class="icon icon-sm"></i> AUTOMATED CHATBOT EVALUATION
+        </div>
+        <h1 style="font-size:2.75rem; margin-bottom:.75rem; letter-spacing:-1px; line-height:1.1;">
+            <span class="text-gradient">GovernIQ</span>
+        </h1>
+        <p style="font-size:1.1rem; color:var(--muted); max-width:560px; margin:0 auto 2rem; line-height:1.7;">
+            Enterprise-grade evaluation of chatbot assessments. Upload your bot export, get a detailed certification report with structural analysis and live conversation testing.
+        </p>
+        <div style="display:flex; gap:.75rem; justify-content:center;">
+            <a href="/candidate/" class="btn btn-primary btn-lg"><i data-lucide="upload" class="icon icon-sm"></i> Submit Assessment</a>
+            <a href="/how-it-works" class="btn btn-outline btn-lg"><i data-lucide="book-open" class="icon icon-sm"></i> Learn How It Works</a>
+        </div>
+    </div>
 
-    <div class="grid-2" style="max-width:700px; margin:0 auto 3rem;">
-        <a href="/candidate/" class="card" style="text-decoration:none; color:inherit; transition: box-shadow .2s;">
-            <div class="card-body" style="padding:2rem; text-align:center;">
-                <div style="font-size:2.5rem; margin-bottom:.75rem;">&#128221;</div>
-                <h2>Candidate Portal</h2>
-                <p class="text-muted text-small" style="margin-top:.5rem;">
-                    Submit your bot export for evaluation and view your detailed results report.
+    <!-- Portal Cards -->
+    <div class="grid-2" style="max-width:780px; margin:0 auto 3.5rem;">
+        <a href="/candidate/" class="card" style="text-decoration:none; color:inherit;">
+            <div class="card-body" style="padding:2rem;">
+                <div style="display:flex; align-items:center; gap:.75rem; margin-bottom:1rem;">
+                    <div class="stat-icon stat-icon--blue"><i data-lucide="file-text" class="icon"></i></div>
+                    <h2 style="font-size:1.2rem;">Candidate Portal</h2>
+                </div>
+                <p class="text-muted text-small" style="margin-bottom:1.25rem; line-height:1.6;">
+                    Submit your bot export for evaluation and view detailed results with task-by-task analysis and actionable recommendations.
                 </p>
-                <span class="btn btn-primary" style="margin-top:1rem;">Go to Submission</span>
+                <span class="btn btn-primary btn-sm"><i data-lucide="arrow-right" class="icon icon-sm"></i> Go to Submission</span>
             </div>
         </a>
-        <a href="/admin/" class="card" style="text-decoration:none; color:inherit; transition: box-shadow .2s;">
-            <div class="card-body" style="padding:2rem; text-align:center;">
-                <div style="font-size:2.5rem; margin-bottom:.75rem;">&#128736;</div>
-                <h2>Admin / Evaluator</h2>
-                <p class="text-muted text-small" style="margin-top:.5rem;">
-                    Review all submissions, manage assessments, and approve or flag candidates.
+        <a href="/admin/" class="card" style="text-decoration:none; color:inherit;">
+            <div class="card-body" style="padding:2rem;">
+                <div style="display:flex; align-items:center; gap:.75rem; margin-bottom:1rem;">
+                    <div class="stat-icon stat-icon--purple"><i data-lucide="layout-dashboard" class="icon"></i></div>
+                    <h2 style="font-size:1.2rem;">Admin / Evaluator</h2>
+                </div>
+                <p class="text-muted text-small" style="margin-bottom:1.25rem; line-height:1.6;">
+                    Review all submissions, manage assessment manifests, configure LLM providers, and approve or flag candidates.
                 </p>
-                <span class="btn btn-outline" style="margin-top:1rem;">Go to Dashboard</span>
+                <span class="btn btn-outline btn-sm"><i data-lucide="arrow-right" class="icon icon-sm"></i> Go to Dashboard</span>
             </div>
         </a>
     </div>
 
     <!-- How Evaluation Works -->
-    <div style="text-align:left; max-width:800px; margin:0 auto;">
-        <h2 style="text-align:center; margin-bottom:1.5rem;">How Evaluation Works</h2>
+    <div style="max-width:840px; margin:0 auto;">
+        <div style="text-align:center; margin-bottom:2rem;">
+            <h2 style="font-size:1.6rem; margin-bottom:.5rem;">How Evaluation Works</h2>
+            <p class="text-muted text-small">Six-step dual-pipeline evaluation powered by structural analysis and live conversation testing.</p>
+        </div>
 
         <div class="method-card">
-            <div class="method-num">1</div>
+            <div class="method-num"><i data-lucide="upload" class="icon icon-sm" style="color:var(--primary);"></i></div>
             <div>
                 <div class="method-title">Candidate Submits Bot Export</div>
-                <div class="method-desc">The candidate exports their chatbot from the Kore.ai XO Platform as a JSON file and uploads it along with their Mock API URL.</div>
+                <div class="method-desc">The candidate exports their chatbot from the Kore.ai XO Platform as a JSON file and uploads it along with their JWT credentials and Mock API URL.</div>
             </div>
         </div>
         <div class="method-card">
-            <div class="method-num">2</div>
+            <div class="method-num"><i data-lucide="scan-search" class="icon icon-sm" style="color:var(--primary);"></i></div>
             <div>
                 <div class="method-title">Pipeline A &mdash; Structural Analysis (CBM Audit)</div>
-                <div class="method-desc">The engine parses the bot export and checks it against the assessment manifest: Does the bot have the required dialogs? Are all entity nodes present? Is the Agent Node configured? Are service nodes (POST, GET, PUT, DELETE) wired correctly? Are FAQs complete with alternate phrasings? This produces deterministic, reproducible results.</div>
+                <div class="method-desc">The engine parses the bot export and checks it against the assessment manifest: dialogs, entity nodes, Agent Nodes, service nodes (POST, GET, PUT, DELETE), and FAQ completeness. Deterministic and reproducible.</div>
             </div>
         </div>
         <div class="method-card">
-            <div class="method-num">3</div>
+            <div class="method-num"><i data-lucide="message-square" class="icon icon-sm" style="color:var(--primary);"></i></div>
             <div>
-                <div class="method-title">Pipeline B &mdash; Live Conversation Testing (Webhook Journey)</div>
-                <div class="method-desc">An LLM-powered conversation driver talks to the candidate's live bot through its webhook. It tests booking flows, retrieval, modification, cancellation, amendment handling, edge cases, and FAQs &mdash; exactly like a human QA tester would.</div>
+                <div class="method-title">Pipeline B &mdash; Live Conversation Testing (Webhook)</div>
+                <div class="method-desc">An LLM-powered conversation driver talks to the bot through its webhook using JWT authentication. It tests CREATE, RETRIEVE, MODIFY, DELETE, and EDGE_CASE patterns — exactly like a human QA tester.</div>
             </div>
         </div>
         <div class="method-card">
-            <div class="method-num">4</div>
+            <div class="method-num"><i data-lucide="database" class="icon icon-sm" style="color:var(--primary);"></i></div>
             <div>
                 <div class="method-title">API State Verification</div>
-                <div class="method-desc">After each conversation, the State Inspector checks the candidate's Mock API to verify that data was actually persisted correctly. A bot can say all the right things but still fail to save data &mdash; this catches that.</div>
+                <div class="method-desc">After each conversation, the State Inspector checks the candidate's Mock API to verify data was actually persisted correctly. A bot can say the right things but fail to save data — this catches that.</div>
             </div>
         </div>
         <div class="method-card">
-            <div class="method-num">5</div>
+            <div class="method-num"><i data-lucide="shield-check" class="icon icon-sm" style="color:var(--primary);"></i></div>
             <div>
-                <div class="method-title">Compliance Checks</div>
-                <div class="method-desc">Platform configuration is verified: Is DialogGPT enabled? Are required channels configured? Language settings correct? Critical compliance failures can override the overall score.</div>
+                <div class="method-title">Compliance &amp; Platform Insights</div>
+                <div class="method-desc">Platform configuration is verified via CBM and Kore.ai Public APIs. Bot analytics, intent detection stats, and NLP performance are captured. Critical failures override the overall score.</div>
             </div>
         </div>
         <div class="method-card">
-            <div class="method-num">6</div>
+            <div class="method-num"><i data-lucide="file-check" class="icon icon-sm" style="color:var(--primary);"></i></div>
             <div>
                 <div class="method-title">Detailed Report Generated</div>
-                <div class="method-desc">Both pipelines merge into a single scorecard. Every finding is explained in plain English. The candidate sees exactly what passed, what failed, and what to fix. The evaluator sees evidence cards and the CBM reference panel side by side.</div>
+                <div class="method-desc">Both pipelines merge into a single scorecard. Every finding is explained in plain English with evidence cards. The candidate sees what passed, what failed, and what to fix.</div>
             </div>
         </div>
 
-        <div class="card spacer" style="margin-top:2rem;">
-            <div class="card-body">
-                <h3 style="margin-bottom:.75rem;">Six Evaluation Patterns</h3>
-                <p class="text-small text-muted" style="margin-bottom:1rem;">Every task in every assessment maps to one of these patterns. The engine is domain-agnostic &mdash; it works the same for Travel, Medical, HR, or any future assessment type.</p>
-                <table class="table">
-                    <thead>
-                        <tr><th>Pattern</th><th>What It Tests</th><th>Example</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td><span class="badge badge-info">CREATE</span></td><td>Collect entities and POST a new record</td><td>Book a flight, Schedule appointment</td></tr>
-                        <tr><td><span class="badge badge-info">CREATE + AMEND</span></td><td>Same as CREATE, but change one entity mid-conversation before confirmation</td><td>Book flight, then change contact number before confirming</td></tr>
-                        <tr><td><span class="badge badge-info">RETRIEVE</span></td><td>Look up an existing record by identifier</td><td>Get appointment details by phone number</td></tr>
-                        <tr><td><span class="badge badge-info">MODIFY</span></td><td>Retrieve then update one or more fields</td><td>Change travel date on existing booking</td></tr>
-                        <tr><td><span class="badge badge-info">DELETE</span></td><td>Cancel / remove a record and verify it's gone</td><td>Cancel a booking</td></tr>
-                        <tr><td><span class="badge badge-info">EDGE CASE</span></td><td>Inject invalid values and verify graceful error handling</td><td>Enter fake phone number for retrieval</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="card spacer">
-            <div class="card-body">
-                <h3 style="margin-bottom:.75rem;">Scoring Breakdown</h3>
-                <div class="grid-2" style="gap:1rem;">
-                    <div>
-                        <h4>CBM Structural (40%)</h4>
-                        <p class="text-small text-muted">Does the bot have the right structure? Correct dialogs, nodes, entities, service calls, and FAQs.</p>
-                    </div>
-                    <div>
-                        <h4>Webhook Functional (40%)</h4>
-                        <p class="text-small text-muted">Does the bot actually work? Can it complete conversations, handle amendments, and persist data?</p>
-                    </div>
-                    <div>
-                        <h4>Compliance (10%)</h4>
-                        <p class="text-small text-muted">Are platform settings correct? DialogGPT enabled, language configured, channels set up.</p>
-                    </div>
-                    <div>
-                        <h4>FAQs (10%)</h4>
-                        <p class="text-small text-muted">Are all required FAQs implemented with correct answers and alternate phrasings?</p>
+        <!-- Patterns & Scoring -->
+        <div class="grid-2" style="margin-top:2rem;">
+            <div class="card">
+                <div class="card-header">
+                    <div style="display:flex; align-items:center; gap:.5rem;">
+                        <i data-lucide="layers" class="icon" style="color:var(--primary);"></i>
+                        <h3>Six Engine Patterns</h3>
                     </div>
                 </div>
-                <div class="divider"></div>
-                <p class="text-small"><strong>Pass threshold:</strong> 70% overall score with no critical compliance failures.</p>
+                <div class="card-body text-small">
+                    <p class="text-muted spacer">Every task maps to one pattern. The engine is domain-agnostic.</p>
+                    <table class="table">
+                        <tbody>
+                            <tr><td><span class="badge badge-pass"><i data-lucide="plus" class="icon icon-sm"></i> CREATE</span></td><td class="text-muted">Collect entities, POST record</td></tr>
+                            <tr><td><span class="badge badge-info"><i data-lucide="edit" class="icon icon-sm"></i> AMEND</span></td><td class="text-muted">CREATE + mid-conversation change</td></tr>
+                            <tr><td><span class="badge badge-primary"><i data-lucide="search" class="icon icon-sm"></i> RETRIEVE</span></td><td class="text-muted">Look up existing record</td></tr>
+                            <tr><td><span class="badge badge-warn"><i data-lucide="pencil" class="icon icon-sm"></i> MODIFY</span></td><td class="text-muted">Update existing record</td></tr>
+                            <tr><td><span class="badge badge-fail"><i data-lucide="trash-2" class="icon icon-sm"></i> DELETE</span></td><td class="text-muted">Cancel/remove with confirmation</td></tr>
+                            <tr><td><span class="badge badge-grey"><i data-lucide="alert-triangle" class="icon icon-sm"></i> EDGE</span></td><td class="text-muted">Invalid data, error handling</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <div style="display:flex; align-items:center; gap:.5rem;">
+                        <i data-lucide="bar-chart-3" class="icon" style="color:var(--primary);"></i>
+                        <h3>Scoring Breakdown</h3>
+                    </div>
+                </div>
+                <div class="card-body text-small">
+                    <div class="spacer">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem;">
+                            <span style="font-weight:600;">Webhook Functional</span>
+                            <span class="badge badge-primary">80%</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill" style="width:80%; background:var(--primary);"></div></div>
+                        <p class="text-muted text-xs" style="margin-top:.3rem;">Authority for pass/fail. CBM is informational only.</p>
+                    </div>
+                    <div class="spacer">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem;">
+                            <span style="font-weight:600;">Compliance</span>
+                            <span class="badge badge-info">10%</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill" style="width:10%; background:var(--info);"></div></div>
+                    </div>
+                    <div class="spacer">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem;">
+                            <span style="font-weight:600;">FAQs</span>
+                            <span class="badge badge-info">10%</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill" style="width:10%; background:var(--info);"></div></div>
+                    </div>
+                    <div class="divider"></div>
+                    <p class="text-small"><i data-lucide="check-circle" class="icon icon-sm text-pass"></i> <strong>Pass:</strong> 70% with no critical compliance failures.</p>
+                </div>
             </div>
         </div>
     </div>
