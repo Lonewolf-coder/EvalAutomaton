@@ -56,7 +56,8 @@ class LLMConversationDriver:
                 headers["anthropic-version"] = "2023-06-01"
                 headers["content-type"] = "application/json"
             else:
-                headers["Authorization"] = f"Bearer {self.api_key}"
+                if self.api_key:
+                    headers["Authorization"] = f"Bearer {self.api_key}"
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 headers=headers,
@@ -66,7 +67,7 @@ class LLMConversationDriver:
 
     async def _llm_call(self, system_prompt: str, user_prompt: str) -> str | None:
         """Make an LLM API call. Supports both Anthropic and OpenAI formats."""
-        if not self.api_key:
+        if not self.api_key and self.api_format == "anthropic":
             return None
         try:
             client = await self._get_client()

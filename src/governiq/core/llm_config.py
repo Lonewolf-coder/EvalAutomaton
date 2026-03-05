@@ -98,10 +98,7 @@ class LLMConfig:
     azure_api_version: str = "2024-02-01"
 
     def to_dict(self) -> dict[str, Any]:
-        d = asdict(self)
-        # Never persist the API key
-        d.pop("api_key", None)
-        return d
+        return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LLMConfig:
@@ -134,7 +131,7 @@ def load_llm_config() -> LLMConfig:
 
 
 def save_llm_config(config: LLMConfig) -> None:
-    """Persist LLM config to disk (without API key)."""
+    """Persist LLM config to disk."""
     CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with CONFIG_PATH.open("w") as f:
         json.dump(config.to_dict(), f, indent=2)

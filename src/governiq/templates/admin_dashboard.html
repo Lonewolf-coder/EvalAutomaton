@@ -82,8 +82,9 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label"><i data-lucide="key-round" class="icon icon-sm"></i> API Key</label>
-                        <input type="password" name="api_key" class="form-input"
+                        <input type="password" name="api_key" class="form-input" id="llmApiKey"
                                value="{{ llm_config.api_key }}" placeholder="Enter API key">
+                        <div class="form-hint" id="apiKeyHint">{% if llm_config.provider == 'ollama' %}Leave blank for Ollama (no API key needed).{% endif %}</div>
                     </div>
                 </div>
                 <div class="grid-2" style="gap:1rem; margin-top:.5rem;">
@@ -238,6 +239,14 @@ function updateProviderDefaults() {
         document.getElementById('llmModel').value = info.default_model;
         document.getElementById('llmBaseUrl').value = info.base_url;
         document.getElementById('modelHint').textContent = 'Models: ' + info.models.join(', ');
+        const hint = document.getElementById('apiKeyHint');
+        if (provider === 'ollama') {
+            hint.textContent = 'Leave blank for Ollama (no API key needed).';
+            document.getElementById('llmApiKey').placeholder = 'Not required for Ollama';
+        } else {
+            hint.textContent = '';
+            document.getElementById('llmApiKey').placeholder = 'Enter API key';
+        }
     }
 }
 </script>
