@@ -5,36 +5,48 @@
 <div class="container-wide">
     <div class="flex-between spacer">
         <div>
-            <h1>Evaluator Dashboard</h1>
+            <h1><i data-lucide="layout-dashboard" class="icon icon-lg" style="margin-right:.4rem;"></i> Evaluator Dashboard</h1>
             <p class="text-muted">Review and manage all candidate submissions.</p>
         </div>
         <span class="portal-badge portal-badge--admin">Admin / Evaluator</span>
     </div>
 
     <!-- Stats Row -->
-    <div class="grid-3 spacer" style="grid-template-columns: repeat(4, 1fr);">
+    <div class="grid-4 spacer">
         <div class="card">
-            <div class="stat-box">
-                <div class="stat-value">{{ stats.total }}</div>
-                <div class="stat-label">Total Submissions</div>
+            <div class="stat-card">
+                <div class="stat-icon stat-icon--blue"><i data-lucide="inbox" class="icon"></i></div>
+                <div>
+                    <div class="stat-value">{{ stats.total }}</div>
+                    <div class="stat-label">Total Submissions</div>
+                </div>
             </div>
         </div>
         <div class="card">
-            <div class="stat-box">
-                <div class="stat-value text-pass">{{ stats.passed }}</div>
-                <div class="stat-label">Passed</div>
+            <div class="stat-card">
+                <div class="stat-icon stat-icon--green"><i data-lucide="check-circle-2" class="icon"></i></div>
+                <div>
+                    <div class="stat-value text-pass">{{ stats.passed }}</div>
+                    <div class="stat-label">Passed</div>
+                </div>
             </div>
         </div>
         <div class="card">
-            <div class="stat-box">
-                <div class="stat-value text-fail">{{ stats.failed }}</div>
-                <div class="stat-label">Failed / Needs Review</div>
+            <div class="stat-card">
+                <div class="stat-icon stat-icon--red"><i data-lucide="x-circle" class="icon"></i></div>
+                <div>
+                    <div class="stat-value text-fail">{{ stats.failed }}</div>
+                    <div class="stat-label">Failed / Needs Review</div>
+                </div>
             </div>
         </div>
         <div class="card">
-            <div class="stat-box">
-                <div class="stat-value text-warn">{{ stats.critical }}</div>
-                <div class="stat-label">Critical Failures</div>
+            <div class="stat-card">
+                <div class="stat-icon stat-icon--amber"><i data-lucide="alert-triangle" class="icon"></i></div>
+                <div>
+                    <div class="stat-value text-warn">{{ stats.critical }}</div>
+                    <div class="stat-label">Critical Failures</div>
+                </div>
             </div>
         </div>
     </div>
@@ -43,8 +55,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3>LLM Provider Configuration</h3>
-                <span class="badge badge-info">{{ llm_config.provider | upper }}</span>
+                <h3><i data-lucide="cpu" class="icon" style="margin-right:.4rem;"></i> LLM Provider Configuration</h3>
+                <span class="badge badge-info"><i data-lucide="zap" class="icon icon-sm"></i> {{ llm_config.provider | upper }}</span>
             </div>
         </div>
         <div class="card-body">
@@ -53,7 +65,7 @@
             <form action="/admin/llm-config" method="post">
                 <div class="grid-3" style="gap:1rem;">
                     <div class="form-group">
-                        <label class="form-label">Provider</label>
+                        <label class="form-label"><i data-lucide="settings-2" class="icon icon-sm"></i> Provider</label>
                         <select name="provider" class="form-select" id="llmProvider" onchange="updateProviderDefaults()">
                             {% for p in providers %}
                             <option value="{{ p.id }}" {% if p.id == llm_config.provider %}selected{% endif %}>
@@ -63,38 +75,40 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Model</label>
+                        <label class="form-label"><i data-lucide="box" class="icon icon-sm"></i> Model</label>
                         <input type="text" name="model" class="form-input" id="llmModel"
                                value="{{ llm_config.model }}" placeholder="e.g. claude-haiku-4-5-20251001">
                         <div class="form-hint" id="modelHint">Current: {{ llm_config.model }}</div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">API Key</label>
+                        <label class="form-label"><i data-lucide="key-round" class="icon icon-sm"></i> API Key</label>
                         <input type="password" name="api_key" class="form-input"
                                value="{{ llm_config.api_key }}" placeholder="Enter API key">
                     </div>
                 </div>
                 <div class="grid-2" style="gap:1rem; margin-top:.5rem;">
                     <div class="form-group">
-                        <label class="form-label">Base URL</label>
+                        <label class="form-label"><i data-lucide="globe" class="icon icon-sm"></i> Base URL</label>
                         <input type="text" name="base_url" class="form-input" id="llmBaseUrl"
                                value="{{ llm_config.base_url }}" placeholder="API endpoint URL">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Temperature</label>
+                        <label class="form-label"><i data-lucide="thermometer" class="icon icon-sm"></i> Temperature</label>
                         <input type="text" name="temperature" class="form-input"
                                value="{{ llm_config.temperature }}" placeholder="0.3">
                     </div>
                 </div>
-                <button type="submit" class="btn btn-primary" style="margin-top:.5rem;">Save LLM Configuration</button>
+                <button type="submit" class="btn btn-primary" style="margin-top:.5rem;">
+                    <i data-lucide="save" class="icon icon-sm"></i> Save LLM Configuration
+                </button>
             </form>
 
             <div class="divider"></div>
-            <h4 style="margin-bottom:.5rem;">Supported Providers</h4>
+            <h4 style="margin-bottom:.5rem;"><i data-lucide="layers" class="icon icon-sm"></i> Supported Providers</h4>
             <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
                 {% for p in providers %}
                 <div class="badge badge-grey" style="padding:.4rem .75rem; font-size:.8rem;">
-                    {{ p.name }} — {{ p.default_model }}
+                    <i data-lucide="cpu" class="icon icon-sm"></i> {{ p.name }} — {{ p.default_model }}
                 </div>
                 {% endfor %}
             </div>
@@ -105,8 +119,11 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3>Assessment Manifests</h3>
-                <span class="badge badge-grey">{{ manifests | length }} loaded</span>
+                <h3><i data-lucide="file-cog" class="icon" style="margin-right:.4rem;"></i> Assessment Manifests</h3>
+                <div class="flex gap-1 items-center">
+                    <span class="badge badge-grey">{{ manifests | length }} loaded</span>
+                    <a href="/admin/manifests" class="btn btn-outline btn-sm"><i data-lucide="settings" class="icon icon-sm"></i> Manage</a>
+                </div>
             </div>
         </div>
         <div class="card-body">
@@ -116,7 +133,7 @@
                 <tbody>
                     {% for m in manifests %}
                     <tr>
-                        <td><strong>{{ m.name }}</strong></td>
+                        <td><strong><i data-lucide="file-text" class="icon icon-sm" style="margin-right:.3rem;"></i> {{ m.name }}</strong></td>
                         <td><span class="badge badge-info">{{ m.type }}</span></td>
                         <td>{{ m.task_count }}</td>
                         <td>{{ m.faq_count }}</td>
@@ -126,7 +143,7 @@
                 </tbody>
             </table>
             {% else %}
-            <p class="text-muted">No manifests found. Place JSON manifest files in the <code>manifests/</code> directory.</p>
+            <p class="text-muted"><i data-lucide="info" class="icon icon-sm"></i> No manifests found. Place JSON manifest files in the <code>manifests/</code> directory.</p>
             {% endif %}
         </div>
     </div>
@@ -135,8 +152,11 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3>All Submissions</h3>
-                <span class="badge badge-grey">{{ evaluations | length }} total</span>
+                <h3><i data-lucide="list-checks" class="icon" style="margin-right:.4rem;"></i> All Submissions</h3>
+                <div class="flex gap-1 items-center">
+                    <span class="badge badge-grey">{{ evaluations | length }} total</span>
+                    <a href="/admin/compare" class="btn btn-outline btn-sm"><i data-lucide="git-compare" class="icon icon-sm"></i> Compare</a>
+                </div>
             </div>
         </div>
         {% if evaluations %}
@@ -157,7 +177,7 @@
                 {% for ev in evaluations %}
                 <tr>
                     <td class="text-small" style="font-family:monospace;">{{ ev.session_id }}</td>
-                    <td>{{ ev.candidate_id or 'N/A' }}</td>
+                    <td><i data-lucide="user" class="icon icon-sm" style="margin-right:.2rem;"></i> {{ ev.candidate_id or 'N/A' }}</td>
                     <td>{{ ev.assessment_name }}</td>
                     <td>
                         <strong class="{% if ev.overall_score >= 0.7 %}text-pass{% elif ev.overall_score >= 0.5 %}text-warn{% else %}text-fail{% endif %}">
@@ -166,29 +186,31 @@
                     </td>
                     <td>
                         {% if ev.any_webhook_tested %}
-                            <span class="badge badge-pass">Tested</span>
+                            <span class="badge badge-pass"><i data-lucide="check" class="icon icon-sm"></i> Tested</span>
                         {% else %}
-                            <span class="badge badge-warn">CBM Only</span>
+                            <span class="badge badge-warn"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Only</span>
                         {% endif %}
                     </td>
                     <td>
                         {% if not ev.any_webhook_tested %}
-                            <span class="badge badge-warn">UNTESTED</span>
+                            <span class="badge badge-warn"><i data-lucide="clock" class="icon icon-sm"></i> UNTESTED</span>
                         {% elif ev.has_critical_failures %}
-                            <span class="badge badge-fail">CRITICAL</span>
+                            <span class="badge badge-fail"><i data-lucide="shield-alert" class="icon icon-sm"></i> CRITICAL</span>
                         {% elif ev.overall_score >= 0.7 %}
-                            <span class="badge badge-pass">PASS</span>
+                            <span class="badge badge-pass"><i data-lucide="shield-check" class="icon icon-sm"></i> PASS</span>
                         {% elif ev.overall_score >= 0.5 %}
-                            <span class="badge badge-warn">REVIEW</span>
+                            <span class="badge badge-warn"><i data-lucide="eye" class="icon icon-sm"></i> REVIEW</span>
                         {% else %}
-                            <span class="badge badge-fail">FAIL</span>
+                            <span class="badge badge-fail"><i data-lucide="shield-x" class="icon icon-sm"></i> FAIL</span>
                         {% endif %}
                     </td>
                     <td>
-                        {% if ev.state_seeded %}<span class="badge badge-warn">seeded</span>{% endif %}
+                        {% if ev.state_seeded %}<span class="badge badge-warn"><i data-lucide="database" class="icon icon-sm"></i> seeded</span>{% endif %}
                     </td>
                     <td>
-                        <a href="/admin/review/{{ ev.session_id }}" class="btn btn-outline" style="font-size:.75rem; padding:.3rem .6rem;">Review</a>
+                        <a href="/admin/review/{{ ev.session_id }}" class="btn btn-outline btn-sm">
+                            <i data-lucide="clipboard-check" class="icon icon-sm"></i> Review
+                        </a>
                     </td>
                 </tr>
                 {% endfor %}
@@ -196,7 +218,10 @@
         </table>
         {% else %}
         <div class="card-body" style="text-align:center; padding:3rem;">
-            <p class="text-muted">No submissions yet. Candidates submit through the <a href="/candidate/">Candidate Portal</a>.</p>
+            <div style="margin-bottom:1rem;"><i data-lucide="inbox" class="icon icon-xl" style="color:var(--muted);"></i></div>
+            <h3>No submissions yet</h3>
+            <p class="text-muted" style="margin-bottom:1rem;">Candidates submit through the Candidate Portal.</p>
+            <a href="/candidate/" class="btn btn-primary"><i data-lucide="external-link" class="icon icon-sm"></i> Candidate Portal</a>
         </div>
         {% endif %}
     </div>

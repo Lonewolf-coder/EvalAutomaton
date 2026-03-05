@@ -5,33 +5,33 @@
 <div class="container-wide">
     <div class="flex-between spacer">
         <div>
-            <h1>{{ 'Edit Manifest' if manifest_data else 'Create New Manifest' }}</h1>
+            <h1><i data-lucide="{% if manifest_data %}pencil{% else %}plus-circle{% endif %}" class="icon icon-lg" style="margin-right:.4rem;"></i> {{ 'Edit Manifest' if manifest_data else 'Create New Manifest' }}</h1>
             <p class="text-muted">{% if manifest_data %}Editing: {{ manifest_data.manifest_id }}{% else %}Define a new assessment evaluation manifest.{% endif %}</p>
         </div>
         <div class="flex gap-2">
             <span class="portal-badge portal-badge--admin">Admin</span>
-            <a href="/admin/" class="btn btn-outline">Back to Dashboard</a>
+            <a href="/admin/" class="btn btn-outline"><i data-lucide="arrow-left" class="icon icon-sm"></i> Back to Dashboard</a>
         </div>
     </div>
 
     {% if error %}
-    <div class="alert alert-danger">{{ error }}</div>
+    <div class="alert alert-danger"><i data-lucide="alert-circle" class="icon icon-sm" style="flex-shrink:0;"></i> {{ error }}</div>
     {% endif %}
     {% if success %}
-    <div class="alert alert-success">{{ success }}</div>
+    <div class="alert alert-success"><i data-lucide="check-circle-2" class="icon icon-sm" style="flex-shrink:0;"></i> {{ success }}</div>
     {% endif %}
 
     <!-- Mode Tabs: Form vs JSON -->
     <div class="card spacer">
         <div class="card-header" style="display:flex; gap:0;">
-            <button class="btn btn-primary" id="tabForm" onclick="showTab('form')" style="border-radius:var(--radius) 0 0 var(--radius);">Form Editor</button>
-            <button class="btn btn-outline" id="tabJson" onclick="showTab('json')" style="border-radius:0 var(--radius) var(--radius) 0;">JSON Editor</button>
+            <button class="btn btn-primary" id="tabForm" onclick="showTab('form')" style="border-radius:var(--radius) 0 0 var(--radius);"><i data-lucide="form-input" class="icon icon-sm"></i> Form Editor</button>
+            <button class="btn btn-outline" id="tabJson" onclick="showTab('json')" style="border-radius:0 var(--radius) var(--radius) 0;"><i data-lucide="braces" class="icon icon-sm"></i> JSON Editor</button>
             <div style="margin-left:auto; display:flex; gap:.5rem;">
                 <label class="btn btn-outline" style="cursor:pointer;">
-                    Upload JSON <input type="file" accept=".json" id="jsonUpload" style="display:none;" onchange="handleJsonUpload(event)">
+                    <i data-lucide="upload" class="icon icon-sm"></i> Upload JSON <input type="file" accept=".json" id="jsonUpload" style="display:none;" onchange="handleJsonUpload(event)">
                 </label>
-                <button class="btn btn-outline" onclick="downloadJson()">Download JSON</button>
-                <a href="/admin/manifest/schema" class="btn btn-outline" target="_blank">View Schema Reference</a>
+                <button class="btn btn-outline" onclick="downloadJson()"><i data-lucide="download" class="icon icon-sm"></i> Download JSON</button>
+                <a href="/admin/manifest/schema" class="btn btn-outline" target="_blank"><i data-lucide="book-open" class="icon icon-sm"></i> Schema</a>
             </div>
         </div>
     </div>
@@ -42,39 +42,39 @@
 
         <!-- Basic Info -->
         <div class="card spacer">
-            <div class="card-header"><h3>Basic Information</h3></div>
+            <div class="card-header"><h3><i data-lucide="info" class="icon" style="margin-right:.4rem;"></i> Basic Information</h3></div>
             <div class="card-body">
                 <div class="grid-2">
                     <div class="form-group">
-                        <label class="form-label">Manifest ID</label>
+                        <label class="form-label"><i data-lucide="fingerprint" class="icon icon-sm"></i> Manifest ID</label>
                         <input type="text" name="manifest_id" class="form-input" value="{{ manifest_data.manifest_id if manifest_data else '' }}" placeholder="e.g. medical_appointment_basic" required>
                         <div class="form-hint">Unique identifier. Use lowercase with underscores. Used as the filename.</div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Assessment Name</label>
+                        <label class="form-label"><i data-lucide="tag" class="icon icon-sm"></i> Assessment Name</label>
                         <input type="text" name="assessment_name" class="form-input" value="{{ manifest_data.assessment_name if manifest_data else '' }}" placeholder="e.g. Medical Appointment Bot - Basic" required>
                     </div>
                 </div>
                 <div class="grid-3">
                     <div class="form-group">
-                        <label class="form-label">Assessment Type</label>
+                        <label class="form-label"><i data-lucide="folder" class="icon icon-sm"></i> Assessment Type</label>
                         <input type="text" name="assessment_type" class="form-input" value="{{ manifest_data.assessment_type if manifest_data else '' }}" placeholder="e.g. medical, travel, hr">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Version</label>
+                        <label class="form-label"><i data-lucide="hash" class="icon icon-sm"></i> Version</label>
                         <input type="text" name="manifest_version" class="form-input" value="{{ manifest_data.manifest_version if manifest_data else '1.0' }}">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Created By</label>
+                        <label class="form-label"><i data-lucide="user" class="icon icon-sm"></i> Created By</label>
                         <input type="text" name="created_by" class="form-input" value="{{ manifest_data.created_by if manifest_data else '' }}">
                     </div>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Description</label>
+                    <label class="form-label"><i data-lucide="text" class="icon icon-sm"></i> Description</label>
                     <textarea name="description" class="form-textarea" rows="2">{{ manifest_data.description if manifest_data else '' }}</textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Notes (internal)</label>
+                    <label class="form-label"><i data-lucide="sticky-note" class="icon icon-sm"></i> Notes (internal)</label>
                     <textarea name="notes" class="form-textarea" rows="2">{{ manifest_data.notes if manifest_data else '' }}</textarea>
                 </div>
             </div>
@@ -82,10 +82,10 @@
 
         <!-- Conversation Starter -->
         <div class="card spacer">
-            <div class="card-header"><h3>Conversation Settings</h3></div>
+            <div class="card-header"><h3><i data-lucide="message-square" class="icon" style="margin-right:.4rem;"></i> Conversation Settings</h3></div>
             <div class="card-body">
                 <div class="form-group">
-                    <label class="form-label">Conversation Starter (fallback)</label>
+                    <label class="form-label"><i data-lucide="message-circle" class="icon icon-sm"></i> Conversation Starter (fallback)</label>
                     <input type="text" name="conversation_starter" class="form-input" value="{{ manifest_data.conversation_starter if manifest_data else 'Hi' }}">
                     <div class="form-hint">Fallback opening message. The LLM generates a natural opener — this is only used if LLM is unavailable.</div>
                 </div>
@@ -94,7 +94,7 @@
 
         <!-- Scoring Config -->
         <div class="card spacer">
-            <div class="card-header"><h3>Scoring Configuration</h3></div>
+            <div class="card-header"><h3><i data-lucide="calculator" class="icon" style="margin-right:.4rem;"></i> Scoring Configuration</h3></div>
             <div class="card-body">
                 <div class="grid-3" style="grid-template-columns: repeat(5, 1fr);">
                     <div class="form-group">
@@ -122,35 +122,35 @@
             </div>
         </div>
 
-        <!-- Tasks, Compliance, FAQs — use JSON editor for complex nested data -->
+        <!-- Tasks, Compliance, FAQs -->
         <div class="card spacer">
             <div class="card-header">
                 <div class="flex-between">
-                    <h3>Tasks, Compliance Checks &amp; FAQs</h3>
-                    <span class="badge badge-info">Edit via JSON</span>
+                    <h3><i data-lucide="list-checks" class="icon" style="margin-right:.4rem;"></i> Tasks, Compliance Checks &amp; FAQs</h3>
+                    <span class="badge badge-info"><i data-lucide="braces" class="icon icon-sm"></i> Edit via JSON</span>
                 </div>
             </div>
             <div class="card-body">
                 <p class="text-small text-muted spacer">Tasks, compliance checks, and FAQs have complex nested structures. Use the JSON editor tab above, or edit the JSON below directly.</p>
                 <div class="form-group">
-                    <label class="form-label">Tasks (JSON array)</label>
+                    <label class="form-label"><i data-lucide="clipboard-list" class="icon icon-sm"></i> Tasks (JSON array)</label>
                     <textarea name="tasks_json" class="form-textarea" rows="12" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ tasks_json }}</textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Compliance Checks (JSON array)</label>
+                    <label class="form-label"><i data-lucide="shield" class="icon icon-sm"></i> Compliance Checks (JSON array)</label>
                     <textarea name="compliance_json" class="form-textarea" rows="6" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ compliance_json }}</textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">FAQ Config (JSON object)</label>
+                    <label class="form-label"><i data-lucide="help-circle" class="icon icon-sm"></i> FAQ Config (JSON object)</label>
                     <textarea name="faq_json" class="form-textarea" rows="6" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ faq_json }}</textarea>
                 </div>
             </div>
         </div>
 
         <div class="flex gap-2">
-            <button type="submit" class="btn btn-primary btn-lg">Save Manifest</button>
+            <button type="submit" class="btn btn-primary btn-lg"><i data-lucide="save" class="icon"></i> Save Manifest</button>
             {% if manifest_data %}
-            <a href="/admin/manifest/archive/{{ manifest_data.manifest_id }}" class="btn btn-danger" onclick="return confirm('Archive this manifest? It will be moved to manifests/archived/')">Archive Manifest</a>
+            <a href="/admin/manifest/archive/{{ manifest_data.manifest_id }}" class="btn btn-danger" onclick="return confirm('Archive this manifest? It will be moved to manifests/archived/')"><i data-lucide="archive" class="icon icon-sm"></i> Archive Manifest</a>
             {% endif %}
         </div>
     </form>
@@ -158,14 +158,14 @@
     <!-- ==== JSON MODE ==== -->
     <div class="jsonMode hidden">
         <div class="card spacer">
-            <div class="card-header"><h3>Full Manifest JSON</h3></div>
+            <div class="card-header"><h3><i data-lucide="braces" class="icon" style="margin-right:.4rem;"></i> Full Manifest JSON</h3></div>
             <div class="card-body">
                 <textarea id="fullJsonEditor" class="form-textarea" rows="40" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ full_json }}</textarea>
             </div>
             <div class="card-footer">
                 <div class="flex gap-2">
-                    <button class="btn btn-primary" onclick="saveFromJson()">Save JSON</button>
-                    <button class="btn btn-outline" onclick="validateJson()">Validate</button>
+                    <button class="btn btn-primary" onclick="saveFromJson()"><i data-lucide="save" class="icon icon-sm"></i> Save JSON</button>
+                    <button class="btn btn-outline" onclick="validateJson()"><i data-lucide="check-circle-2" class="icon icon-sm"></i> Validate</button>
                     <span id="jsonValidationMsg" class="text-small" style="line-height:2.5;"></span>
                 </div>
             </div>
@@ -179,7 +179,6 @@ function showTab(tab) {
     document.querySelectorAll('.jsonMode').forEach(el => el.classList.toggle('hidden', tab !== 'json'));
     document.getElementById('tabForm').className = tab === 'form' ? 'btn btn-primary' : 'btn btn-outline';
     document.getElementById('tabJson').className = tab === 'json' ? 'btn btn-primary' : 'btn btn-outline';
-    // Sync form → JSON when switching to JSON tab
     if (tab === 'json') syncFormToJson();
 }
 
@@ -208,9 +207,7 @@ function syncFormToJson() {
             faq_config: JSON.parse(fd.get('faq_json') || '{}'),
         };
         document.getElementById('fullJsonEditor').value = JSON.stringify(obj, null, 2);
-    } catch(e) {
-        // If parse fails keep what's there
-    }
+    } catch(e) {}
 }
 
 function validateJson() {
@@ -233,7 +230,6 @@ function saveFromJson() {
     const el = document.getElementById('fullJsonEditor');
     try {
         const parsed = JSON.parse(el.value);
-        // Submit as hidden form
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = '/admin/manifest/save-json';

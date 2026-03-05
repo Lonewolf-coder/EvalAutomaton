@@ -5,26 +5,26 @@
 <div class="container-wide">
     <div class="flex-between spacer">
         <div>
-            <h1>Manage Assessment Manifests</h1>
+            <h1><i data-lucide="file-cog" class="icon icon-lg" style="margin-right:.4rem;"></i> Manage Assessment Manifests</h1>
             <p class="text-muted">Create, edit, and archive assessment configurations.</p>
         </div>
         <div class="flex gap-2">
             <span class="portal-badge portal-badge--admin">Admin</span>
-            <a href="/admin/manifest/new" class="btn btn-primary">Create New Manifest</a>
-            <a href="/admin/manifest/schema" class="btn btn-outline" target="_blank">Schema Reference</a>
+            <a href="/admin/manifest/new" class="btn btn-primary"><i data-lucide="plus" class="icon icon-sm"></i> Create New Manifest</a>
+            <a href="/admin/manifest/schema" class="btn btn-outline" target="_blank"><i data-lucide="book-open" class="icon icon-sm"></i> Schema Reference</a>
         </div>
     </div>
 
     {% if message %}
-    <div class="alert alert-success">{{ message }}</div>
+    <div class="alert alert-success"><i data-lucide="check-circle-2" class="icon icon-sm" style="flex-shrink:0;"></i> {{ message }}</div>
     {% endif %}
 
     <!-- Active Manifests -->
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3>Active Manifests</h3>
-                <span class="badge badge-pass">{{ manifests | length }} active</span>
+                <h3><i data-lucide="folder-open" class="icon" style="margin-right:.4rem;"></i> Active Manifests</h3>
+                <span class="badge badge-pass"><i data-lucide="check-circle-2" class="icon icon-sm"></i> {{ manifests | length }} active</span>
             </div>
         </div>
         {% if manifests %}
@@ -46,17 +46,17 @@
                 {% for m in manifests %}
                 <tr>
                     <td class="text-small" style="font-family:monospace;">{{ m.id }}</td>
-                    <td><strong>{{ m.name }}</strong></td>
+                    <td><strong><i data-lucide="file-text" class="icon icon-sm" style="margin-right:.3rem;"></i> {{ m.name }}</strong></td>
                     <td><span class="badge badge-info">{{ m.type }}</span></td>
-                    <td>{{ m.version }}</td>
+                    <td><span class="badge badge-grey">v{{ m.version }}</span></td>
                     <td>{{ m.task_count }}</td>
                     <td>{{ m.faq_count }}</td>
                     <td>{{ m.compliance_count }}</td>
-                    <td class="text-small text-muted">{{ m.created_by or '—' }}</td>
+                    <td class="text-small text-muted"><i data-lucide="user" class="icon icon-sm"></i> {{ m.created_by or '—' }}</td>
                     <td>
                         <div class="flex gap-1">
-                            <a href="/admin/manifest/edit/{{ m.id }}" class="btn btn-outline" style="font-size:.75rem; padding:.25rem .5rem;">Edit</a>
-                            <a href="/admin/manifest/archive/{{ m.id }}" class="btn btn-danger" style="font-size:.75rem; padding:.25rem .5rem;" onclick="return confirm('Archive {{ m.name }}?')">Archive</a>
+                            <a href="/admin/manifest/edit/{{ m.id }}" class="btn btn-outline btn-sm"><i data-lucide="pencil" class="icon icon-sm"></i> Edit</a>
+                            <a href="/admin/manifest/archive/{{ m.id }}" class="btn btn-danger btn-sm" onclick="return confirm('Archive {{ m.name }}?')"><i data-lucide="archive" class="icon icon-sm"></i> Archive</a>
                         </div>
                     </td>
                 </tr>
@@ -65,6 +65,7 @@
         </table>
         {% else %}
         <div class="card-body" style="text-align:center; padding:2rem;">
+            <div style="margin-bottom:.75rem;"><i data-lucide="folder-open" class="icon icon-xl" style="color:var(--muted);"></i></div>
             <p class="text-muted">No active manifests. <a href="/admin/manifest/new">Create one</a> or place JSON files in <code>manifests/</code>.</p>
         </div>
         {% endif %}
@@ -75,7 +76,7 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3>Archived Manifests</h3>
+                <h3><i data-lucide="archive" class="icon" style="margin-right:.4rem;"></i> Archived Manifests</h3>
                 <span class="badge badge-grey">{{ archived | length }} archived</span>
             </div>
         </div>
@@ -87,10 +88,10 @@
                 {% for m in archived %}
                 <tr style="opacity:.6;">
                     <td class="text-small" style="font-family:monospace;">{{ m.id }}</td>
-                    <td>{{ m.name }}</td>
+                    <td><i data-lucide="file-text" class="icon icon-sm" style="margin-right:.3rem;"></i> {{ m.name }}</td>
                     <td><span class="badge badge-grey">{{ m.type }}</span></td>
                     <td>
-                        <a href="/admin/manifest/restore/{{ m.id }}" class="btn btn-outline" style="font-size:.75rem; padding:.25rem .5rem;">Restore</a>
+                        <a href="/admin/manifest/restore/{{ m.id }}" class="btn btn-outline btn-sm"><i data-lucide="rotate-ccw" class="icon icon-sm"></i> Restore</a>
                     </td>
                 </tr>
                 {% endfor %}

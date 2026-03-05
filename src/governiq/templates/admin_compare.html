@@ -5,12 +5,12 @@
 <div class="container-wide">
     <div class="flex-between spacer">
         <div>
-            <h1>Evaluation Comparison</h1>
+            <h1><i data-lucide="git-compare" class="icon icon-lg" style="margin-right:.4rem;"></i> Evaluation Comparison</h1>
             <p class="text-muted">Compare submissions and detect duplicate/repeated work.</p>
         </div>
         <div class="flex gap-2">
             <span class="portal-badge portal-badge--admin">Admin</span>
-            <a href="/admin/" class="btn btn-outline">Back to Dashboard</a>
+            <a href="/admin/" class="btn btn-outline"><i data-lucide="arrow-left" class="icon icon-sm"></i> Back to Dashboard</a>
         </div>
     </div>
 
@@ -19,8 +19,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3>Duplicate / Repeated Submissions</h3>
-                <span class="badge badge-warn">{{ similarity_groups | length }} group(s)</span>
+                <h3><i data-lucide="copy" class="icon" style="margin-right:.4rem;"></i> Duplicate / Repeated Submissions</h3>
+                <span class="badge badge-warn"><i data-lucide="alert-triangle" class="icon icon-sm"></i> {{ similarity_groups | length }} group(s)</span>
             </div>
         </div>
         <div class="card-body">
@@ -30,10 +30,10 @@
                 <div class="card-header">
                     <div class="flex-between">
                         <div>
-                            <strong>{{ group.candidate_id }}</strong> — {{ group.assessment_name }}
+                            <i data-lucide="user" class="icon icon-sm"></i> <strong>{{ group.candidate_id }}</strong> — {{ group.assessment_name }}
                         </div>
                         <div class="flex gap-1">
-                            <span class="badge badge-warn">{{ group.count }} submissions</span>
+                            <span class="badge badge-warn"><i data-lucide="repeat" class="icon icon-sm"></i> {{ group.count }} submissions</span>
                             <span class="badge badge-grey">Score range: {{ (group.score_range.min * 100) | round(1) }}% – {{ (group.score_range.max * 100) | round(1) }}%</span>
                         </div>
                     </div>
@@ -52,17 +52,17 @@
                                 </strong>
                             </td>
                             <td>
-                                {% if sub.any_webhook_tested %}<span class="badge badge-pass">Tested</span>
-                                {% else %}<span class="badge badge-warn">CBM Only</span>{% endif %}
+                                {% if sub.any_webhook_tested %}<span class="badge badge-pass"><i data-lucide="check" class="icon icon-sm"></i> Tested</span>
+                                {% else %}<span class="badge badge-warn"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Only</span>{% endif %}
                             </td>
                             <td>
-                                {% if sub.has_critical_failures %}<span class="badge badge-fail">CRITICAL</span>
-                                {% elif sub.overall_score >= 0.7 %}<span class="badge badge-pass">PASS</span>
-                                {% elif sub.overall_score >= 0.5 %}<span class="badge badge-warn">REVIEW</span>
-                                {% else %}<span class="badge badge-fail">FAIL</span>{% endif %}
+                                {% if sub.has_critical_failures %}<span class="badge badge-fail"><i data-lucide="shield-alert" class="icon icon-sm"></i> CRITICAL</span>
+                                {% elif sub.overall_score >= 0.7 %}<span class="badge badge-pass"><i data-lucide="shield-check" class="icon icon-sm"></i> PASS</span>
+                                {% elif sub.overall_score >= 0.5 %}<span class="badge badge-warn"><i data-lucide="eye" class="icon icon-sm"></i> REVIEW</span>
+                                {% else %}<span class="badge badge-fail"><i data-lucide="shield-x" class="icon icon-sm"></i> FAIL</span>{% endif %}
                             </td>
                             <td>
-                                <a href="/admin/review/{{ sub.session_id }}" class="btn btn-outline" style="font-size:.75rem; padding:.25rem .5rem;">Review</a>
+                                <a href="/admin/review/{{ sub.session_id }}" class="btn btn-outline btn-sm"><i data-lucide="clipboard-check" class="icon icon-sm"></i> Review</a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -76,12 +76,12 @@
 
     <!-- Side-by-Side Comparison Selector -->
     <div class="card spacer">
-        <div class="card-header"><h3>Side-by-Side Comparison</h3></div>
+        <div class="card-header"><h3><i data-lucide="columns" class="icon" style="margin-right:.4rem;"></i> Side-by-Side Comparison</h3></div>
         <div class="card-body">
             <p class="text-small text-muted spacer">Select two evaluations to compare their results task-by-task.</p>
             <form action="/admin/compare" method="get" class="grid-2" style="gap:1rem; align-items:end;">
                 <div class="form-group">
-                    <label class="form-label">Left Evaluation</label>
+                    <label class="form-label"><i data-lucide="arrow-left-circle" class="icon icon-sm"></i> Left Evaluation</label>
                     <select name="left" class="form-select">
                         <option value="">— Select —</option>
                         {% for ev in evaluations %}
@@ -92,7 +92,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Right Evaluation</label>
+                    <label class="form-label"><i data-lucide="arrow-right-circle" class="icon icon-sm"></i> Right Evaluation</label>
                     <select name="right" class="form-select">
                         <option value="">— Select —</option>
                         {% for ev in evaluations %}
@@ -102,7 +102,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div><button type="submit" class="btn btn-primary">Compare</button></div>
+                <div><button type="submit" class="btn btn-primary"><i data-lucide="git-compare" class="icon icon-sm"></i> Compare</button></div>
             </form>
         </div>
     </div>
@@ -111,14 +111,14 @@
     {% if left and right %}
     <div class="card spacer">
         <div class="card-header">
-            <h3>Comparison Results</h3>
+            <h3><i data-lucide="bar-chart-3" class="icon" style="margin-right:.4rem;"></i> Comparison Results</h3>
         </div>
         <div class="card-body">
             <!-- Overview -->
             <div class="grid-2 spacer">
                 <div class="card" style="border-left: 3px solid var(--primary);">
                     <div class="card-body" style="text-align:center;">
-                        <h4>Left: {{ left.candidate_id or 'N/A' }}</h4>
+                        <h4><i data-lucide="arrow-left-circle" class="icon icon-sm"></i> Left: {{ left.candidate_id or 'N/A' }}</h4>
                         <p class="text-small text-muted">{{ left.assessment_name }}</p>
                         <div class="score-ring score-ring--lg {% if left.overall_score >= 0.7 %}score-ring--pass{% elif left.overall_score >= 0.5 %}score-ring--warn{% else %}score-ring--fail{% endif %}" style="margin:1rem auto;">
                             {{ (left.overall_score * 100) | round(1) }}%
@@ -128,7 +128,7 @@
                 </div>
                 <div class="card" style="border-left: 3px solid #7c3aed;">
                     <div class="card-body" style="text-align:center;">
-                        <h4>Right: {{ right.candidate_id or 'N/A' }}</h4>
+                        <h4><i data-lucide="arrow-right-circle" class="icon icon-sm"></i> Right: {{ right.candidate_id or 'N/A' }}</h4>
                         <p class="text-small text-muted">{{ right.assessment_name }}</p>
                         <div class="score-ring score-ring--lg {% if right.overall_score >= 0.7 %}score-ring--pass{% elif right.overall_score >= 0.5 %}score-ring--warn{% else %}score-ring--fail{% endif %}" style="margin:1rem auto;">
                             {{ (right.overall_score * 100) | round(1) }}%
@@ -143,7 +143,7 @@
                 <thead><tr><th>Metric</th><th>Left</th><th>Right</th><th>Difference</th></tr></thead>
                 <tbody>
                     <tr>
-                        <td><strong>Overall Score</strong></td>
+                        <td><strong><i data-lucide="percent" class="icon icon-sm"></i> Overall Score</strong></td>
                         <td>{{ (left.overall_score * 100) | round(1) }}%</td>
                         <td>{{ (right.overall_score * 100) | round(1) }}%</td>
                         <td>
@@ -154,19 +154,19 @@
                         </td>
                     </tr>
                     <tr>
-                        <td><strong>Webhook Tested</strong></td>
-                        <td>{% if left.any_webhook_tested %}<span class="badge badge-pass">Yes</span>{% else %}<span class="badge badge-warn">No</span>{% endif %}</td>
-                        <td>{% if right.any_webhook_tested %}<span class="badge badge-pass">Yes</span>{% else %}<span class="badge badge-warn">No</span>{% endif %}</td>
+                        <td><strong><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Tested</strong></td>
+                        <td>{% if left.any_webhook_tested %}<span class="badge badge-pass"><i data-lucide="check" class="icon icon-sm"></i> Yes</span>{% else %}<span class="badge badge-warn">No</span>{% endif %}</td>
+                        <td>{% if right.any_webhook_tested %}<span class="badge badge-pass"><i data-lucide="check" class="icon icon-sm"></i> Yes</span>{% else %}<span class="badge badge-warn">No</span>{% endif %}</td>
                         <td>—</td>
                     </tr>
                     <tr>
-                        <td><strong>Critical Failures</strong></td>
+                        <td><strong><i data-lucide="shield-alert" class="icon icon-sm"></i> Critical Failures</strong></td>
                         <td>{% if left.has_critical_failures %}<span class="badge badge-fail">Yes</span>{% else %}<span class="badge badge-pass">No</span>{% endif %}</td>
                         <td>{% if right.has_critical_failures %}<span class="badge badge-fail">Yes</span>{% else %}<span class="badge badge-pass">No</span>{% endif %}</td>
                         <td>—</td>
                     </tr>
                     <tr>
-                        <td><strong>FAQ Score</strong></td>
+                        <td><strong><i data-lucide="help-circle" class="icon icon-sm"></i> FAQ Score</strong></td>
                         <td>{{ (left.faq_score * 100) | round(1) }}%</td>
                         <td>{{ (right.faq_score * 100) | round(1) }}%</td>
                         <td>
@@ -178,7 +178,7 @@
             </table>
 
             <!-- Task-by-Task Comparison -->
-            <h4 style="margin-bottom:1rem;">Task-by-Task Comparison</h4>
+            <h4 style="margin-bottom:1rem;"><i data-lucide="list-checks" class="icon icon-sm"></i> Task-by-Task Comparison</h4>
             {% set left_tasks = {} %}
             {% for t in left.get('task_scores', []) %}
                 {% set _ = left_tasks.update({t.task_id: t}) %}
@@ -210,7 +210,7 @@
                         {% if t.task_id == lt.task_id %}{% set rt.found = t %}{% endif %}
                     {% endfor %}
                     <tr>
-                        <td><strong>{{ lt.task_name }}</strong></td>
+                        <td><strong><i data-lucide="clipboard-check" class="icon icon-sm"></i> {{ lt.task_name }}</strong></td>
                         <td>{{ (lt.cbm_score * 100) | round(1) }}%</td>
                         <td>
                             {% if lt.webhook_tested %}<span class="text-pass">{{ (lt.webhook_score * 100) | round(1) }}%</span>
@@ -236,6 +236,7 @@
     {% elif not evaluations %}
     <div class="card spacer">
         <div class="card-body" style="text-align:center; padding:3rem;">
+            <div style="margin-bottom:1rem;"><i data-lucide="inbox" class="icon icon-xl" style="color:var(--muted);"></i></div>
             <p class="text-muted">No evaluations to compare. Candidates submit through the <a href="/candidate/">Candidate Portal</a>.</p>
         </div>
     </div>
