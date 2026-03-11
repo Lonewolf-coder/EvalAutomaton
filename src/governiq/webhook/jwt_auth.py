@@ -187,26 +187,37 @@ async def test_webhook_with_jwt(
             "session": {"new": True},
         }
 
+        import asyncio
+
+        request_headers = {
+            "Authorization": f"bearer {jwt_token}",
+            "Content-Type": "application/json",
+        }
+
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(
-                webhook_url,
-                json=payload,
-                headers={
-                    "Authorization": f"bearer {jwt_token}",
-                    "Content-Type": "application/json",
-                },
+                webhook_url, json=payload, headers=request_headers,
             )
             # Retry once on 504 gateway timeout
             if response.status_code == 504:
                 logger.warning("504 on first attempt, retrying...")
                 response = await client.post(
-                    webhook_url,
-                    json=payload,
-                    headers={
-                        "Authorization": f"bearer {jwt_token}",
-                        "Content-Type": "application/json",
-                    },
+                    webhook_url, json=payload, headers=request_headers,
                 )
+            # Retry on 401 with 5s backoff (cold-start JWT recognition lag)
+            if response.status_code == 401:
+                for retry in range(2):
+                    wait = 5.0 * (2 ** retry)
+                    logger.warning(
+                        "401 on webhook test, retrying in %.1fs (%d/2)...",
+                        wait, retry + 1,
+                    )
+                    await asyncio.sleep(wait)
+                    response = await client.post(
+                        webhook_url, json=payload, headers=request_headers,
+                    )
+                    if response.status_code != 401:
+                        break
             response.raise_for_status()
             result["webhook_responded"] = True
             result["response"] = response.json()

@@ -7,6 +7,7 @@ Supports multiple providers:
 - Google Gemini
 - Mistral AI
 - Ollama (local models — no API key needed)
+- LM Studio (local models — no API key needed)
 
 Default: Claude Haiku (lite model for cost optimization).
 Admin portal can change the provider at runtime.
@@ -33,6 +34,7 @@ class LLMProvider(str, Enum):
     GEMINI = "gemini"
     MISTRAL = "mistral"
     OLLAMA = "ollama"
+    LM_STUDIO = "lm_studio"
 
 
 # Provider-specific defaults
@@ -78,6 +80,12 @@ PROVIDER_DEFAULTS: dict[str, dict[str, Any]] = {
         "models": ["llama3.2", "llama3.1", "mistral", "phi3", "gemma2", "qwen2.5", "codellama"],
         "api_format": "openai",  # Ollama exposes OpenAI-compatible API at /v1
     },
+    "lm_studio": {
+        "base_url": "http://localhost:1234/v1",
+        "default_model": "loaded-model",
+        "models": ["loaded-model"],
+        "api_format": "openai",  # LM Studio exposes OpenAI-compatible API
+    },
 }
 
 
@@ -109,13 +117,16 @@ class LLMConfig:
 
     def get_driver_kwargs(self) -> dict[str, Any]:
         """Return kwargs for LLMConversationDriver constructor."""
-        return {
+        kwargs: dict[str, Any] = {
             "api_key": self.api_key,
             "model": self.model,
             "base_url": self.base_url,
             "temperature": self.temperature,
             "api_format": self.api_format,
         }
+        if self.extra_headers:
+            kwargs["extra_headers"] = self.extra_headers
+        return kwargs
 
 
 def load_llm_config() -> LLMConfig:

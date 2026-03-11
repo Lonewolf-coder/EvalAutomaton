@@ -12,6 +12,7 @@ classifyBotIntent operates in four states:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from typing import Any
@@ -40,12 +41,14 @@ class LLMConversationDriver:
         base_url: str = "https://api.anthropic.com/v1",
         temperature: float = 0.3,
         api_format: str = "anthropic",
+        extra_headers: dict[str, str] | None = None,
     ):
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
         self.temperature = temperature
         self.api_format = api_format  # "openai" or "anthropic"
+        self.extra_headers = extra_headers or {}
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -58,6 +61,8 @@ class LLMConversationDriver:
             else:
                 if self.api_key:
                     headers["Authorization"] = f"Bearer {self.api_key}"
+            if self.extra_headers:
+                headers.update(self.extra_headers)
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 headers=headers,
@@ -276,6 +281,55 @@ class KoreWebhookClient:
         self._kore_session_id = None
         self._is_new_session = True
 
+    async def warm_up(self, max_retries: int = 2, delay: float = 5.0) -> bool:
+        """Send a warm-up probe to absorb cold-start 401s.
+
+        Sends a lightweight ping with session.new=true using a disposable from.id.
+        Retries on 401 with exponential backoff (5s, 10s). Returns True if the
+        webhook responds successfully, False otherwise (conversation can still proceed).
+        """
+        client = await self._get_client()
+        probe_from_id = f"warmup-{uuid.uuid4().hex[:8]}"
+
+        payload: dict[str, Any] = {
+            "message": {"type": "text", "val": "Hi"},
+            "from": {"id": probe_from_id},
+            "session": {"new": True},
+        }
+        if self.kore_credentials:
+            payload["to"] = {"id": self.kore_credentials.bot_id}
+
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self._jwt_token:
+            headers["Authorization"] = f"bearer {self._jwt_token}"
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = await client.post(
+                    self.webhook_url, json=payload, headers=headers
+                )
+                if response.status_code == 401 and attempt < max_retries:
+                    wait = delay * (2 ** attempt)
+                    logger.info(
+                        "Warm-up got 401, retrying in %.1fs (%d/%d)",
+                        wait, attempt + 1, max_retries,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                response.raise_for_status()
+                logger.info("Warm-up successful on attempt %d", attempt + 1)
+                return True
+            except Exception as e:
+                if attempt < max_retries:
+                    wait = delay * (2 ** attempt)
+                    logger.warning("Warm-up failed (%s), retrying in %.1fs", e, wait)
+                    await asyncio.sleep(wait)
+                else:
+                    logger.warning(
+                        "Warm-up failed after %d attempts: %s", max_retries + 1, e
+                    )
+        return False
+
     async def send_message(self, message: str) -> str:
         """Send a message to the bot webhook and return the response text.
 
@@ -318,6 +372,13 @@ class KoreWebhookClient:
             # Retry once on 504 gateway timeout
             if response.status_code == 504:
                 logger.warning("504 on webhook, retrying once...")
+                response = await client.post(
+                    self.webhook_url, json=payload, headers=headers
+                )
+            # Retry once on 401 (JWT cold-start lag)
+            if response.status_code == 401:
+                logger.warning("401 on webhook, retrying after 5s...")
+                await asyncio.sleep(5.0)
                 response = await client.post(
                     self.webhook_url, json=payload, headers=headers
                 )

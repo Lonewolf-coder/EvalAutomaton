@@ -57,6 +57,7 @@ class ModifyPattern(PatternExecutor):
 
         try:
             await self.webhook.start_session()
+            await self.webhook.warm_up()
 
             opening = await self.driver.generate_opening(self.task)
             if not opening:

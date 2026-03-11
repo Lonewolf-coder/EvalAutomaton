@@ -24,6 +24,7 @@ class EvidenceCardColor(str, Enum):
     RED = "red"
     AMBER = "amber"
     GREY = "grey"
+    BLUE = "blue"
 
 
 @dataclass
