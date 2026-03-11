@@ -239,21 +239,23 @@ def _pattern_specific_checks(
     checks: list[CheckResult] = []
 
     if task.pattern in (EnginePattern.CREATE, EnginePattern.CREATE_WITH_AMENDMENT):
-        # Must have POST service node
-        post_nodes = [
-            n for n in dialog.get_service_nodes()
-            if n.service_method and n.service_method.upper() == "POST"
-        ]
-        checks.append(CheckResult(
-            check_id=f"cbm.{task.task_id}.post_service",
-            task_id=task.task_id,
-            pipeline="cbm",
-            label="POST service node present",
-            status=CheckStatus.PASS if post_nodes else CheckStatus.FAIL,
-            details=f"Found {len(post_nodes)} POST service node(s)." if post_nodes
-                    else "No POST service node found in dialog.",
-            score=1.0 if post_nodes else 0.0,
-        ))
+        # Only require POST service node if the task actually collects entities
+        # (e.g., Welcome/greeting tasks with zero entities don't need a POST)
+        if task.required_entities:
+            post_nodes = [
+                n for n in dialog.get_service_nodes()
+                if n.service_method and n.service_method.upper() == "POST"
+            ]
+            checks.append(CheckResult(
+                check_id=f"cbm.{task.task_id}.post_service",
+                task_id=task.task_id,
+                pipeline="cbm",
+                label="POST service node present",
+                status=CheckStatus.PASS if post_nodes else CheckStatus.FAIL,
+                details=f"Found {len(post_nodes)} POST service node(s)." if post_nodes
+                        else "No POST service node found in dialog.",
+                score=1.0 if post_nodes else 0.0,
+            ))
 
         # Must have Agent Node for CREATE_WITH_AMENDMENT
         if task.pattern == EnginePattern.CREATE_WITH_AMENDMENT:
@@ -715,9 +717,30 @@ def _build_reference_panel_card(dialog: CBMDialog, task: TaskDefinition) -> Evid
     """Build the CBM Evaluator Reference Panel card for a task.
 
     Always visible alongside webhook results — not on demand.
-    Shows user-labeled node names and content text inside each node.
+    Shows CBM configuration summary + node sequence.
     """
+    entity_nodes = [n for n in dialog.nodes if n.is_entity_node]
+    service_nodes = dialog.get_service_nodes()
+    message_nodes = dialog.get_nodes_by_type("message")
+
     lines = [f"**Dialog: {dialog.name}**", ""]
+
+    # CBM configuration summary
+    lines.append("**Configuration Summary:**")
+    lines.append(f"  Total nodes: {len(dialog.nodes)}")
+    lines.append(f"  Entity nodes: {len(entity_nodes)}")
+    lines.append(f"  Service nodes: {len(service_nodes)}")
+    lines.append(f"  Message nodes: {len(message_nodes)}")
+    if entity_nodes:
+        entity_types = [n.entity_type or "unknown" for n in entity_nodes]
+        lines.append(f"  Entity types: {', '.join(entity_types)}")
+    if service_nodes:
+        methods = [n.service_method or "unknown" for n in service_nodes]
+        lines.append(f"  Service methods: {', '.join(methods)}")
+    if task.required_entities:
+        lines.append(f"  Required entities (manifest): {', '.join(e.entity_key for e in task.required_entities)}")
+    lines.append("")
+
     lines.append("**Node Sequence:**")
 
     for i, node in enumerate(dialog.nodes, 1):
@@ -728,9 +751,17 @@ def _build_reference_panel_card(dialog: CBMDialog, task: TaskDefinition) -> Evid
         if node.is_entity_node:
             extra = f" (type: {node.entity_type or 'unknown'})"
             if node.validation_rules:
-                extra += " [has validation rules]"
+                extra += " [has validation]"
         elif node.is_service_node:
             extra = f" (method: {node.service_method or 'unknown'})"
+            if hasattr(node, 'service_url') and node.service_url:
+                # Show domain only for security
+                from urllib.parse import urlparse
+                try:
+                    domain = urlparse(node.service_url).netloc
+                    extra += f" → {domain}"
+                except Exception:
+                    pass
         elif node.is_agent_node:
             extra = " (Agent Node - aiassist)"
 
@@ -739,8 +770,8 @@ def _build_reference_panel_card(dialog: CBMDialog, task: TaskDefinition) -> Evid
         # Show content text if available
         content_text = node.content_summary
         if content_text:
-            display = content_text[:120]
-            if len(content_text) > 120:
+            display = content_text[:200]
+            if len(content_text) > 200:
                 display += "..."
             lines.append(f"       └─ {display}")
 

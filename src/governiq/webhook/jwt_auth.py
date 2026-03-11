@@ -67,6 +67,8 @@ def generate_jwt_token(
 
     Payload matches the actual Kore.ai jwtService format:
         {appId, sub, scope, iat}  (exp is added via expiry)
+
+    Per Kore.ai docs: appId = clientId, sub = random number (NOT clientId).
     """
     now = int(time.time())
 
@@ -74,7 +76,7 @@ def generate_jwt_token(
 
     payload = {
         "appId": credentials.client_id,
-        "sub": credentials.client_id,
+        "sub": str(int(time.time() * 1000)),  # Random number per Kore.ai docs
         "scope": scope,
         "iat": now,
         "exp": now + expiry_seconds,

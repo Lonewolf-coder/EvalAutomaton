@@ -132,5 +132,16 @@ class EdgeCasePattern(PatternExecutor):
                 result.error = str(e)
                 all_passed = False
 
+        # Conversation transcript evidence (across all edge case iterations)
+        if result.transcript_turns:
+            result.evidence_cards.append(EvidenceCard(
+                card_id=f"webhook.{self.task.task_id}.transcript",
+                task_id=self.task.task_id,
+                title=f"Conversation Transcript — {self.task.task_name}",
+                content=self._format_transcript(result.transcript_turns),
+                color=EvidenceCardColor.BLUE if all_passed else EvidenceCardColor.AMBER,
+                pipeline="webhook",
+            ))
+
         result.success = all_passed
         return result

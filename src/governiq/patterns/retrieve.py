@@ -145,8 +145,29 @@ class RetrievePattern(PatternExecutor):
 
             result.success = retrieval_confirmed
 
+            # Conversation transcript evidence
+            if result.transcript_turns:
+                result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{self.task.task_id}.transcript",
+                    task_id=self.task.task_id,
+                    title=f"Conversation Transcript — {self.task.task_name}",
+                    content=self._format_transcript(result.transcript_turns),
+                    color=EvidenceCardColor.BLUE,
+                    pipeline="webhook",
+                ))
+
         except Exception as e:
             result.error = str(e)
+            if result.transcript_turns:
+                result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{self.task.task_id}.transcript",
+                    task_id=self.task.task_id,
+                    title=f"Conversation Transcript (partial) — {self.task.task_name}",
+                    content=self._format_transcript(result.transcript_turns),
+                    color=EvidenceCardColor.AMBER,
+                    pipeline="webhook",
+                    details={"error": str(e)},
+                ))
 
         return result
 

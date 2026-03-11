@@ -141,7 +141,7 @@ class CreatePattern(PatternExecutor):
                 score=1.0 if confirmation_sent else 0.0,
             ))
 
-            # Evidence card
+            # Evidence card — record summary
             result.evidence_cards.append(EvidenceCard(
                 card_id=f"webhook.{self.task.task_id}.create",
                 task_id=self.task.task_id,
@@ -151,6 +151,18 @@ class CreatePattern(PatternExecutor):
                 pipeline="webhook",
                 details={"entities": entities_provided, "turns": turn_count},
             ))
+
+            # Evidence card — conversation transcript
+            if result.transcript_turns:
+                result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{self.task.task_id}.transcript",
+                    task_id=self.task.task_id,
+                    title=f"Conversation Transcript — {self.task.task_name}",
+                    content=self._format_transcript(result.transcript_turns),
+                    color=EvidenceCardColor.BLUE,
+                    pipeline="webhook",
+                    details={"turn_count": len(result.transcript_turns)},
+                ))
 
             result.success = confirmation_sent and entities_provided.keys() >= entities_needed
 
@@ -165,6 +177,17 @@ class CreatePattern(PatternExecutor):
                 details=f"Execution error: {e}",
                 score=0.0,
             ))
+            # Still include whatever transcript we collected before the error
+            if result.transcript_turns:
+                result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{self.task.task_id}.transcript",
+                    task_id=self.task.task_id,
+                    title=f"Conversation Transcript (partial) — {self.task.task_name}",
+                    content=self._format_transcript(result.transcript_turns),
+                    color=EvidenceCardColor.AMBER,
+                    pipeline="webhook",
+                    details={"turn_count": len(result.transcript_turns), "error": str(e)},
+                ))
 
         return result
 
