@@ -84,7 +84,7 @@
                         <label class="form-label"><i data-lucide="key-round" class="icon icon-sm"></i> API Key</label>
                         <input type="password" name="api_key" class="form-input" id="llmApiKey"
                                value="{{ llm_config.api_key }}" placeholder="Enter API key">
-                        <div class="form-hint" id="apiKeyHint">{% if llm_config.provider == 'ollama' %}Leave blank for Ollama (no API key needed).{% endif %}</div>
+                        <div class="form-hint" id="apiKeyHint">{% if llm_config.provider in ['ollama', 'lm_studio'] %}Leave blank for {{ llm_config.provider | replace('_', ' ') | title }} (no API key needed).{% endif %}</div>
                     </div>
                 </div>
                 <div class="grid-2" style="gap:1rem; margin-top:.5rem;">
@@ -240,9 +240,10 @@ function updateProviderDefaults() {
         document.getElementById('llmBaseUrl').value = info.base_url;
         document.getElementById('modelHint').textContent = 'Models: ' + info.models.join(', ');
         const hint = document.getElementById('apiKeyHint');
-        if (provider === 'ollama') {
-            hint.textContent = 'Leave blank for Ollama (no API key needed).';
-            document.getElementById('llmApiKey').placeholder = 'Not required for Ollama';
+        if (provider === 'ollama' || provider === 'lm_studio') {
+            const name = provider === 'ollama' ? 'Ollama' : 'LM Studio';
+            hint.textContent = `Leave blank for ${name} (no API key needed).`;
+            document.getElementById('llmApiKey').placeholder = `Not required for ${name}`;
         } else {
             hint.textContent = '';
             document.getElementById('llmApiKey').placeholder = 'Enter API key';

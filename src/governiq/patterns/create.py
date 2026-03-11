@@ -29,8 +29,9 @@ class CreatePattern(PatternExecutor):
         confirmation_sent = False
 
         try:
-            # Start session
+            # Start session and warm up webhook connection
             await self.webhook.start_session()
+            await self.webhook.warm_up()
 
             # Generate and send opening message
             opening = await self.driver.generate_opening(self.task)

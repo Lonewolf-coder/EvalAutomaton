@@ -9,6 +9,7 @@ Leverages Kore.ai public APIs to get:
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -18,6 +19,10 @@ from .jwt_auth import KoreCredentials, get_kore_bearer_token
 
 logger = logging.getLogger(__name__)
 
+# Token refresh margin — re-fetch 5 minutes before expiry
+_TOKEN_EXPIRY_SECONDS = 3600
+_TOKEN_REFRESH_MARGIN = 300.0
+
 
 class KoreAPIClient:
     """Client for Kore.ai public APIs authenticated via JWT."""
@@ -25,11 +30,18 @@ class KoreAPIClient:
     def __init__(self, credentials: KoreCredentials):
         self.credentials = credentials
         self._bearer_token: str | None = None
+        self._token_obtained_at: float = 0.0
 
     async def _ensure_token(self) -> str:
-        """Get or refresh the bearer token."""
-        if not self._bearer_token:
-            self._bearer_token = await get_kore_bearer_token(self.credentials)
+        """Get or refresh the bearer token (re-fetches near expiry)."""
+        if self._bearer_token:
+            elapsed = time.time() - self._token_obtained_at
+            if elapsed < (_TOKEN_EXPIRY_SECONDS - _TOKEN_REFRESH_MARGIN):
+                return self._bearer_token
+            logger.info("Admin bearer token near expiry (%.0fs old), refreshing", elapsed)
+
+        self._bearer_token = await get_kore_bearer_token(self.credentials)
+        self._token_obtained_at = time.time()
         return self._bearer_token
 
     async def _api_get(self, endpoint: str, params: dict | None = None) -> dict[str, Any]:

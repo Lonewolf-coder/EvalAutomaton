@@ -96,44 +96,58 @@ def generate_jwt_token(
 
 async def get_kore_bearer_token(
     credentials: KoreCredentials,
+    max_retries: int = 3,
 ) -> str:
     """Exchange an admin-scoped JWT for a Kore.ai bearer token.
 
     This is used for Kore.ai Public APIs (analytics, bot details, NLP insights).
     Webhook calls use the app-scope JWT directly — no exchange needed.
 
+    Retries with exponential backoff + jitter on 401/502/503/504 to survive
+    cold-start delays on the Kore.ai platform.
+
     Flow:
         1. Generate JWT with scope="admin"
-        2. POST to /api/1.1/oAuth/token/jwtgrant
+        2. POST to /api/1.1/oAuth/token/jwtgrant (with retries)
         3. Receive bearer access_token
     """
+    from .retry import retry_with_backoff
+
     jwt_token = generate_jwt_token(credentials, scope="admin")
     token_url = f"{credentials.platform_url}/api/1.1/oAuth/token/jwtgrant"
     bot_name = credentials.bot_name or credentials.bot_id
 
     logger.info("Requesting admin bearer token from %s", token_url)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            token_url,
-            json={
-                "assertion": jwt_token,
-                "botInfo": {
-                    "chatBot": bot_name,
-                    "taskBotId": credentials.bot_id,
+    async def _exchange_jwt() -> httpx.Response:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                token_url,
+                json={
+                    "assertion": jwt_token,
+                    "botInfo": {
+                        "chatBot": bot_name,
+                        "taskBotId": credentials.bot_id,
+                    },
                 },
-            },
-            headers={"Content-Type": "application/json"},
-        )
-
-        if response.status_code != 200:
-            logger.error(
-                "JWT grant failed: HTTP %s — %s",
-                response.status_code, response.text[:500],
+                headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
+            return response
 
-        data = response.json()
+    def _on_retry(attempt: int, delay: float, cause: Exception | int) -> None:
+        logger.warning(
+            "Token exchange retry %d in %.1fs (cause: %s)", attempt, delay, cause,
+        )
+
+    response = await retry_with_backoff(
+        _exchange_jwt,
+        max_retries=max_retries,
+        base_delay=5.0,
+        retryable_statuses=(401, 502, 503, 504),
+        on_retry=_on_retry,
+    )
+    data = response.json()
 
     access_token = (
         data.get("authorization", {}).get("accessToken", "")
@@ -160,7 +174,10 @@ async def test_webhook_with_jwt(
 
     Generates an app-scope JWT and sends it directly as bearer token
     to the webhook URL (the actual Kore.ai webhook auth flow).
+    Uses retry_with_backoff for cold-start resilience.
     """
+    from .retry import retry_with_backoff
+
     result: dict[str, Any] = {
         "success": False,
         "jwt_generated": False,
@@ -170,12 +187,10 @@ async def test_webhook_with_jwt(
     }
 
     try:
-        # Generate app-scope JWT (used directly as bearer — no exchange)
         jwt_token = generate_jwt_token(credentials, scope="app")
         result["jwt_generated"] = True
         logger.info("App-scope JWT generated for client_id=%s", credentials.client_id)
 
-        # Build the Kore.ai webhook payload
         session_from_id = f"eval-req-post-{uuid.uuid4().hex[:12]}"
         payload = {
             "message": {"type": "text", "val": test_message},
@@ -186,31 +201,34 @@ async def test_webhook_with_jwt(
             "to": {"id": credentials.bot_id},
             "session": {"new": True},
         }
+        request_headers = {
+            "Authorization": f"bearer {jwt_token}",
+            "Content-Type": "application/json",
+        }
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(
-                webhook_url,
-                json=payload,
-                headers={
-                    "Authorization": f"bearer {jwt_token}",
-                    "Content-Type": "application/json",
-                },
-            )
-            # Retry once on 504 gateway timeout
-            if response.status_code == 504:
-                logger.warning("504 on first attempt, retrying...")
-                response = await client.post(
-                    webhook_url,
-                    json=payload,
-                    headers={
-                        "Authorization": f"bearer {jwt_token}",
-                        "Content-Type": "application/json",
-                    },
+        async def _do_test() -> httpx.Response:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(
+                    webhook_url, json=payload, headers=request_headers,
                 )
-            response.raise_for_status()
-            result["webhook_responded"] = True
-            result["response"] = response.json()
-            result["success"] = True
+                resp.raise_for_status()
+                return resp
+
+        def _on_retry(attempt: int, delay: float, cause: Exception | int) -> None:
+            logger.warning(
+                "Webhook test retry %d in %.1fs (cause: %s)", attempt, delay, cause,
+            )
+
+        response = await retry_with_backoff(
+            _do_test,
+            max_retries=3,
+            base_delay=5.0,
+            retryable_statuses=(401, 502, 503, 504),
+            on_retry=_on_retry,
+        )
+        result["webhook_responded"] = True
+        result["response"] = response.json()
+        result["success"] = True
 
     except httpx.HTTPStatusError as e:
         result["error"] = f"HTTP {e.response.status_code}: {e.response.text[:300]}"

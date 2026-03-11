@@ -12,7 +12,9 @@ classifyBotIntent operates in four states:
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 import uuid
 from typing import Any
 
@@ -40,12 +42,14 @@ class LLMConversationDriver:
         base_url: str = "https://api.anthropic.com/v1",
         temperature: float = 0.3,
         api_format: str = "anthropic",
+        extra_headers: dict[str, str] | None = None,
     ):
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
         self.temperature = temperature
         self.api_format = api_format  # "openai" or "anthropic"
+        self.extra_headers = extra_headers or {}
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -58,6 +62,8 @@ class LLMConversationDriver:
             else:
                 if self.api_key:
                     headers["Authorization"] = f"Bearer {self.api_key}"
+            if self.extra_headers:
+                headers.update(self.extra_headers)
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 headers=headers,
@@ -245,6 +251,7 @@ class KoreWebhookClient:
         timeout: float = 15.0,
         bearer_token: str = "",
         kore_credentials: Any = None,
+        webhook_config: Any = None,
     ):
         self.webhook_url = webhook_url
         self.timeout = timeout
@@ -257,12 +264,30 @@ class KoreWebhookClient:
         self._last_end_of_task: bool = False
         self._last_completed_task: str = ""
 
+        # Retry configuration (from WebhookConfig or defaults)
+        self._warmup_max_retries: int = 3
+        self._warmup_base_delay: float = 5.0
+        self._send_retry_count: int = 3
+        self._send_retry_base_delay: float = 2.0
+        if webhook_config:
+            self._warmup_max_retries = getattr(webhook_config, "warmup_max_retries", 3)
+            self._warmup_base_delay = getattr(webhook_config, "warmup_base_delay", 5.0)
+            self._send_retry_count = getattr(webhook_config, "send_retry_count", 3)
+            self._send_retry_base_delay = getattr(webhook_config, "send_retry_base_delay", 2.0)
+
+        # JWT token lifecycle
+        self._token_generated_at: float = 0.0
+        self._token_expiry_seconds: int = 3600
+        self._token_refresh_margin: float = 300.0  # refresh 5 min before expiry
+
         # Generate app-scope JWT for webhook auth (used directly as bearer)
         if kore_credentials:
             from .jwt_auth import generate_jwt_token
             self._jwt_token = generate_jwt_token(kore_credentials, scope="app")
+            self._token_generated_at = time.time()
         elif bearer_token:
             self._jwt_token = bearer_token
+            self._token_generated_at = time.time()
 
     async def _get_client(self) -> httpx.AsyncClient:
         if not self._client:
@@ -276,6 +301,71 @@ class KoreWebhookClient:
         self._kore_session_id = None
         self._is_new_session = True
 
+    def _ensure_valid_token(self) -> None:
+        """Regenerate JWT if within refresh margin of expiry.
+
+        Pure crypto (no I/O) — adds zero latency.
+        """
+        if not self.kore_credentials or not self._token_generated_at:
+            return
+        elapsed = time.time() - self._token_generated_at
+        if elapsed >= (self._token_expiry_seconds - self._token_refresh_margin):
+            from .jwt_auth import generate_jwt_token
+            self._jwt_token = generate_jwt_token(self.kore_credentials, scope="app")
+            self._token_generated_at = time.time()
+            logger.info("JWT token refreshed (was %.0fs old)", elapsed)
+
+    def _build_auth_headers(self) -> dict[str, str]:
+        """Build headers with a valid JWT token."""
+        self._ensure_valid_token()
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self._jwt_token:
+            headers["Authorization"] = f"bearer {self._jwt_token}"
+        return headers
+
+    async def warm_up(self) -> bool:
+        """Send a warm-up probe to absorb cold-start 401s.
+
+        Sends a lightweight ping with session.new=true using a disposable from.id.
+        Uses retry_with_backoff for exponential backoff + jitter.
+        Returns True if successful, False otherwise (conversation can still proceed).
+        """
+        from .retry import retry_with_backoff
+
+        client = await self._get_client()
+        probe_from_id = f"warmup-{uuid.uuid4().hex[:8]}"
+
+        payload: dict[str, Any] = {
+            "message": {"type": "text", "val": "Hi"},
+            "from": {"id": probe_from_id},
+            "session": {"new": True},
+        }
+        if self.kore_credentials:
+            payload["to"] = {"id": self.kore_credentials.bot_id}
+
+        async def _do_warmup() -> httpx.Response:
+            headers = self._build_auth_headers()
+            resp = await client.post(self.webhook_url, json=payload, headers=headers)
+            resp.raise_for_status()
+            return resp
+
+        def _on_retry(attempt: int, delay: float, cause: Exception | int) -> None:
+            logger.info("Warm-up retry %d in %.1fs (cause: %s)", attempt, delay, cause)
+
+        try:
+            await retry_with_backoff(
+                _do_warmup,
+                max_retries=self._warmup_max_retries,
+                base_delay=self._warmup_base_delay,
+                retryable_statuses=(401, 502, 503, 504),
+                on_retry=_on_retry,
+            )
+            logger.info("Warm-up successful")
+            return True
+        except Exception as e:
+            logger.warning("Warm-up failed after all attempts: %s", e)
+            return False
+
     async def send_message(self, message: str) -> str:
         """Send a message to the bot webhook and return the response text.
 
@@ -283,7 +373,12 @@ class KoreWebhookClient:
         - First call: session.new = true
         - Subsequent: session.id = <pinned koreSessionId>
         - Authorization: bearer <JWT> (app-scope, not exchanged)
+
+        Uses retry_with_backoff for cold-start resilience on 401/504.
+        Token is refreshed before each attempt if near expiry.
         """
+        from .retry import retry_with_backoff
+
         client = await self._get_client()
 
         if not self._from_id:
@@ -307,21 +402,25 @@ class KoreWebhookClient:
         elif self._kore_session_id:
             payload["session"] = {"id": self._kore_session_id}
 
-        headers: dict[str, str] = {"Content-Type": "application/json"}
-        if self._jwt_token:
-            headers["Authorization"] = f"bearer {self._jwt_token}"
+        async def _do_send() -> httpx.Response:
+            headers = self._build_auth_headers()
+            resp = await client.post(self.webhook_url, json=payload, headers=headers)
+            resp.raise_for_status()
+            return resp
+
+        def _on_retry(attempt: int, delay: float, cause: Exception | int) -> None:
+            logger.warning(
+                "Webhook send retry %d in %.1fs (cause: %s)", attempt, delay, cause,
+            )
 
         try:
-            response = await client.post(
-                self.webhook_url, json=payload, headers=headers
+            response = await retry_with_backoff(
+                _do_send,
+                max_retries=self._send_retry_count,
+                base_delay=self._send_retry_base_delay,
+                retryable_statuses=(401, 502, 503, 504),
+                on_retry=_on_retry,
             )
-            # Retry once on 504 gateway timeout
-            if response.status_code == 504:
-                logger.warning("504 on webhook, retrying once...")
-                response = await client.post(
-                    self.webhook_url, json=payload, headers=headers
-                )
-            response.raise_for_status()
             data = response.json()
 
             # Pin the session ID from the first response

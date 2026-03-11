@@ -7,6 +7,7 @@ Can be re-run at any time against the same export and will produce identical out
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from ..core.manifest import (
@@ -26,8 +27,11 @@ from ..core.scoring import (
     EvidenceCardColor,
     TaskScore,
 )
-from .field_map import NODE_TYPE_AGENT, NODE_TYPE_ENTITY, NODE_TYPE_SERVICE
-from .parser import CBMDialog, CBMFAQ, CBMObject
+from .field_map import (
+    NODE_TYPE_AGENT, NODE_TYPE_ENTITY, NODE_TYPE_SERVICE,
+    NODE_TYPE_MESSAGE, NODE_TYPE_SCRIPT, NODE_TYPE_FORM, NODE_TYPE_LOGIC,
+)
+from .parser import CBMDialog, CBMNode, CBMFAQ, CBMObject
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +221,12 @@ def evaluate_task_cbm(
     # Step 4: Pattern-specific checks
     task_score.cbm_checks.extend(_pattern_specific_checks(dialog, task))
 
-    # Step 5: Generate CBM Evaluator Reference Panel evidence card
+    # Step 5: Deep structural insights
+    task_score.evidence_cards.append(_build_dialog_architecture_card(dialog, task))
+    task_score.cbm_checks.extend(_analyze_entity_design(dialog, task))
+    task_score.cbm_checks.extend(_analyze_service_integration(dialog, task))
+
+    # Step 6: Generate CBM Evaluator Reference Panel evidence card
     task_score.evidence_cards.append(_build_reference_panel_card(dialog, task))
 
     return task_score
@@ -366,6 +375,336 @@ def _check_not_found_handling(
                 else "No obvious error handling message detected (may use dynamic messages).",
         score=1.0 if has_error_msg else 0.5,
     ))
+
+
+# ---------------------------------------------------------------------------
+# Deep structural analysis
+# ---------------------------------------------------------------------------
+
+def _analyze_entity_design(
+    dialog: CBMDialog, task: TaskDefinition
+) -> list[CheckResult]:
+    """Analyze entity node configuration depth — types, prompts, validation."""
+    checks: list[CheckResult] = []
+    entity_nodes = dialog.get_entity_nodes()
+
+    if not entity_nodes:
+        return checks
+
+    # Check each entity node for completeness
+    for node in entity_nodes:
+        entity_type = node.entity_type or "unknown"
+        has_prompt = bool(node.component.get("prompt") or node.component.get("question")
+                         or node.raw.get("prompt") or node.raw.get("question"))
+        has_validation = bool(node.validation_rules)
+
+        details_parts = [f"Type: {entity_type}"]
+        if has_prompt:
+            details_parts.append("prompt configured")
+        else:
+            details_parts.append("no prompt configured")
+        if has_validation:
+            rule_count = len(node.validation_rules)
+            details_parts.append(f"{rule_count} validation rule(s)")
+        else:
+            details_parts.append("no validation rules")
+
+        # Determine status: INFO for entities not in manifest requirements,
+        # WARNING for required entities missing validation
+        is_required = any(
+            e.entity_key.lower() == node.name.lower()
+            for e in task.required_entities
+        )
+        req_def = next(
+            (e for e in task.required_entities if e.entity_key.lower() == node.name.lower()),
+            None,
+        )
+
+        if is_required and req_def and req_def.validation_required and not has_validation:
+            status = CheckStatus.WARNING
+            score = 0.5
+        else:
+            status = CheckStatus.INFO
+            score = 1.0
+
+        checks.append(CheckResult(
+            check_id=f"cbm.{task.task_id}.entity_design.{node.name}",
+            task_id=task.task_id,
+            pipeline="cbm",
+            label=f"Entity '{node.user_label}' design",
+            status=status,
+            details="; ".join(details_parts),
+            score=score,
+        ))
+
+    return checks
+
+
+def _analyze_service_integration(
+    dialog: CBMDialog, task: TaskDefinition
+) -> list[CheckResult]:
+    """Analyze service node configuration — URLs, error handling, response processing."""
+    checks: list[CheckResult] = []
+    service_nodes = dialog.get_service_nodes()
+
+    if not service_nodes:
+        return checks
+
+    for node in service_nodes:
+        method = node.service_method or "unknown"
+        url = node.component.get("url") or node.raw.get("url") or ""
+
+        # Mask URL for security (show domain + path pattern only)
+        url_display = _mask_url(url) if url else "no URL configured"
+
+        # Check for response processing: is there a script node after this service node?
+        node_idx = next(
+            (i for i, n in enumerate(dialog.nodes) if n.node_id == node.node_id), -1
+        )
+        has_response_processing = False
+        has_error_handling = False
+        if node_idx >= 0 and node_idx < len(dialog.nodes) - 1:
+            next_node = dialog.nodes[node_idx + 1]
+            has_response_processing = next_node.node_type == NODE_TYPE_SCRIPT
+            # Check if any subsequent message node handles errors
+            for subsequent in dialog.nodes[node_idx + 1:]:
+                if subsequent.node_type == NODE_TYPE_MESSAGE:
+                    msg = subsequent.message_text.lower()
+                    if any(kw in msg for kw in ("error", "not found", "fail", "invalid")):
+                        has_error_handling = True
+                        break
+
+        details_parts = [f"{method} {url_display}"]
+        if has_response_processing:
+            details_parts.append("response processing (script node) detected")
+        if has_error_handling:
+            details_parts.append("error handling present")
+        else:
+            details_parts.append("no explicit error handling detected")
+
+        checks.append(CheckResult(
+            check_id=f"cbm.{task.task_id}.service_design.{node.name}",
+            task_id=task.task_id,
+            pipeline="cbm",
+            label=f"Service '{node.user_label}' integration",
+            status=CheckStatus.INFO,
+            details="; ".join(details_parts),
+            score=1.0,
+        ))
+
+    return checks
+
+
+def _mask_url(url: str) -> str:
+    """Mask a URL for security — show domain + path pattern, hide query params."""
+    import re as _re
+    # Remove query params and fragments
+    url = _re.split(r'[?#]', url)[0]
+    # Truncate if very long
+    if len(url) > 80:
+        url = url[:77] + "..."
+    return url
+
+
+def _build_dialog_architecture_card(
+    dialog: CBMDialog, task: TaskDefinition
+) -> EvidenceCard:
+    """Build a dialog architecture summary evidence card with detailed insights."""
+    # Count nodes by type
+    type_counts: dict[str, int] = {}
+    for node in dialog.nodes:
+        type_counts[node.node_type] = type_counts.get(node.node_type, 0) + 1
+
+    total_nodes = len(dialog.nodes)
+
+    # Flow complexity assessment
+    if total_nodes <= 5:
+        complexity = "Simple"
+    elif total_nodes <= 15:
+        complexity = "Moderate"
+    else:
+        complexity = "Complex"
+
+    lines = [
+        f"**Dialog Architecture — {dialog.name}**",
+        "",
+        f"**Flow Complexity:** {complexity} ({total_nodes} nodes)",
+        "",
+        "**Node Breakdown:**",
+    ]
+
+    type_labels = {
+        NODE_TYPE_ENTITY: "Entity",
+        NODE_TYPE_SERVICE: "Service",
+        NODE_TYPE_MESSAGE: "Message",
+        NODE_TYPE_SCRIPT: "Script",
+        NODE_TYPE_AGENT: "Agent (aiassist)",
+        NODE_TYPE_FORM: "Form",
+        NODE_TYPE_LOGIC: "Logic",
+        "prompt": "Prompt",
+        "confirmation": "Confirmation",
+        "webhook": "Webhook",
+    }
+
+    for node_type, count in sorted(type_counts.items()):
+        label = type_labels.get(node_type, node_type.title())
+        lines.append(f"  - {label}: {count}")
+
+    # Entity details
+    entity_nodes = dialog.get_entity_nodes()
+    if entity_nodes:
+        lines.append("")
+        lines.append("**Entity Configuration:**")
+        for node in entity_nodes:
+            entity_type = node.entity_type or "unknown"
+            validation = "validated" if node.validation_rules else "no validation"
+            lines.append(f"  - {node.user_label}: [{entity_type}] ({validation})")
+
+    # Service details
+    service_nodes = dialog.get_service_nodes()
+    if service_nodes:
+        lines.append("")
+        lines.append("**Service Endpoints:**")
+        for node in service_nodes:
+            method = node.service_method or "?"
+            url = node.component.get("url") or node.raw.get("url") or ""
+            url_display = _mask_url(url) if url else "no URL"
+            lines.append(f"  - {node.user_label}: {method} {url_display}")
+
+    content = "\n".join(lines)
+    return EvidenceCard(
+        card_id=f"cbm.{task.task_id}.architecture",
+        task_id=task.task_id,
+        title=f"Dialog Architecture — {task.task_name}",
+        content=content,
+        color=EvidenceCardColor.BLUE,
+        pipeline="cbm",
+        details={
+            "total_nodes": total_nodes,
+            "complexity": complexity,
+            "type_counts": type_counts,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Recommendations generator
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Recommendation:
+    """A single actionable recommendation from CBM analysis."""
+    title: str
+    description: str
+    priority: str  # "high", "medium", "low"
+    task_id: str = ""
+
+
+def generate_recommendations(
+    cbm: CBMObject, task_scores: list[TaskScore], manifest: Any = None,
+) -> list[Recommendation]:
+    """Generate actionable recommendations based on CBM analysis results."""
+    recs: list[Recommendation] = []
+
+    for ts in task_scores:
+        if ts.task_id == "faq":
+            continue
+
+        for check in ts.cbm_checks:
+            # Missing validation rules on required entities
+            if "validation" in check.check_id and check.status == CheckStatus.WARNING:
+                entity_name = check.label.replace("Entity '", "").replace("' validation rules", "")
+                recs.append(Recommendation(
+                    title=f"Add validation rules to '{entity_name}'",
+                    description=(
+                        f"Entity '{entity_name}' has no validation rules configured. "
+                        "Adding validation (regex, min/max length, or custom rules) "
+                        "prevents invalid input from reaching your API."
+                    ),
+                    priority="high",
+                    task_id=ts.task_id,
+                ))
+
+            # Missing error handling
+            if "not_found_handling" in check.check_id and check.status == CheckStatus.WARNING:
+                recs.append(Recommendation(
+                    title="Add error handling message",
+                    description=(
+                        "No error/not-found message node detected in the dialog. "
+                        "Add a message node that handles API errors or invalid lookups "
+                        "to improve user experience."
+                    ),
+                    priority="medium",
+                    task_id=ts.task_id,
+                ))
+
+            # Missing Agent Node for amendment
+            if "agent_node" in check.check_id and check.status == CheckStatus.FAIL:
+                recs.append(Recommendation(
+                    title="Add Agent Node for amendment support",
+                    description=(
+                        "The CREATE_WITH_AMENDMENT pattern requires an Agent Node "
+                        "(type 'aiassist') to handle mid-conversation amendments. "
+                        "Add one to enable entity correction before confirmation."
+                    ),
+                    priority="high",
+                    task_id=ts.task_id,
+                ))
+
+            # Missing summary/confirmation display
+            if "summary_display" in check.check_id and check.status == CheckStatus.WARNING:
+                recs.append(Recommendation(
+                    title="Add booking summary display",
+                    description=(
+                        "No prompt or message node found for displaying a booking summary "
+                        "before confirmation. Adding a summary step improves transparency "
+                        "and reduces errors."
+                    ),
+                    priority="medium",
+                    task_id=ts.task_id,
+                ))
+
+            # Service nodes without error handling
+            if "service_design" in check.check_id and "no explicit error handling" in check.details:
+                service_name = check.label.replace("Service '", "").replace("' integration", "")
+                recs.append(Recommendation(
+                    title=f"Add error handling for '{service_name}'",
+                    description=(
+                        f"Service node '{service_name}' has no obvious error handling branch. "
+                        "Add a message node to handle API failures gracefully "
+                        "(e.g., timeout, 404, 500 responses)."
+                    ),
+                    priority="medium",
+                    task_id=ts.task_id,
+                ))
+
+            # Entity design: no prompt
+            if "entity_design" in check.check_id and "no prompt configured" in check.details:
+                entity_name = check.label.replace("Entity '", "").replace("' design", "")
+                recs.append(Recommendation(
+                    title=f"Add prompt text to '{entity_name}'",
+                    description=(
+                        f"Entity '{entity_name}' has no explicit prompt configured. "
+                        "Adding a clear prompt question helps users understand what "
+                        "information is being requested."
+                    ),
+                    priority="low",
+                    task_id=ts.task_id,
+                ))
+
+    # Deduplicate by title
+    seen: set[str] = set()
+    unique: list[Recommendation] = []
+    for r in recs:
+        if r.title not in seen:
+            seen.add(r.title)
+            unique.append(r)
+
+    # Sort by priority
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    unique.sort(key=lambda r: priority_order.get(r.priority, 3))
+
+    return unique
 
 
 # ---------------------------------------------------------------------------

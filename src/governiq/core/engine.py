@@ -80,6 +80,7 @@ class EvaluationEngine:
             webhook_url=manifest.webhook_url,
             bearer_token=kore_bearer_token,
             kore_credentials=kore_credentials,
+            webhook_config=manifest.webhook_config,
         )
         self.state_inspector = StateInspector()
         self.kore_api_client: KoreAPIClient | None = None

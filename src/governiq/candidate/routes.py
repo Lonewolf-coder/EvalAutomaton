@@ -86,7 +86,7 @@ def _build_compliance_summary(scorecard: dict[str, Any]) -> dict[str, Any]:
 
 
 def _build_recommendations(scorecard: dict[str, Any]) -> list[dict[str, str]]:
-    """Generate plain-English recommendations from scorecard failures."""
+    """Generate plain-English recommendations from scorecard failures and CBM insights."""
     recs = []
     # Compliance failures
     for cr in scorecard.get("compliance_results", []):
@@ -112,6 +112,60 @@ def _build_recommendations(scorecard: dict[str, Any]) -> list[dict[str, str]]:
                 "priority": "high" if "required" in fc.get("details", "").lower() or "not found" in fc.get("details", "").lower() else "medium",
             })
 
+        # CBM insight-based recommendations (from warning-level checks)
+        warning_checks = [
+            c for c in ts.get("cbm_checks", [])
+            if c.get("status") == "warning"
+        ]
+        for wc in warning_checks:
+            check_id = wc.get("check_id", "")
+            details = wc.get("details", "")
+            if "validation" in check_id and "no validation" in details:
+                entity = wc.get("label", "").replace("Entity '", "").replace("' validation rules", "")
+                recs.append({
+                    "title": f"Add validation rules to '{entity}'",
+                    "description": (
+                        f"Entity '{entity}' has no validation rules. Adding validation "
+                        "(regex, min/max length) prevents invalid input from reaching your API."
+                    ),
+                    "priority": "high",
+                })
+            elif "not_found_handling" in check_id:
+                recs.append({
+                    "title": "Add error handling message",
+                    "description": (
+                        "No error/not-found message node detected. Add a message node "
+                        "that handles API errors or invalid lookups for better user experience."
+                    ),
+                    "priority": "medium",
+                })
+            elif "summary_display" in check_id:
+                recs.append({
+                    "title": "Add booking summary display",
+                    "description": (
+                        "No prompt or message node for displaying a booking summary "
+                        "before confirmation. A summary step improves transparency."
+                    ),
+                    "priority": "medium",
+                })
+
+        # Service nodes without error handling (from INFO checks)
+        info_checks = [
+            c for c in ts.get("cbm_checks", [])
+            if c.get("status") == "info" and "service_design" in c.get("check_id", "")
+            and "no explicit error handling" in c.get("details", "")
+        ]
+        for ic in info_checks:
+            service_name = ic.get("label", "").replace("Service '", "").replace("' integration", "")
+            recs.append({
+                "title": f"Add error handling for '{service_name}'",
+                "description": (
+                    f"Service node '{service_name}' has no error handling branch. "
+                    "Add a message node to handle API failures gracefully."
+                ),
+                "priority": "medium",
+            })
+
     # Deduplicate and limit
     seen = set()
     unique = []
@@ -122,7 +176,7 @@ def _build_recommendations(scorecard: dict[str, Any]) -> list[dict[str, str]]:
             unique.append(r)
     # Sort: high first
     unique.sort(key=lambda x: {"high": 0, "medium": 1, "low": 2}.get(x["priority"], 3))
-    return unique[:15]
+    return unique[:20]
 
 
 # ---------------------------------------------------------------------------
