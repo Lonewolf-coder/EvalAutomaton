@@ -60,27 +60,35 @@ def generate_jwt_token(
 ) -> str:
     """Generate a JWT token for Kore.ai authentication.
 
-    Args:
-        credentials: Bot credentials.
-        scope: "app" for webhook calls (direct bearer), "admin" for API token exchange.
-        expiry_seconds: Token lifetime (default 1 hour).
+    Two modes:
+      - scope="app"  (webhook): payload = {appId, sub, iat} — minimal per Kore.ai docs
+      - scope="admin" (API exchange): payload = {appId, sub, iat, exp}
 
-    Payload matches the actual Kore.ai jwtService format:
-        {appId, sub, scope, iat}  (exp is added via expiry)
-
-    Per Kore.ai docs: appId = clientId, sub = random number (NOT clientId).
+    Per Kore.ai webhook v2 docs:
+      - appId = Client ID (must be exactly "appId", case-sensitive)
+      - sub = random number (NOT the clientId)
+      - No scope field — not in Kore.ai JWT spec
+      - No exp for webhook (platform derives expiry from iat)
     """
     now = int(time.time())
 
     header = {"alg": "HS256", "typ": "JWT"}
 
-    payload = {
-        "appId": credentials.client_id,
-        "sub": str(int(time.time() * 1000)),  # Random number per Kore.ai docs
-        "scope": scope,
-        "iat": now,
-        "exp": now + expiry_seconds,
-    }
+    if scope == "app":
+        # Webhook calls: minimal payload per Kore.ai webhook v2 spec
+        payload = {
+            "appId": credentials.client_id,
+            "sub": str(int(time.time() * 1000)),
+            "iat": now,
+        }
+    else:
+        # Admin/API token exchange: includes exp for token lifetime
+        payload = {
+            "appId": credentials.client_id,
+            "sub": credentials.client_id,
+            "iat": now,
+            "exp": now + expiry_seconds,
+        }
 
     header_b64 = _base64url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8"))
     payload_b64 = _base64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))

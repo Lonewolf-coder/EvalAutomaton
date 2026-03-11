@@ -257,7 +257,31 @@ class EvaluationEngine:
                 pattern_result = await executor.execute()
             except Exception as e:
                 logger.error("Pattern execution failed for task '%s': %s", task.task_id, e)
-                continue
+                # Create a synthetic failure result instead of silently skipping
+                from ..patterns.base import PatternResult
+                pattern_result = PatternResult(
+                    task_id=task.task_id,
+                    pattern=task.pattern.value,
+                    success=False,
+                    error=str(e),
+                )
+                pattern_result.checks.append(CheckResult(
+                    check_id=f"webhook.{task.task_id}.execution",
+                    task_id=task.task_id,
+                    pipeline="webhook",
+                    label="Pattern execution",
+                    status=CheckStatus.FAIL,
+                    details=f"Pattern execution error: {e}",
+                    score=0.0,
+                ))
+                pattern_result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{task.task_id}.error",
+                    task_id=task.task_id,
+                    title=f"Webhook Error — {task.task_name}",
+                    content=f"Pattern: {task.pattern.value}\nError: {e}",
+                    color=EvidenceCardColor.RED,
+                    pipeline="webhook",
+                ))
 
             # Find the matching task score and add webhook results
             task_score = next(
@@ -276,12 +300,14 @@ class EvaluationEngine:
                 )
                 scorecard.task_scores.append(new_ts)
 
-            # State Inspector verification
+            # State Inspector verification — only if webhook succeeded
+            # (running after failure just adds confusing "Record not found" checks)
             if task.state_assertion and task.state_assertion.enabled:
-                si_checks, si_cards = await self.state_inspector.verify_task(task, context)
-                if task_score:
-                    task_score.webhook_checks.extend(si_checks)
-                    task_score.evidence_cards.extend(si_cards)
+                if pattern_result.success:
+                    si_checks, si_cards = await self.state_inspector.verify_task(task, context)
+                    if task_score:
+                        task_score.webhook_checks.extend(si_checks)
+                        task_score.evidence_cards.extend(si_cards)
 
             # State seeding check for CREATE tasks
             if task.pattern in (EnginePattern.CREATE, EnginePattern.CREATE_WITH_AMENDMENT):

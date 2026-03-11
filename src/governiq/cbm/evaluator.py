@@ -270,20 +270,21 @@ def _pattern_specific_checks(
                 score=1.0 if dialog.has_agent_node() else 0.0,
             ))
 
-        # Prompt node for booking summary
-        prompt_nodes = dialog.get_nodes_by_type("prompt")
-        message_nodes = dialog.get_nodes_by_type("message")
-        has_summary = bool(prompt_nodes or message_nodes)
-        checks.append(CheckResult(
-            check_id=f"cbm.{task.task_id}.summary_display",
-            task_id=task.task_id,
-            pipeline="cbm",
-            label="Summary/confirmation display node present",
-            status=CheckStatus.PASS if has_summary else CheckStatus.WARNING,
-            details=f"Found {len(prompt_nodes)} prompt and {len(message_nodes)} message node(s)."
-                    if has_summary else "No prompt or message node for summary display.",
-            score=1.0 if has_summary else 0.5,
-        ))
+        # Prompt node for booking summary — only for tasks that collect entities
+        if task.required_entities:
+            prompt_nodes = dialog.get_nodes_by_type("prompt")
+            message_nodes = dialog.get_nodes_by_type("message")
+            has_summary = bool(prompt_nodes or message_nodes)
+            checks.append(CheckResult(
+                check_id=f"cbm.{task.task_id}.summary_display",
+                task_id=task.task_id,
+                pipeline="cbm",
+                label="Summary/confirmation display node present",
+                status=CheckStatus.PASS if has_summary else CheckStatus.WARNING,
+                details=f"Found {len(prompt_nodes)} prompt and {len(message_nodes)} message node(s)."
+                        if has_summary else "No prompt or message node for summary display.",
+                score=1.0 if has_summary else 0.5,
+            ))
 
     elif task.pattern == EnginePattern.RETRIEVE:
         # Must have GET service node
