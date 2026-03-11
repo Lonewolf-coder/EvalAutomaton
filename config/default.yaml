@@ -27,6 +27,14 @@ webhook:
   retry_count: 3
   # Delay between retries (seconds)
   retry_delay: 2
+  # Cold-start warm-up retries and base delay (seconds)
+  warmup_max_retries: 3
+  warmup_base_delay: 5.0
+  # send_message() retries and base delay (seconds)
+  send_retry_count: 3
+  send_retry_base_delay: 2.0
+  # JWT token exchange retries (for get_kore_bearer_token)
+  token_exchange_retries: 3
 
 state_inspector:
   # Timeout for mock API calls (seconds)

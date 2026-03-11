@@ -8,50 +8,51 @@
     <script src="/static/js/lucide.min.js"></script>
     <style>
         /* ================================================================
-           GovernIQ Enterprise Design System v2.0
+           GovernIQ Enterprise Design System v3.0
+           Clean professional light + warm charcoal dark
            ================================================================ */
 
-        /* ---- Light Theme (default) ---- */
+        /* ---- Light Theme (default) — clean professional blue ---- */
         :root, [data-theme="light"] {
             --pass: #16a34a; --pass-bg: #dcfce7; --pass-text: #166534;
             --fail: #dc2626; --fail-bg: #fef2f2; --fail-text: #991b1b;
             --warn: #d97706; --warn-bg: #fef3c7; --warn-text: #92400e;
             --info: #2563eb; --info-bg: #dbeafe; --info-text: #1e40af;
-            --bg: #f8fafc; --bg-subtle: #f1f5f9; --card: #ffffff; --border: #e2e8f0;
+            --bg: #f1f5f9; --bg-subtle: #e8edf3; --card: #ffffff; --border: #e2e8f0;
             --text: #0f172a; --text-secondary: #334155; --muted: #64748b;
-            --primary: #4f46e5; --primary-hover: #4338ca; --primary-bg: #eef2ff; --primary-text: #3730a3;
-            --accent: #7c3aed; --accent-bg: #f5f3ff;
-            --radius: 12px; --radius-sm: 8px; --radius-xs: 6px;
+            --primary: #2563eb; --primary-hover: #1d4ed8; --primary-bg: #eff6ff; --primary-text: #1e40af;
+            --accent: #0891b2; --accent-bg: #ecfeff;
+            --radius: 10px; --radius-sm: 8px; --radius-xs: 6px;
             --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-            --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
-            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
-            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1);
+            --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.06);
             --nav-bg: #0f172a; --nav-link: #94a3b8; --nav-active: #fff;
             --table-header-bg: #f8fafc; --card-footer-bg: #f8fafc;
             --input-bg: #fff; --code-bg: #f1f5f9;
             --hover-bg: #f8fafc; --hover-border: #cbd5e1;
-            --gradient-start: #4f46e5; --gradient-end: #7c3aed;
+            --gradient-start: #2563eb; --gradient-end: #0891b2;
         }
 
-        /* ---- Dark Theme ---- */
+        /* ---- Dark Theme — warm charcoal with teal accents ---- */
         [data-theme="dark"] {
-            --pass: #22c55e; --pass-bg: #052e16; --pass-text: #bbf7d0;
-            --fail: #ef4444; --fail-bg: #450a0a; --fail-text: #fecaca;
-            --warn: #f59e0b; --warn-bg: #451a03; --warn-text: #fde68a;
-            --info: #3b82f6; --info-bg: #172554; --info-text: #bfdbfe;
-            --bg: #0c0f1a; --bg-subtle: #111827; --card: #1a1f2e; --border: #2d3548;
-            --text: #f1f5f9; --text-secondary: #cbd5e1; --muted: #94a3b8;
-            --primary: #818cf8; --primary-hover: #6366f1; --primary-bg: #1e1b4b; --primary-text: #c7d2fe;
-            --accent: #a78bfa; --accent-bg: #2e1065;
-            --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-            --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
-            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
-            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.4), 0 4px 6px -4px rgba(0,0,0,0.3);
-            --nav-bg: #070a12; --nav-link: #64748b; --nav-active: #f1f5f9;
-            --table-header-bg: #151b2b; --card-footer-bg: #151b2b;
-            --input-bg: #151b2b; --code-bg: #151b2b;
-            --hover-bg: #1e2536; --hover-border: #3d4a5e;
-            --gradient-start: #6366f1; --gradient-end: #a78bfa;
+            --pass: #34d399; --pass-bg: #042f2e; --pass-text: #a7f3d0;
+            --fail: #f87171; --fail-bg: #3b0a0a; --fail-text: #fecaca;
+            --warn: #fbbf24; --warn-bg: #3b2506; --warn-text: #fde68a;
+            --info: #38bdf8; --info-bg: #0c2744; --info-text: #bae6fd;
+            --bg: #1a1a1a; --bg-subtle: #222222; --card: #2a2a2a; --border: #3d3d3d;
+            --text: #ececec; --text-secondary: #c4c4c4; --muted: #8a8a8a;
+            --primary: #38bdf8; --primary-hover: #22a5e0; --primary-bg: #0c2744; --primary-text: #bae6fd;
+            --accent: #2dd4bf; --accent-bg: #042f2e;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+            --shadow: 0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.5), 0 2px 4px -2px rgba(0,0,0,0.4);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.4);
+            --nav-bg: #111111; --nav-link: #737373; --nav-active: #ececec;
+            --table-header-bg: #262626; --card-footer-bg: #262626;
+            --input-bg: #262626; --code-bg: #262626;
+            --hover-bg: #333333; --hover-border: #4d4d4d;
+            --gradient-start: #38bdf8; --gradient-end: #2dd4bf;
         }
 
         /* Dark theme overrides for colored elements */
@@ -60,17 +61,17 @@
         [data-theme="dark"] .badge-warn { background: var(--warn-bg); color: var(--warn-text); }
         [data-theme="dark"] .badge-info { background: var(--info-bg); color: var(--info-text); }
         [data-theme="dark"] .badge-grey { background: var(--border); color: var(--muted); }
-        [data-theme="dark"] .alert-danger { background: var(--fail-bg); color: var(--fail-text); border-color: #7f1d1d; }
-        [data-theme="dark"] .alert-warning { background: var(--warn-bg); color: var(--warn-text); border-color: #78350f; }
-        [data-theme="dark"] .alert-success { background: var(--pass-bg); color: var(--pass-text); border-color: #166534; }
-        [data-theme="dark"] .alert-info { background: var(--info-bg); color: var(--info-text); border-color: #1e3a5f; }
+        [data-theme="dark"] .alert-danger { background: var(--fail-bg); color: var(--fail-text); border-color: #5c1a1a; }
+        [data-theme="dark"] .alert-warning { background: var(--warn-bg); color: var(--warn-text); border-color: #5c3a0e; }
+        [data-theme="dark"] .alert-success { background: var(--pass-bg); color: var(--pass-text); border-color: #064e3b; }
+        [data-theme="dark"] .alert-info { background: var(--info-bg); color: var(--info-text); border-color: #164e72; }
         [data-theme="dark"] .score-ring--pass { background: var(--pass-bg); }
         [data-theme="dark"] .score-ring--fail { background: var(--fail-bg); }
         [data-theme="dark"] .score-ring--warn { background: var(--warn-bg); }
         [data-theme="dark"] .evidence--green .evidence-header { background: var(--pass-bg); }
         [data-theme="dark"] .evidence--red .evidence-header { background: var(--fail-bg); }
         [data-theme="dark"] .evidence--amber .evidence-header { background: var(--warn-bg); }
-        [data-theme="dark"] .evidence--blue .evidence-header { background: #1e3a5f; }
+        [data-theme="dark"] .evidence--blue .evidence-header { background: var(--info-bg); }
         [data-theme="dark"] .check-icon--pass { background: var(--pass-bg); }
         [data-theme="dark"] .check-icon--fail { background: var(--fail-bg); }
         [data-theme="dark"] .check-icon--warn { background: var(--warn-bg); }
@@ -92,20 +93,15 @@
             display: flex; align-items: center; height: 56px;
             position: sticky; top: 0; z-index: 100;
             border-bottom: 1px solid rgba(255,255,255,0.06);
-            backdrop-filter: blur(12px);
         }
         .topnav-brand {
-            font-weight: 700; font-size: 1.1rem; letter-spacing: -0.3px;
-            display: flex; align-items: center; gap: .6rem;
-            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            background-clip: text;
+            font-weight: 700; font-size: 1.15rem; letter-spacing: -0.3px;
+            display: flex; align-items: center; gap: .5rem; color: #fff;
         }
         .topnav-brand .brand-icon {
             width: 28px; height: 28px; border-radius: 8px;
-            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            background: var(--primary);
             display: flex; align-items: center; justify-content: center;
-            -webkit-text-fill-color: #fff;
         }
         .topnav-brand .brand-icon i { color: #fff; }
         .topnav-links { margin-left: auto; display: flex; gap: 0; align-items: center; }
@@ -166,7 +162,7 @@
             line-height: 1.4;
         }
         .btn-primary { background: var(--primary); color: #fff; }
-        .btn-primary:hover { background: var(--primary-hover); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+        .btn-primary:hover { background: var(--primary-hover); box-shadow: var(--shadow-md); }
         .btn-outline { background: transparent; color: var(--primary); border: 1px solid var(--border); }
         .btn-outline:hover { border-color: var(--primary); background: var(--primary-bg); }
         .btn-success { background: var(--pass); color: #fff; }
@@ -188,7 +184,7 @@
         }
         .form-input:focus, .form-select:focus, .form-textarea:focus {
             outline: none; border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+            box-shadow: 0 0 0 3px rgba(37,99,235,.1);
         }
         .form-textarea { min-height: 100px; resize: vertical; }
 
@@ -391,7 +387,7 @@
     <footer class="footer">
         <div style="display:flex; align-items:center; justify-content:center; gap:.5rem;">
             <i data-lucide="shield-check" class="icon icon-sm"></i>
-            GovernIQ Universal Evaluation Platform &mdash; Domain-Agnostic Assessment Engine v2.0
+            GovernIQ Universal Evaluation Platform &mdash; Domain-Agnostic Assessment Engine v3.0
         </div>
     </footer>
 

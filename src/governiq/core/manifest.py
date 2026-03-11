@@ -137,6 +137,15 @@ class StateSeedingConfig(BaseModel):
     seed_endpoint: str = Field(default="", description="POST endpoint for seeding")
 
 
+class WebhookConfig(BaseModel):
+    """Webhook retry/reliability configuration."""
+    warmup_max_retries: int = Field(default=3, description="Max retries for warm-up probe")
+    warmup_base_delay: float = Field(default=5.0, description="Base delay (seconds) for warm-up backoff")
+    send_retry_count: int = Field(default=3, description="Max retries for send_message()")
+    send_retry_base_delay: float = Field(default=2.0, description="Base delay (seconds) for send backoff")
+    token_exchange_retries: int = Field(default=3, description="Max retries for JWT token exchange")
+
+
 class ScoringConfig(BaseModel):
     """Scoring weights and thresholds."""
     cbm_structural_weight: float = Field(default=0.40)
@@ -238,6 +247,9 @@ class Manifest(BaseModel):
 
     # Compliance checks
     compliance_checks: list[ComplianceCheck] = Field(default_factory=list)
+
+    # Webhook reliability
+    webhook_config: WebhookConfig = Field(default_factory=WebhookConfig)
 
     # Scoring
     scoring_config: ScoringConfig = Field(default_factory=ScoringConfig)
