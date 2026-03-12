@@ -1,0 +1,31 @@
+{
+    "name": "Medi_Assistant",
+    "envVariables": [
+        {
+            "key": "botId",
+            "value": "st-63468c02-3f5a-5357-8c14-4986f1222443",
+            "variableType": "env",
+            "hint": "",
+            "scope": "prePopulated",
+            "group": "",
+            "propagateValue": false,
+            "vNameSpace": [
+                "5f97e330ade5b8100b912d1a"
+            ],
+            "isSecured": false
+        },
+        {
+            "key": "host",
+            "value": "https://platform.kore.ai/",
+            "variableType": "env",
+            "hint": "",
+            "scope": "prePopulated",
+            "group": "",
+            "propagateValue": false,
+            "vNameSpace": [
+                "5f97e330ade5b8100b912d1a"
+            ],
+            "isSecured": false
+        }
+    ]
+}
