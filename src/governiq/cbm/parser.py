@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import json
 import re
+import tempfile
 import urllib.parse
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -599,3 +601,14 @@ def parse_bot_export_file(file_path: str | Path) -> CBMObject:
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
     return parse_bot_export(data)
+
+
+def parse_bot_export_zip(zip_path: str | Path) -> CBMObject:
+    """Convenience: parse a Kore.ai bot export directly from a ZIP file.
+
+    The ZIP must contain appDefinition.json at the top level (Kore.ai export format).
+    """
+    with tempfile.TemporaryDirectory() as td:
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(td)
+        return parse_bot_export_file(Path(td) / "appDefinition.json")
