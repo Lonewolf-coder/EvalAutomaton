@@ -12,7 +12,7 @@ from governiq.core.scoring import CheckStatus
 
 
 SAMPLE_EXPORT = Path(__file__).parent / "sample_bot_export.json"
-MANIFEST_PATH = Path(__file__).parent.parent / "manifests" / "medical_appointment_basic.json"
+MANIFEST_PATH = Path(__file__).parent.parent / "manifests" / "archived" / "medical_appointment_basic.json"
 
 
 @pytest.fixture

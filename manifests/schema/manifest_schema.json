@@ -73,6 +73,14 @@
       "description": "Help text for evaluators, displayed alongside node types in the report.",
       "items": { "$ref": "#/$defs/Tooltip" }
     },
+    "assignment_brief": {
+      "$ref": "#/$defs/AssignmentBrief",
+      "description": "Candidate-facing: what to build, entities, APIs, submission instructions."
+    },
+    "submission_config": {
+      "$ref": "#/$defs/SubmissionConfig",
+      "description": "Controls retry logic and evaluator confirmation flow."
+    },
     "created_by": {
       "type": "string",
       "default": "",
@@ -323,10 +331,10 @@
     },
     "ScoringConfig": {
       "type": "object",
-      "description": "Scoring weights. Webhook is the authority — CBM is informational reference.",
+      "description": "Scoring weights. Webhook is the authority (0.80) — CBM is informational only (0.0).",
       "properties": {
-        "cbm_structural_weight": { "type": "number", "default": 0.40 },
-        "webhook_functional_weight": { "type": "number", "default": 0.40 },
+        "cbm_structural_weight": { "type": "number", "default": 0.0 },
+        "webhook_functional_weight": { "type": "number", "default": 0.80 },
         "compliance_weight": { "type": "number", "default": 0.10 },
         "faq_weight": { "type": "number", "default": 0.10 },
         "pass_threshold": { "type": "number", "default": 0.70, "description": "Minimum overall score to pass (0.0 to 1.0)." }
@@ -440,7 +448,50 @@
           "type": "number",
           "default": 1.0,
           "description": "Scoring weight multiplier for this task."
+        },
+        "expected_output": {
+          "$ref": "#/$defs/ExpectedOutput",
+          "description": "Per-task pass criteria authored at manifest time, validated in Phase 5."
         }
+      }
+    },
+    "AssignmentBrief": {
+      "type": "object",
+      "description": "Candidate-facing brief: what to build, entities to collect, API endpoints, submission instructions.",
+      "properties": {
+        "scenario_title": { "type": "string", "default": "" },
+        "scenario_description": { "type": "string", "default": "" },
+        "what_to_build": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "entities_to_collect": { "type": "array", "items": { "type": "object" }, "default": [] },
+        "api_endpoints": { "type": "array", "items": { "type": "object" }, "default": [] },
+        "validation_rules": { "type": "array", "items": { "type": "object" }, "default": [] },
+        "faq_topics": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "mock_api_setup_instructions": { "type": "string", "default": "" },
+        "submission_instructions": { "type": "string", "default": "" }
+      }
+    },
+    "SubmissionConfig": {
+      "type": "object",
+      "description": "Controls retry logic and evaluator confirmation flow.",
+      "properties": {
+        "max_attempts": { "type": "integer", "default": 6 },
+        "require_evaluator_confirmation": { "type": "boolean", "default": true },
+        "allow_evaluator_exception": { "type": "boolean", "default": true },
+        "feedback_mode": {
+          "type": "string",
+          "enum": ["immediate", "after_all_attempts", "never"],
+          "default": "immediate"
+        }
+      }
+    },
+    "ExpectedOutput": {
+      "type": "object",
+      "description": "Per-task pass criteria authored at manifest time, validated in Phase 5.",
+      "properties": {
+        "score_min": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.0 },
+        "must_pass_checks": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "evidence_required": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "notes": { "type": "string", "default": "" }
       }
     }
   }

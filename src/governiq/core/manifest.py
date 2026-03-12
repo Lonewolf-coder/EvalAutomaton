@@ -130,6 +130,35 @@ class ComplianceCheck(BaseModel):
     tooltip: str = Field(default="", description="Plain-English explanation for evaluator")
 
 
+class AssignmentBrief(BaseModel):
+    """Candidate-facing: scenario description, what to build, entities, APIs, submission instructions."""
+    scenario_title: str = ""
+    scenario_description: str = ""
+    what_to_build: list[str] = Field(default_factory=list)
+    entities_to_collect: list[dict] = Field(default_factory=list)  # [{name, description, validation?}]
+    api_endpoints: list[dict] = Field(default_factory=list)        # [{name, method, description}]
+    validation_rules: list[dict] = Field(default_factory=list)     # [{entity, rule, description}]
+    faq_topics: list[str] = Field(default_factory=list)
+    mock_api_setup_instructions: str = ""
+    submission_instructions: str = ""
+
+
+class SubmissionConfig(BaseModel):
+    """Controls retry logic and evaluator confirmation flow."""
+    max_attempts: int = Field(default=6)
+    require_evaluator_confirmation: bool = Field(default=True)
+    allow_evaluator_exception: bool = Field(default=True)
+    feedback_mode: str = Field(default="immediate", description="immediate | after_all_attempts | never")
+
+
+class ExpectedOutput(BaseModel):
+    """Per-task pass criteria — authored at manifest time, validated in Phase 5."""
+    score_min: float = Field(default=0.0, description="Task must score >= this to count as passing")
+    must_pass_checks: list[str] = Field(default_factory=list, description="check_id strings that must be PASS")
+    evidence_required: list[str] = Field(default_factory=list, description="e.g. post_create_snapshot")
+    notes: str = Field(default="", description="Human-readable intent for this task")
+
+
 class StateSeedingConfig(BaseModel):
     """Configuration for state seeding when Task 2 fails to create records."""
     enabled: bool = True
@@ -147,9 +176,12 @@ class WebhookConfig(BaseModel):
 
 
 class ScoringConfig(BaseModel):
-    """Scoring weights and thresholds."""
-    cbm_structural_weight: float = Field(default=0.40)
-    webhook_functional_weight: float = Field(default=0.40)
+    """Scoring weights and thresholds.
+
+    CBM is informational only (weight=0). Webhook is the scoring authority (weight=0.80).
+    """
+    cbm_structural_weight: float = Field(default=0.0)
+    webhook_functional_weight: float = Field(default=0.80)
     compliance_weight: float = Field(default=0.10)
     faq_weight: float = Field(default=0.10)
     pass_threshold: float = Field(default=0.70, description="Minimum overall score to pass")
@@ -211,6 +243,9 @@ class TaskDefinition(BaseModel):
     # Scoring weight override for this task
     weight: float = Field(default=1.0)
 
+    # Expected output — pass criteria authored at manifest time, validated in Phase 5
+    expected_output: ExpectedOutput = Field(default_factory=ExpectedOutput)
+
 
 # ---------------------------------------------------------------------------
 # Top-Level Manifest
@@ -259,6 +294,12 @@ class Manifest(BaseModel):
 
     # Tooltips for CBM Map (declared here, not in engine code)
     tooltips: list[Tooltip] = Field(default_factory=list)
+
+    # Assignment brief (candidate-facing)
+    assignment_brief: AssignmentBrief = Field(default_factory=AssignmentBrief)
+
+    # Submission configuration
+    submission_config: SubmissionConfig = Field(default_factory=SubmissionConfig)
 
     # Metadata
     created_by: str = Field(default="")

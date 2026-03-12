@@ -6,7 +6,7 @@
     <div class="flex-between spacer">
         <div>
             <h1><i data-lucide="{% if manifest_data %}pencil{% else %}plus-circle{% endif %}" class="icon icon-lg" style="margin-right:.4rem;"></i> {{ 'Edit Manifest' if manifest_data else 'Create New Manifest' }}</h1>
-            <p class="text-muted">{% if manifest_data %}Editing: {{ manifest_data.manifest_id }}{% else %}Define a new assessment evaluation manifest.{% endif %}</p>
+            <p class="text-muted">{% if manifest_data %}Editing: <code>{{ manifest_data.manifest_id }}</code>{% else %}Build a new assessment evaluation manifest.{% endif %}</p>
         </div>
         <div class="flex gap-2">
             <span class="portal-badge portal-badge--admin">Admin</span>
@@ -21,21 +21,11 @@
     {% if success %}
     <div class="alert alert-success"><i data-lucide="check-circle-2" class="icon icon-sm" style="flex-shrink:0;"></i> {{ success }}</div>
     {% endif %}
-    {% if not manifest_data %}
-    <div class="alert alert-info">
-        <i data-lucide="info" class="icon icon-sm" style="flex-shrink:0;margin-top:2px;"></i>
-        <div>
-            <strong>Pre-filled with a comprehensive sample.</strong> This form is pre-populated with a full 6-pattern sample manifest (CREATE, CREATE_WITH_AMENDMENT, RETRIEVE, EDGE_CASE, MODIFY, DELETE).
-            Use the <strong>JSON Editor</strong> tab to paste your own JSON directly. Change the <strong>manifest_id</strong> and <strong>Assessment Name</strong> before saving.
-            See the <a href="/admin/manifest/schema" target="_blank" style="color:var(--info-text);text-decoration:underline;">Schema Reference</a> for all available fields.
-        </div>
-    </div>
-    {% endif %}
 
-    <!-- Mode Tabs: Form vs JSON -->
+    <!-- Mode Tabs -->
     <div class="card spacer">
         <div class="card-header" style="display:flex; gap:0;">
-            <button class="btn btn-primary" id="tabForm" onclick="showTab('form')" style="border-radius:var(--radius) 0 0 var(--radius);"><i data-lucide="form-input" class="icon icon-sm"></i> Form Editor</button>
+            <button class="btn btn-primary" id="tabForm" onclick="showTab('form')" style="border-radius:var(--radius) 0 0 var(--radius);"><i data-lucide="form-input" class="icon icon-sm"></i> Form Builder</button>
             <button class="btn btn-outline" id="tabJson" onclick="showTab('json')" style="border-radius:0 var(--radius) var(--radius) 0;"><i data-lucide="braces" class="icon icon-sm"></i> JSON Editor</button>
             <div style="margin-left:auto; display:flex; gap:.5rem;">
                 <label class="btn btn-outline" style="cursor:pointer;">
@@ -47,136 +37,266 @@
         </div>
     </div>
 
-    <!-- ==== FORM MODE ==== -->
-    <form id="manifestForm" action="/admin/manifest/save" method="post" class="formMode">
+    <!-- ==================== FORM MODE ==================== -->
+    <form id="manifestForm" action="/admin/manifest/save" method="post" class="formMode" onsubmit="prepareFormSubmit()">
         <input type="hidden" name="original_id" value="{{ manifest_data.manifest_id if manifest_data else '' }}">
+        <!-- Hidden serialized JSON fields — populated by JS on submit -->
+        <input type="hidden" name="tasks_json" id="hTasksJson" value="[]">
+        <input type="hidden" name="compliance_json" id="hComplianceJson" value="[]">
+        <input type="hidden" name="faq_json" id="hFaqJson" value="{}">
+        <input type="hidden" name="assignment_brief_json" id="hBriefJson" value="{}">
+        <input type="hidden" name="submission_config_json" id="hSubConfigJson" value="{}">
+        <input type="hidden" name="tooltips_json" id="hTooltipsJson" value="[]">
 
-        <!-- Basic Info -->
+        <!-- ── 1. Basic Information ── -->
         <div class="card spacer">
             <div class="card-header"><h3><i data-lucide="info" class="icon" style="margin-right:.4rem;"></i> Basic Information</h3></div>
             <div class="card-body">
                 <div class="grid-2">
                     <div class="form-group">
-                        <label class="form-label"><i data-lucide="fingerprint" class="icon icon-sm"></i> Manifest ID</label>
-                        <input type="text" name="manifest_id" class="form-input" value="{{ manifest_data.manifest_id if manifest_data else '' }}" placeholder="e.g. medical_appointment_basic" required>
-                        <div class="form-hint">Unique identifier. Use lowercase with underscores. Used as the filename.</div>
+                        <label class="form-label">Manifest ID *</label>
+                        <input type="text" name="manifest_id" id="fManifestId" class="form-input" value="{{ manifest_data.manifest_id if manifest_data else '' }}" placeholder="e.g. travel_assistant_basic_v1" required>
+                        <div class="form-hint">Lowercase with underscores. Used as filename.</div>
                     </div>
                     <div class="form-group">
-                        <label class="form-label"><i data-lucide="tag" class="icon icon-sm"></i> Assessment Name</label>
-                        <input type="text" name="assessment_name" class="form-input" value="{{ manifest_data.assessment_name if manifest_data else '' }}" placeholder="e.g. Medical Appointment Bot - Basic" required>
+                        <label class="form-label">Assessment Name *</label>
+                        <input type="text" name="assessment_name" class="form-input" value="{{ manifest_data.assessment_name if manifest_data else '' }}" placeholder="e.g. Travel Assistant — Basic" required>
                     </div>
                 </div>
                 <div class="grid-3">
                     <div class="form-group">
-                        <label class="form-label"><i data-lucide="folder" class="icon icon-sm"></i> Assessment Type</label>
-                        <input type="text" name="assessment_type" class="form-input" value="{{ manifest_data.assessment_type if manifest_data else '' }}" placeholder="e.g. medical, travel, hr">
+                        <label class="form-label">Assessment Type</label>
+                        <input type="text" name="assessment_type" class="form-input" value="{{ manifest_data.assessment_type if manifest_data else '' }}" placeholder="e.g. travel_basic">
                     </div>
                     <div class="form-group">
-                        <label class="form-label"><i data-lucide="hash" class="icon icon-sm"></i> Version</label>
+                        <label class="form-label">Version</label>
                         <input type="text" name="manifest_version" class="form-input" value="{{ manifest_data.manifest_version if manifest_data else '1.0' }}">
                     </div>
                     <div class="form-group">
-                        <label class="form-label"><i data-lucide="user" class="icon icon-sm"></i> Created By</label>
+                        <label class="form-label">Created By</label>
                         <input type="text" name="created_by" class="form-input" value="{{ manifest_data.created_by if manifest_data else '' }}">
                     </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label"><i data-lucide="text" class="icon icon-sm"></i> Description</label>
-                    <textarea name="description" class="form-textarea" rows="2">{{ manifest_data.description if manifest_data else '' }}</textarea>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" class="form-textarea" rows="2">{{ manifest_data.description if manifest_data else '' }}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Internal Notes</label>
+                        <textarea name="notes" class="form-textarea" rows="2">{{ manifest_data.notes if manifest_data else '' }}</textarea>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label"><i data-lucide="sticky-note" class="icon icon-sm"></i> Notes (internal)</label>
-                    <textarea name="notes" class="form-textarea" rows="2">{{ manifest_data.notes if manifest_data else '' }}</textarea>
-                </div>
-            </div>
-        </div>
-
-        <!-- Conversation Starter -->
-        <div class="card spacer">
-            <div class="card-header"><h3><i data-lucide="message-square" class="icon" style="margin-right:.4rem;"></i> Conversation Settings</h3></div>
-            <div class="card-body">
-                <div class="form-group">
-                    <label class="form-label"><i data-lucide="message-circle" class="icon icon-sm"></i> Conversation Starter (fallback)</label>
+                <div class="form-group" style="max-width:320px;">
+                    <label class="form-label">Conversation Starter (fallback)</label>
                     <input type="text" name="conversation_starter" class="form-input" value="{{ manifest_data.conversation_starter if manifest_data else 'Hi' }}">
-                    <div class="form-hint">Fallback opening message. The LLM generates a natural opener — this is only used if LLM is unavailable.</div>
+                    <div class="form-hint">Used only if LLM is unavailable.</div>
                 </div>
             </div>
         </div>
 
-        <!-- Scoring Config -->
+        <!-- ── 2. Assignment Brief ── -->
+        <div class="card spacer">
+            <div class="card-header">
+                <h3><i data-lucide="clipboard" class="icon" style="margin-right:.4rem;"></i> Assignment Brief <span class="badge badge-info" style="margin-left:.5rem;font-size:.7rem;">Candidate-facing</span></h3>
+                <p class="text-muted text-small" style="margin-top:.25rem;">Visible to candidates — describes what to build, entities, APIs, and submission instructions.</p>
+            </div>
+            <div class="card-body">
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Scenario Title</label>
+                        <input type="text" id="bf_title" class="form-input" placeholder="e.g. Travel Assistant AI Agent — Basic">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Assessment Type Label</label>
+                        <input type="text" id="bf_type_label" class="form-input" placeholder="e.g. Automation AI Basic Assignment">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Scenario Description</label>
+                    <textarea id="bf_desc" class="form-textarea" rows="3" placeholder="Describe the chatbot the candidate must build..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">What to Build <button type="button" class="btn btn-outline btn-xs" onclick="addListItem('bf_build_list','what_to_build')">+ Add Item</button></label>
+                    <div id="bf_build_list" class="dynamic-list"></div>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Entities to Collect <button type="button" class="btn btn-outline btn-xs" onclick="addEntityRow('bf_entities')">+ Add Entity</button></label>
+                        <div id="bf_entities" class="dynamic-list"></div>
+                        <div class="form-hint">name, description, optional validation note</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">API Endpoints <button type="button" class="btn btn-outline btn-xs" onclick="addApiRow('bf_apis')">+ Add API</button></label>
+                        <div id="bf_apis" class="dynamic-list"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Validation Rules <button type="button" class="btn btn-outline btn-xs" onclick="addValidationRow('bf_validations')">+ Add Rule</button></label>
+                    <div id="bf_validations" class="dynamic-list"></div>
+                    <div class="form-hint">Entity → validation rule → description (e.g. contactNumber → must be 10 digits)</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">FAQ Topics <button type="button" class="btn btn-outline btn-xs" onclick="addListItem('bf_faq_topics','faq_topics')">+ Add Topic</button></label>
+                    <div id="bf_faq_topics" class="dynamic-list"></div>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Mock API Setup Instructions</label>
+                        <textarea id="bf_mock_instructions" class="form-textarea" rows="2" placeholder="Deploy the provided MockAPI collection. Base URL will be provided by the evaluator."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Submission Instructions</label>
+                        <textarea id="bf_submit_instructions" class="form-textarea" rows="2" placeholder="Export your bot from Kore.ai XO Platform and submit the ZIP file..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 3. Submission Config ── -->
+        <div class="card spacer">
+            <div class="card-header"><h3><i data-lucide="settings-2" class="icon" style="margin-right:.4rem;"></i> Submission Configuration</h3></div>
+            <div class="card-body">
+                <div class="grid-3" style="grid-template-columns: repeat(4, 1fr);">
+                    <div class="form-group">
+                        <label class="form-label">Max Attempts</label>
+                        <input type="number" id="sc_max_attempts" class="form-input" value="6" min="1" max="20">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Feedback Mode</label>
+                        <select id="sc_feedback_mode" class="form-input">
+                            <option value="immediate">Immediate</option>
+                            <option value="after_all_attempts">After all attempts</option>
+                            <option value="never">Never</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="display:flex; flex-direction:column; justify-content:flex-end; gap:.5rem; padding-bottom:.25rem;">
+                        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+                            <input type="checkbox" id="sc_require_confirmation" checked> Require evaluator confirmation
+                        </label>
+                        <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+                            <input type="checkbox" id="sc_allow_exception" checked> Allow exception (extra attempts)
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── 4. Scoring Config ── -->
         <div class="card spacer">
             <div class="card-header"><h3><i data-lucide="calculator" class="icon" style="margin-right:.4rem;"></i> Scoring Configuration</h3></div>
             <div class="card-body">
                 <div class="grid-3" style="grid-template-columns: repeat(5, 1fr);">
                     <div class="form-group">
                         <label class="form-label">CBM Weight</label>
-                        <input type="number" name="cbm_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.cbm_structural_weight if manifest_data and manifest_data.scoring_config else 0.40 }}">
+                        <input type="number" name="cbm_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.cbm_structural_weight if manifest_data and manifest_data.scoring_config else 0.0 }}" onchange="updateWeightSum()">
+                        <div class="form-hint" style="color:var(--muted);">Informational only</div>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Webhook Weight</label>
-                        <input type="number" name="webhook_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.webhook_functional_weight if manifest_data and manifest_data.scoring_config else 0.40 }}">
+                        <input type="number" name="webhook_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.webhook_functional_weight if manifest_data and manifest_data.scoring_config else 0.80 }}" onchange="updateWeightSum()">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Compliance Weight</label>
-                        <input type="number" name="compliance_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.compliance_weight if manifest_data and manifest_data.scoring_config else 0.10 }}">
+                        <input type="number" name="compliance_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.compliance_weight if manifest_data and manifest_data.scoring_config else 0.10 }}" onchange="updateWeightSum()">
                     </div>
                     <div class="form-group">
                         <label class="form-label">FAQ Weight</label>
-                        <input type="number" name="faq_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.faq_weight if manifest_data and manifest_data.scoring_config else 0.10 }}">
+                        <input type="number" name="faq_weight" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.faq_weight if manifest_data and manifest_data.scoring_config else 0.10 }}" onchange="updateWeightSum()">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Pass Threshold</label>
                         <input type="number" name="pass_threshold" class="form-input" step="0.05" min="0" max="1" value="{{ manifest_data.scoring_config.pass_threshold if manifest_data and manifest_data.scoring_config else 0.70 }}">
                     </div>
                 </div>
-                <div class="form-hint">Weights should sum to 1.0. Webhook is the scoring authority; CBM weight is for informational reference.</div>
+                <div id="weightSumMsg" class="form-hint"></div>
             </div>
         </div>
 
-        <!-- Tasks, Compliance, FAQs -->
+        <!-- ── 5. Tasks ── -->
         <div class="card spacer">
-            <div class="card-header">
-                <div class="flex-between">
-                    <h3><i data-lucide="list-checks" class="icon" style="margin-right:.4rem;"></i> Tasks, Compliance Checks &amp; FAQs</h3>
-                    <span class="badge badge-info"><i data-lucide="braces" class="icon icon-sm"></i> Edit via JSON</span>
-                </div>
+            <div class="card-header flex-between">
+                <h3><i data-lucide="list-checks" class="icon" style="margin-right:.4rem;"></i> Tasks</h3>
+                <button type="button" class="btn btn-primary btn-sm" onclick="addTask()"><i data-lucide="plus" class="icon icon-sm"></i> Add Task</button>
             </div>
-            <div class="card-body">
-                <p class="text-small text-muted spacer">Tasks, compliance checks, and FAQs have complex nested structures. Use the JSON editor tab above, or edit the JSON below directly.</p>
-                <div class="form-group">
-                    <label class="form-label"><i data-lucide="clipboard-list" class="icon icon-sm"></i> Tasks (JSON array)</label>
-                    <textarea name="tasks_json" class="form-textarea" rows="12" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ tasks_json | safe }}</textarea>
-                </div>
-                <div class="form-group">
-                    <label class="form-label"><i data-lucide="shield" class="icon icon-sm"></i> Compliance Checks (JSON array)</label>
-                    <textarea name="compliance_json" class="form-textarea" rows="6" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ compliance_json | safe }}</textarea>
-                </div>
-                <div class="form-group">
-                    <label class="form-label"><i data-lucide="help-circle" class="icon icon-sm"></i> FAQ Config (JSON object)</label>
-                    <textarea name="faq_json" class="form-textarea" rows="6" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ faq_json | safe }}</textarea>
-                </div>
+            <div class="card-body" style="padding:.5rem;">
+                <div id="tasksContainer"></div>
+                <p class="text-muted text-small" id="tasksEmpty" style="padding:1rem;">No tasks yet — click "Add Task" to begin.</p>
             </div>
         </div>
 
-        <div class="flex gap-2">
-            <button type="submit" class="btn btn-primary btn-lg"><i data-lucide="save" class="icon"></i> Save Manifest</button>
-            {% if manifest_data %}
-            <a href="/admin/manifest/archive/{{ manifest_data.manifest_id }}" class="btn btn-danger" onclick="return confirm('Archive this manifest? It will be moved to manifests/archived/')"><i data-lucide="archive" class="icon icon-sm"></i> Archive Manifest</a>
-            {% endif %}
+        <!-- ── 6. FAQs ── -->
+        <div class="card spacer">
+            <div class="card-header flex-between">
+                <h3><i data-lucide="help-circle" class="icon" style="margin-right:.4rem;"></i> FAQs</h3>
+                <button type="button" class="btn btn-primary btn-sm" onclick="addFaq()"><i data-lucide="plus" class="icon icon-sm"></i> Add FAQ</button>
+            </div>
+            <div class="card-body" style="padding:.5rem;">
+                <div class="grid-2" style="margin-bottom:1rem; padding:.75rem 1rem;">
+                    <div class="form-group">
+                        <label class="form-label">Min Alternate Questions</label>
+                        <input type="number" id="faq_min_alts" class="form-input" value="2" min="0" style="max-width:120px;">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Semantic Similarity Threshold</label>
+                        <input type="number" id="faq_threshold" class="form-input" value="0.80" min="0" max="1" step="0.05" style="max-width:120px;">
+                    </div>
+                </div>
+                <div id="faqsContainer"></div>
+                <p class="text-muted text-small" id="faqsEmpty" style="padding:1rem;">No FAQs yet — click "Add FAQ" to begin.</p>
+            </div>
+        </div>
+
+        <!-- ── 7. Compliance Checks ── -->
+        <div class="card spacer">
+            <div class="card-header flex-between">
+                <h3><i data-lucide="shield-check" class="icon" style="margin-right:.4rem;"></i> Compliance Checks</h3>
+                <button type="button" class="btn btn-primary btn-sm" onclick="addCompliance()"><i data-lucide="plus" class="icon icon-sm"></i> Add Check</button>
+            </div>
+            <div class="card-body" style="padding:.5rem;">
+                <div id="complianceContainer"></div>
+                <p class="text-muted text-small" id="complianceEmpty" style="padding:1rem;">No compliance checks yet.</p>
+            </div>
+        </div>
+
+        <!-- ── 8. Tooltips ── -->
+        <div class="card spacer">
+            <div class="card-header flex-between">
+                <h3><i data-lucide="message-square" class="icon" style="margin-right:.4rem;"></i> Tooltips</h3>
+                <button type="button" class="btn btn-outline btn-sm" onclick="addTooltip()"><i data-lucide="plus" class="icon icon-sm"></i> Add Tooltip</button>
+            </div>
+            <div class="card-body" style="padding:.5rem;">
+                <div id="tooltipsContainer"></div>
+                <p class="text-muted text-small" id="tooltipsEmpty" style="padding:1rem;">No custom tooltips.</p>
+            </div>
+        </div>
+
+        <!-- ── Validation + Save ── -->
+        <div class="card spacer">
+            <div class="card-body">
+                <div class="flex gap-2" style="margin-bottom:1rem;">
+                    <button type="button" class="btn btn-outline" onclick="validateManifest()"><i data-lucide="check-circle-2" class="icon icon-sm"></i> Validate (MD-01–12)</button>
+                    <button type="submit" class="btn btn-primary btn-lg"><i data-lucide="save" class="icon"></i> Save Manifest</button>
+                    {% if manifest_data %}
+                    <a href="/admin/manifest/archive/{{ manifest_data.manifest_id }}" class="btn btn-danger" onclick="return confirm('Archive this manifest?')"><i data-lucide="archive" class="icon icon-sm"></i> Archive</a>
+                    {% endif %}
+                </div>
+                <div id="validationResults"></div>
+            </div>
         </div>
     </form>
 
-    <!-- ==== JSON MODE ==== -->
+    <!-- ==================== JSON MODE ==================== -->
     <div class="jsonMode hidden">
         <div class="card spacer">
             <div class="card-header"><h3><i data-lucide="braces" class="icon" style="margin-right:.4rem;"></i> Full Manifest JSON</h3></div>
             <div class="card-body">
-                <textarea id="fullJsonEditor" class="form-textarea" rows="40" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ full_json | safe }}</textarea>
+                <textarea id="fullJsonEditor" class="form-textarea" rows="50" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ full_json | safe }}</textarea>
             </div>
             <div class="card-footer">
                 <div class="flex gap-2">
                     <button class="btn btn-primary" onclick="saveFromJson()"><i data-lucide="save" class="icon icon-sm"></i> Save JSON</button>
-                    <button class="btn btn-outline" onclick="validateJson()"><i data-lucide="check-circle-2" class="icon icon-sm"></i> Validate</button>
+                    <button class="btn btn-outline" onclick="validateJson()"><i data-lucide="check-circle-2" class="icon icon-sm"></i> Validate JSON</button>
                     <span id="jsonValidationMsg" class="text-small" style="line-height:2.5;"></span>
                 </div>
             </div>
@@ -184,7 +304,864 @@
     </div>
 </div>
 
+<style>
+.dynamic-list { display:flex; flex-direction:column; gap:.4rem; min-height:2rem; }
+.dynamic-row { display:flex; gap:.4rem; align-items:flex-start; }
+.dynamic-row input, .dynamic-row select, .dynamic-row textarea { flex:1; }
+.remove-btn { flex-shrink:0; width:28px; height:28px; display:flex; align-items:center; justify-content:center; background:var(--fail-bg); border:1px solid var(--fail); border-radius:var(--radius-xs); cursor:pointer; font-size:1rem; line-height:1; color:var(--fail); }
+.task-panel { border:1px solid var(--border); border-radius:var(--radius); margin:.5rem; background:var(--card); }
+.task-panel-header { padding:.6rem 1rem; background:var(--table-header-bg); border-radius:var(--radius) var(--radius) 0 0; display:flex; align-items:center; gap:.5rem; cursor:pointer; user-select:none; }
+.task-panel-body { padding:1rem; display:none; }
+.task-panel-body.open { display:block; }
+.section-label { font-weight:600; font-size:.85rem; color:var(--text-secondary); margin-bottom:.4rem; margin-top:.8rem; }
+.conditional-section { border-left:3px solid var(--info); padding-left:.75rem; margin-top:.5rem; }
+.badge-pattern { font-size:.7rem; padding:.1rem .4rem; border-radius:20px; background:var(--primary-bg); color:var(--primary-text); font-weight:600; }
+.btn-xs { padding:.15rem .4rem; font-size:.75rem; }
+.faq-panel, .compliance-panel, .tooltip-panel { border:1px solid var(--border); border-radius:var(--radius-sm); margin:.4rem; padding:1rem; background:var(--card); }
+</style>
+
 <script>
+// ===================================================================
+// INITIALIZATION — populate form from template-rendered JSON
+// ===================================================================
+const INIT_TASKS = {{ tasks_json | safe }};
+const INIT_COMPLIANCE = {{ compliance_json | safe }};
+const INIT_FAQ = {{ faq_json | safe }};
+const INIT_BRIEF = {{ assignment_brief_json | safe }};
+const INIT_SUBCONFIG = {{ submission_config_json | safe }};
+const INIT_TOOLTIPS = {{ tooltips_json | safe }};
+
+let taskCount = 0;
+let faqCount = 0;
+let complianceCount = 0;
+let tooltipCount = 0;
+
+document.addEventListener('DOMContentLoaded', () => {
+    // Populate assignment brief
+    if (INIT_BRIEF) {
+        setValue('bf_title', INIT_BRIEF.scenario_title || '');
+        setValue('bf_desc', INIT_BRIEF.scenario_description || '');
+        setValue('bf_mock_instructions', INIT_BRIEF.mock_api_setup_instructions || '');
+        setValue('bf_submit_instructions', INIT_BRIEF.submission_instructions || '');
+        (INIT_BRIEF.what_to_build || []).forEach(v => addListItem('bf_build_list', 'what_to_build', v));
+        (INIT_BRIEF.entities_to_collect || []).forEach(e => addEntityRow('bf_entities', e));
+        (INIT_BRIEF.api_endpoints || []).forEach(a => addApiRow('bf_apis', a));
+        (INIT_BRIEF.validation_rules || []).forEach(r => addValidationRow('bf_validations', r));
+        (INIT_BRIEF.faq_topics || []).forEach(t => addListItem('bf_faq_topics', 'faq_topics', t));
+    }
+    // Populate submission config
+    if (INIT_SUBCONFIG) {
+        setValue('sc_max_attempts', INIT_SUBCONFIG.max_attempts ?? 6);
+        setValue('sc_feedback_mode', INIT_SUBCONFIG.feedback_mode || 'immediate');
+        setChecked('sc_require_confirmation', INIT_SUBCONFIG.require_evaluator_confirmation !== false);
+        setChecked('sc_allow_exception', INIT_SUBCONFIG.allow_evaluator_exception !== false);
+    }
+    // Populate tasks
+    INIT_TASKS.forEach(t => addTask(t));
+    // Populate FAQs
+    const faqs = INIT_FAQ.required_faqs || [];
+    faqs.forEach(f => addFaq(f));
+    if (INIT_FAQ.min_alternate_questions !== undefined) setValue('faq_min_alts', INIT_FAQ.min_alternate_questions);
+    if (INIT_FAQ.semantic_similarity_threshold !== undefined) setValue('faq_threshold', INIT_FAQ.semantic_similarity_threshold);
+    // Populate compliance
+    (INIT_COMPLIANCE || []).forEach(c => addCompliance(c));
+    // Populate tooltips
+    (INIT_TOOLTIPS || []).forEach(t => addTooltip(t));
+    updateWeightSum();
+    updateEmptyMessages();
+});
+
+function setValue(id, val) { const el = document.getElementById(id); if (el) el.value = val; }
+function setChecked(id, val) { const el = document.getElementById(id); if (el) el.checked = !!val; }
+
+// ===================================================================
+// WEIGHT SUM VALIDATION
+// ===================================================================
+function updateWeightSum() {
+    const cbm = parseFloat(document.querySelector('[name=cbm_weight]')?.value || 0);
+    const web = parseFloat(document.querySelector('[name=webhook_weight]')?.value || 0);
+    const com = parseFloat(document.querySelector('[name=compliance_weight]')?.value || 0);
+    const faq = parseFloat(document.querySelector('[name=faq_weight]')?.value || 0);
+    const sum = Math.round((cbm + web + com + faq) * 100) / 100;
+    const msg = document.getElementById('weightSumMsg');
+    if (sum === 1.0) {
+        msg.textContent = `✓ Weights sum to ${sum}`;
+        msg.style.color = 'var(--pass)';
+    } else {
+        msg.textContent = `⚠ Weights sum to ${sum} (must be 1.0)`;
+        msg.style.color = 'var(--warn)';
+    }
+}
+
+// ===================================================================
+// DYNAMIC LIST HELPERS (simple text lists)
+// ===================================================================
+function addListItem(containerId, dataKey, value = '') {
+    const container = document.getElementById(containerId);
+    const row = document.createElement('div');
+    row.className = 'dynamic-row';
+    row.innerHTML = `<input type="text" class="form-input" data-key="${dataKey}" value="${escHtml(value)}" placeholder="Enter item...">
+        <button type="button" class="remove-btn" onclick="this.parentElement.remove()">×</button>`;
+    container.appendChild(row);
+}
+
+function addEntityRow(containerId, data = {}) {
+    const container = document.getElementById(containerId);
+    const row = document.createElement('div');
+    row.className = 'dynamic-row';
+    row.style.flexDirection = 'column';
+    row.innerHTML = `<div style="display:flex; gap:.4rem; align-items:center;">
+        <input type="text" class="form-input" data-entity="name" value="${escHtml(data.name||'')}" placeholder="Entity name (e.g. contactNumber)" style="flex:1;">
+        <input type="text" class="form-input" data-entity="description" value="${escHtml(data.description||'')}" placeholder="Description" style="flex:2;">
+        <input type="text" class="form-input" data-entity="validation" value="${escHtml(data.validation||'')}" placeholder="Validation note (optional)" style="flex:2;">
+        <button type="button" class="remove-btn" onclick="this.closest('.dynamic-row').remove()">×</button>
+    </div>`;
+    container.appendChild(row);
+}
+
+function addApiRow(containerId, data = {}) {
+    const container = document.getElementById(containerId);
+    const methods = ['GET','POST','PUT','PATCH','DELETE'];
+    const opts = methods.map(m => `<option value="${m}" ${data.method===m?'selected':''}>${m}</option>`).join('');
+    const row = document.createElement('div');
+    row.className = 'dynamic-row';
+    row.innerHTML = `<input type="text" class="form-input" data-api="name" value="${escHtml(data.name||'')}" placeholder="API name (e.g. Create Booking)" style="flex:2;">
+        <select class="form-input" data-api="method" style="flex:0 0 100px;">${opts}</select>
+        <input type="text" class="form-input" data-api="description" value="${escHtml(data.description||'')}" placeholder="Description" style="flex:3;">
+        <button type="button" class="remove-btn" onclick="this.parentElement.remove()">×</button>`;
+    container.appendChild(row);
+}
+
+function addValidationRow(containerId, data = {}) {
+    const container = document.getElementById(containerId);
+    const row = document.createElement('div');
+    row.className = 'dynamic-row';
+    row.innerHTML = `<input type="text" class="form-input" data-vr="entity" value="${escHtml(data.entity||'')}" placeholder="Entity name" style="flex:1;">
+        <input type="text" class="form-input" data-vr="rule" value="${escHtml(data.rule||'')}" placeholder="Validation rule" style="flex:2;">
+        <input type="text" class="form-input" data-vr="description" value="${escHtml(data.description||'')}" placeholder="Description" style="flex:2;">
+        <button type="button" class="remove-btn" onclick="this.parentElement.remove()">×</button>`;
+    container.appendChild(row);
+}
+
+// ===================================================================
+// TASKS
+// ===================================================================
+const PATTERNS = ['CREATE','CREATE_WITH_AMENDMENT','RETRIEVE','MODIFY','DELETE','EDGE_CASE'];
+const NODE_TYPES = ['aiassist','service','entity','message','form','script','logic','generativeai','searchai','agentTransfer','dialogAct','intent','dynamicIntent'];
+
+function addTask(data = {}) {
+    taskCount++;
+    const idx = taskCount;
+    const pid = data.task_id || `task${idx}`;
+    const pattern = data.pattern || 'CREATE';
+    const container = document.getElementById('tasksContainer');
+    const panel = document.createElement('div');
+    panel.className = 'task-panel';
+    panel.id = `task_panel_${idx}`;
+    const patOpts = PATTERNS.map(p => `<option value="${p}" ${pattern===p?'selected':''}>${p}</option>`).join('');
+    const policyOpts = ['exact','contains','semantic'].map(p => `<option value="${p}" ${(data.dialog_name_policy||'contains')===p?'selected':''}>${p}</option>`).join('');
+
+    panel.innerHTML = `
+    <div class="task-panel-header" onclick="togglePanel('task_panel_${idx}')">
+        <i data-lucide="chevron-right" class="icon icon-sm" id="chevron_${idx}"></i>
+        <span class="badge-pattern" id="taskPatBadge_${idx}">${pattern}</span>
+        <strong id="taskNameDisplay_${idx}">${escHtml(data.task_name||'New Task')}</strong>
+        <span class="text-muted text-small" id="taskIdDisplay_${idx}">(${pid})</span>
+        <button type="button" class="btn btn-outline btn-xs" style="margin-left:auto;" onclick="event.stopPropagation(); removeTask(${idx})">Remove</button>
+    </div>
+    <div class="task-panel-body" id="task_body_${idx}">
+        <div class="grid-2">
+            <div class="form-group">
+                <label class="form-label">Task ID *</label>
+                <input type="text" id="t${idx}_id" class="form-input" value="${escHtml(pid)}"
+                    oninput="document.getElementById('taskIdDisplay_${idx}').textContent='('+this.value+')'">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Task Name *</label>
+                <input type="text" id="t${idx}_name" class="form-input" value="${escHtml(data.task_name||'')}"
+                    oninput="document.getElementById('taskNameDisplay_${idx}').textContent=this.value||'New Task'">
+            </div>
+        </div>
+        <div class="grid-3">
+            <div class="form-group">
+                <label class="form-label">Pattern *</label>
+                <select id="t${idx}_pattern" class="form-input" onchange="onPatternChange(${idx}, this.value); document.getElementById('taskPatBadge_${idx}').textContent=this.value;">
+                    ${patOpts}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Dialog Name</label>
+                <input type="text" id="t${idx}_dialog" class="form-input" value="${escHtml(data.dialog_name||'')}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Name Policy</label>
+                <select id="t${idx}_policy" class="form-input">${policyOpts}</select>
+            </div>
+        </div>
+        <div class="grid-2">
+            <div class="form-group">
+                <label class="form-label">Record Alias (e.g. Booking1)</label>
+                <input type="text" id="t${idx}_alias" class="form-input" value="${escHtml(data.record_alias||'')}">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Weight</label>
+                <input type="number" id="t${idx}_weight" class="form-input" value="${data.weight??1.0}" step="0.1" min="0" max="5">
+            </div>
+        </div>
+        <div class="form-group">
+            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+                <input type="checkbox" id="t${idx}_coref" ${data.co_reference_test?'checked':''}> Co-reference test (user provides 2 entities in one message)
+            </label>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Conversation Starter Override</label>
+            <input type="text" id="t${idx}_starter" class="form-input" value="${escHtml(data.conversation_starter||'')}" placeholder="Leave blank to use manifest default">
+        </div>
+
+        <!-- Required Entities -->
+        <div id="sec_entities_${idx}">
+            <div class="section-label">Required Entities <button type="button" class="btn btn-outline btn-xs" onclick="addEntityDef(${idx})">+ Add Entity</button></div>
+            <div id="t${idx}_entities" class="dynamic-list"></div>
+        </div>
+
+        <!-- Required Nodes -->
+        <div class="section-label">Required Nodes (CBM) <button type="button" class="btn btn-outline btn-xs" onclick="addNodeDef(${idx})">+ Add Node</button></div>
+        <div id="t${idx}_nodes" class="dynamic-list"></div>
+
+        <!-- Expected Output -->
+        <div class="section-label">Expected Output</div>
+        <div class="conditional-section">
+            <div class="grid-2">
+                <div class="form-group">
+                    <label class="form-label">Score Minimum (0–1)</label>
+                    <input type="number" id="t${idx}_eo_scoremin" class="form-input" value="${data.expected_output?.score_min??0.0}" step="0.05" min="0" max="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <input type="text" id="t${idx}_eo_notes" class="form-input" value="${escHtml(data.expected_output?.notes||'')}">
+                </div>
+            </div>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label class="form-label">Evidence Required (comma-separated)</label>
+                    <input type="text" id="t${idx}_eo_evidence" class="form-input" value="${escHtml((data.expected_output?.evidence_required||[]).join(', '))}" placeholder="e.g. post_create_snapshot">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Must Pass Checks (comma-separated check IDs)</label>
+                    <input type="text" id="t${idx}_eo_checks" class="form-input" value="${escHtml((data.expected_output?.must_pass_checks||[]).join(', '))}">
+                </div>
+            </div>
+        </div>
+
+        <!-- State Assertion -->
+        <div class="section-label">State Assertion (API verification)</div>
+        <div class="conditional-section" id="sec_assertion_${idx}">
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+                    <input type="checkbox" id="t${idx}_sa_enabled" ${(data.state_assertion?.enabled !== false && data.state_assertion)?'checked':''}>
+                    Enable state assertion
+                </label>
+            </div>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label class="form-label">Verify Endpoint (GET URL)</label>
+                    <input type="text" id="t${idx}_sa_endpoint" class="form-input" value="${escHtml(data.state_assertion?.verify_endpoint||'')}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Filter Field</label>
+                    <input type="text" id="t${idx}_sa_filter" class="form-input" value="${escHtml(data.state_assertion?.filter_field||'')}">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Field Assertions (one per line: entity_key=json_path)</label>
+                <textarea id="t${idx}_sa_assertions" class="form-textarea" rows="3" style="font-family:monospace;font-size:.8rem;">${objToLines(data.state_assertion?.field_assertions)}</textarea>
+            </div>
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+                    <input type="checkbox" id="t${idx}_sa_deletion" ${data.state_assertion?.expect_deletion?'checked':''}>
+                    Expect deletion (for DELETE tasks — assert record is absent)
+                </label>
+            </div>
+        </div>
+
+        <!-- Welcome-specific -->
+        <div id="sec_welcome_${idx}" style="display:none;">
+            <div class="section-label">Welcome Task Options</div>
+            <div class="conditional-section">
+                <div class="form-group">
+                    <label class="form-label">Required Greeting Text</label>
+                    <input type="text" id="t${idx}_greeting" class="form-input" value="${escHtml(data.required_greeting_text||'')}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Required Menu Items (comma-separated)</label>
+                    <input type="text" id="t${idx}_menu" class="form-input" value="${escHtml((data.required_menu_items||[]).join(', '))}">
+                </div>
+            </div>
+        </div>
+
+        <!-- Amendment config -->
+        <div id="sec_amend_${idx}" style="display:none;">
+            <div class="section-label">Amendment Configuration (CREATE_WITH_AMENDMENT)</div>
+            <div class="conditional-section">
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label">Target Entity (entity key to amend)</label>
+                        <input type="text" id="t${idx}_amend_entity" class="form-input" value="${escHtml(data.amendment_config?.target_entity||'')}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Amended Value Pool (comma-separated)</label>
+                        <input type="text" id="t${idx}_amend_pool" class="form-input" value="${escHtml((data.amendment_config?.amended_value_pool||[]).join(', '))}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Amendment Utterance Template (use {amended_value})</label>
+                    <input type="text" id="t${idx}_amend_template" class="form-input" value="${escHtml(data.amendment_config?.amendment_utterance_template||'')}">
+                </div>
+            </div>
+        </div>
+
+        <!-- Cross-task refs -->
+        <div id="sec_xref_${idx}" style="display:none;">
+            <div class="section-label">Cross-Task Reference (lookup key)</div>
+            <div class="conditional-section">
+                <div class="grid-3">
+                    <div class="form-group">
+                        <label class="form-label">Source Task ID</label>
+                        <input type="text" id="t${idx}_xref_task" class="form-input" value="${escHtml(data.cross_task_refs?.lookup?.source_task_id||data.cross_task_refs?.[Object.keys(data.cross_task_refs||{})[0]]?.source_task_id||'')}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Source Record Alias</label>
+                        <input type="text" id="t${idx}_xref_alias" class="form-input" value="${escHtml(data.cross_task_refs?.lookup?.source_record_alias||data.cross_task_refs?.[Object.keys(data.cross_task_refs||{})[0]]?.source_record_alias||'')}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Source Field</label>
+                        <input type="text" id="t${idx}_xref_field" class="form-input" value="${escHtml(data.cross_task_refs?.lookup?.source_field||data.cross_task_refs?.[Object.keys(data.cross_task_refs||{})[0]]?.source_field||'')}">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modify config -->
+        <div id="sec_modify_${idx}" style="display:none;">
+            <div class="section-label">Modification Options</div>
+            <div class="conditional-section">
+                <div class="form-group">
+                    <label class="form-label">Modifiable Fields (comma-separated entity keys)</label>
+                    <input type="text" id="t${idx}_mod_fields" class="form-input" value="${escHtml((data.modifiable_fields||[]).join(', '))}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Modified Value Pool (one per line: fieldName=val1,val2)</label>
+                    <textarea id="t${idx}_mod_pool" class="form-textarea" rows="3" style="font-family:monospace;font-size:.8rem;">${modPoolToLines(data.modified_value_pool)}</textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- EDGE_CASE negative tests -->
+        <div id="sec_edge_${idx}" style="display:none;">
+            <div class="section-label">Negative Tests (EDGE_CASE) <button type="button" class="btn btn-outline btn-xs" onclick="addNegTest(${idx})">+ Add Test</button></div>
+            <div id="t${idx}_negtests" class="dynamic-list"></div>
+        </div>
+    </div>
+    `;
+    container.appendChild(panel);
+    lucide.createIcons();
+
+    // Populate sub-lists
+    (data.required_entities || []).forEach(e => addEntityDef(idx, e));
+    (data.required_nodes || []).forEach(n => addNodeDef(idx, n));
+    (data.negative_tests || []).forEach(n => addNegTest(idx, n));
+
+    // Show conditional sections
+    onPatternChange(idx, pattern, false);
+    updateEmptyMessages();
+}
+
+function removeTask(idx) {
+    const panel = document.getElementById(`task_panel_${idx}`);
+    if (panel) panel.remove();
+    updateEmptyMessages();
+}
+
+function togglePanel(panelId) {
+    const body = document.getElementById(panelId.replace('task_panel_', 'task_body_'));
+    const chevron = document.getElementById(panelId.replace('task_panel_', 'chevron_'));
+    if (!body) return;
+    const open = body.classList.toggle('open');
+    if (chevron) chevron.style.transform = open ? 'rotate(90deg)' : '';
+}
+
+function onPatternChange(idx, pattern, openPanel = true) {
+    const show = (id, visible) => { const el = document.getElementById(id); if (el) el.style.display = visible ? '' : 'none'; };
+    show(`sec_entities_${idx}`, true);
+    show(`sec_amend_${idx}`, pattern === 'CREATE_WITH_AMENDMENT');
+    show(`sec_xref_${idx}`, ['RETRIEVE','MODIFY','DELETE'].includes(pattern));
+    show(`sec_modify_${idx}`, pattern === 'MODIFY');
+    show(`sec_edge_${idx}`, pattern === 'EDGE_CASE');
+    // Welcome hint: show greeting/menu fields if it's likely a welcome task
+    const nameEl = document.getElementById(`t${idx}_name`);
+    const isWelcome = nameEl && nameEl.value.toLowerCase().includes('welcome');
+    show(`sec_welcome_${idx}`, isWelcome || pattern === 'CREATE');
+    if (openPanel) {
+        const body = document.getElementById(`task_body_${idx}`);
+        if (body && !body.classList.contains('open')) togglePanel(`task_panel_${idx}`);
+    }
+}
+
+function addEntityDef(taskIdx, data = {}) {
+    const container = document.getElementById(`t${taskIdx}_entities`);
+    const row = document.createElement('div');
+    row.className = 'dynamic-row';
+    row.style.flexDirection = 'column';
+    row.style.border = '1px solid var(--border)';
+    row.style.borderRadius = 'var(--radius-xs)';
+    row.style.padding = '.5rem';
+    row.innerHTML = `
+    <div style="display:flex; gap:.4rem; align-items:center;">
+        <input type="text" data-ed="key" value="${escHtml(data.entity_key||'')}" class="form-input" placeholder="entity_key (exact match)" style="flex:1;">
+        <input type="text" data-ed="hint" value="${escHtml(data.semantic_hint||'')}" class="form-input" placeholder="semantic hint for LLM driver" style="flex:2;">
+        <input type="text" data-ed="pool" value="${escHtml((data.value_pool||[]).join(', '))}" class="form-input" placeholder="value pool (comma-separated)" style="flex:2;">
+        <button type="button" class="remove-btn" onclick="this.closest('.dynamic-row').remove()">×</button>
+    </div>
+    <div style="display:flex; gap:.4rem; align-items:center; margin-top:.3rem;">
+        <label style="display:flex;align-items:center;gap:.3rem;cursor:pointer;font-size:.8rem;">
+            <input type="checkbox" data-ed="validation" ${data.validation_required?'checked':''}> Validation required
+        </label>
+        <input type="text" data-ed="val_desc" value="${escHtml(data.validation_description||'')}" class="form-input" style="flex:1;font-size:.8rem;" placeholder="Validation description (optional)">
+    </div>`;
+    container.appendChild(row);
+}
+
+function addNodeDef(taskIdx, data = {}) {
+    const container = document.getElementById(`t${taskIdx}_nodes`);
+    const ntOpts = NODE_TYPES.map(n => `<option value="${n}" ${data.node_type===n?'selected':''}>${n}</option>`).join('');
+    const methodOpts = ['','GET','POST','PUT','PATCH','DELETE'].map(m => `<option value="${m}" ${(data.service_method||'')===m?'selected':''}>${m||'(any)'}</option>`).join('');
+    const row = document.createElement('div');
+    row.className = 'dynamic-row';
+    row.innerHTML = `
+        <select data-nd="type" class="form-input" style="flex:0 0 140px;">${ntOpts}</select>
+        <input type="text" data-nd="label" value="${escHtml(data.label||'')}" class="form-input" placeholder="Label (shown in report)" style="flex:2;">
+        <select data-nd="method" class="form-input" style="flex:0 0 100px;" title="Service method (for service nodes only)">${methodOpts}</select>
+        <label style="display:flex;align-items:center;gap:.3rem;cursor:pointer;flex-shrink:0;font-size:.8rem;">
+            <input type="checkbox" data-nd="required" ${data.required !== false?'checked':''}> Required
+        </label>
+        <button type="button" class="remove-btn" onclick="this.parentElement.remove()">×</button>`;
+    container.appendChild(row);
+}
+
+function addNegTest(taskIdx, data = {}) {
+    const container = document.getElementById(`t${taskIdx}_negtests`);
+    const row = document.createElement('div');
+    row.className = 'dynamic-row';
+    row.style.flexDirection = 'column';
+    row.style.border = '1px solid var(--border)';
+    row.style.borderRadius = 'var(--radius-xs)';
+    row.style.padding = '.5rem';
+    row.innerHTML = `
+    <div style="display:flex; gap:.4rem; align-items:center;">
+        <input type="text" data-nt="pool" value="${escHtml((data.invalid_value_pool||[]).join(', '))}" class="form-input" placeholder="Invalid values (comma-separated, e.g. 0000000000,invalid)" style="flex:3;">
+        <input type="text" data-nt="pattern" value="${escHtml(data.expected_error_pattern||'')}" class="form-input" placeholder="Expected error pattern (regex/keyword)" style="flex:2;">
+        <label style="display:flex;align-items:center;gap:.3rem;cursor:pointer;font-size:.8rem;flex-shrink:0;">
+            <input type="checkbox" data-nt="re_entry" ${data.requires_re_entry_prompt?'checked':''}> Re-entry prompt
+        </label>
+        <button type="button" class="remove-btn" onclick="this.closest('.dynamic-row').remove()">×</button>
+    </div>`;
+    container.appendChild(row);
+}
+
+// ===================================================================
+// FAQs
+// ===================================================================
+function addFaq(data = {}) {
+    faqCount++;
+    const idx = faqCount;
+    const container = document.getElementById('faqsContainer');
+    const panel = document.createElement('div');
+    panel.className = 'faq-panel';
+    panel.id = `faq_panel_${idx}`;
+    panel.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem;">
+        <strong>FAQ ${idx}</strong>
+        <button type="button" class="btn btn-outline btn-xs" onclick="document.getElementById('faq_panel_${idx}').remove(); updateEmptyMessages();">Remove</button>
+    </div>
+    <div class="grid-2">
+        <div class="form-group">
+            <label class="form-label">Primary Question *</label>
+            <input type="text" id="faq${idx}_q" class="form-input" value="${escHtml(data.primary_question||'')}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Ground Truth Answer *</label>
+            <textarea id="faq${idx}_a" class="form-textarea" rows="2">${escHtml(data.ground_truth_answer||'')}</textarea>
+        </div>
+    </div>
+    <div class="grid-2">
+        <div class="form-group">
+            <label class="form-label">Required Keywords (comma-separated)</label>
+            <input type="text" id="faq${idx}_kw" class="form-input" value="${escHtml((data.required_keywords||[]).join(', '))}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Alternate Questions (one per line)</label>
+            <textarea id="faq${idx}_alts" class="form-textarea" rows="2">${escHtml((data.alternate_questions||[]).join('\n'))}</textarea>
+        </div>
+    </div>`;
+    container.appendChild(panel);
+    updateEmptyMessages();
+}
+
+// ===================================================================
+// COMPLIANCE CHECKS
+// ===================================================================
+function addCompliance(data = {}) {
+    complianceCount++;
+    const idx = complianceCount;
+    const container = document.getElementById('complianceContainer');
+    const stateOpts = ['enabled','disabled','present'].map(s => `<option value="${s}" ${(data.required_state||'enabled')===s?'selected':''}>${s}</option>`).join('');
+    const panel = document.createElement('div');
+    panel.className = 'compliance-panel';
+    panel.id = `comp_panel_${idx}`;
+    panel.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem;">
+        <strong>Check ${idx}</strong>
+        <button type="button" class="btn btn-outline btn-xs" onclick="document.getElementById('comp_panel_${idx}').remove(); updateEmptyMessages();">Remove</button>
+    </div>
+    <div class="grid-2">
+        <div class="form-group">
+            <label class="form-label">Check ID *</label>
+            <input type="text" id="comp${idx}_id" class="form-input" value="${escHtml(data.check_id||'')}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Label</label>
+            <input type="text" id="comp${idx}_label" class="form-input" value="${escHtml(data.label||'')}">
+        </div>
+    </div>
+    <div class="grid-3">
+        <div class="form-group">
+            <label class="form-label">CBM Field (dot-path)</label>
+            <input type="text" id="comp${idx}_field" class="form-input" value="${escHtml(data.cbm_field||'')}" placeholder="e.g. dialog_gpt_enabled">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Required State</label>
+            <select id="comp${idx}_state" class="form-input">${stateOpts}</select>
+        </div>
+        <div class="form-group" style="display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:.25rem;">
+            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+                <input type="checkbox" id="comp${idx}_critical" ${data.critical?'checked':''}> Critical (auto-fail if violated)
+            </label>
+        </div>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tooltip (shown to evaluators)</label>
+        <input type="text" id="comp${idx}_tooltip" class="form-input" value="${escHtml(data.tooltip||'')}">
+    </div>`;
+    container.appendChild(panel);
+    updateEmptyMessages();
+}
+
+// ===================================================================
+// TOOLTIPS
+// ===================================================================
+function addTooltip(data = {}) {
+    tooltipCount++;
+    const idx = tooltipCount;
+    const container = document.getElementById('tooltipsContainer');
+    const ntOpts = NODE_TYPES.map(n => `<option value="${n}" ${data.node_type===n?'selected':''}>${n}</option>`).join('');
+    const panel = document.createElement('div');
+    panel.className = 'tooltip-panel';
+    panel.id = `tip_panel_${idx}`;
+    panel.innerHTML = `
+    <div class="dynamic-row">
+        <select id="tip${idx}_type" class="form-input" style="flex:0 0 160px;">${ntOpts}</select>
+        <input type="text" id="tip${idx}_text" class="form-input" value="${escHtml(data.text||'')}" placeholder="Tooltip text shown in evaluator report">
+        <button type="button" class="remove-btn" onclick="document.getElementById('tip_panel_${idx}').remove(); updateEmptyMessages();">×</button>
+    </div>`;
+    container.appendChild(panel);
+    updateEmptyMessages();
+}
+
+// ===================================================================
+// SERIALIZATION — called on form submit
+// ===================================================================
+function prepareFormSubmit() {
+    document.getElementById('hBriefJson').value = JSON.stringify(serializeBrief());
+    document.getElementById('hSubConfigJson').value = JSON.stringify(serializeSubConfig());
+    document.getElementById('hTasksJson').value = JSON.stringify(serializeTasks());
+    document.getElementById('hFaqJson').value = JSON.stringify(serializeFaqs());
+    document.getElementById('hComplianceJson').value = JSON.stringify(serializeCompliance());
+    document.getElementById('hTooltipsJson').value = JSON.stringify(serializeTooltips());
+    return true;
+}
+
+function serializeBrief() {
+    return {
+        scenario_title: val('bf_title'),
+        scenario_description: val('bf_desc'),
+        what_to_build: collectListItems('bf_build_list', 'what_to_build'),
+        entities_to_collect: collectEntityRows('bf_entities'),
+        api_endpoints: collectApiRows('bf_apis'),
+        validation_rules: collectValidationRows('bf_validations'),
+        faq_topics: collectListItems('bf_faq_topics', 'faq_topics'),
+        mock_api_setup_instructions: val('bf_mock_instructions'),
+        submission_instructions: val('bf_submit_instructions'),
+    };
+}
+
+function serializeSubConfig() {
+    return {
+        max_attempts: parseInt(val('sc_max_attempts')) || 6,
+        require_evaluator_confirmation: checked('sc_require_confirmation'),
+        allow_evaluator_exception: checked('sc_allow_exception'),
+        feedback_mode: val('sc_feedback_mode') || 'immediate',
+    };
+}
+
+function serializeTasks() {
+    const tasks = [];
+    document.querySelectorAll('[id^="task_panel_"]').forEach(panel => {
+        const idx = panel.id.replace('task_panel_', '');
+        const t = {
+            task_id: val(`t${idx}_id`),
+            task_name: val(`t${idx}_name`),
+            pattern: val(`t${idx}_pattern`),
+            dialog_name: val(`t${idx}_dialog`),
+            dialog_name_policy: val(`t${idx}_policy`) || 'contains',
+            weight: parseFloat(val(`t${idx}_weight`)) || 1.0,
+            co_reference_test: checked(`t${idx}_coref`),
+            required_entities: collectEntityDefs(idx),
+            required_nodes: collectNodeDefs(idx),
+            expected_output: {
+                score_min: parseFloat(val(`t${idx}_eo_scoremin`)) || 0.0,
+                notes: val(`t${idx}_eo_notes`),
+                evidence_required: splitComma(val(`t${idx}_eo_evidence`)),
+                must_pass_checks: splitComma(val(`t${idx}_eo_checks`)),
+            },
+        };
+        if (val(`t${idx}_alias`)) t.record_alias = val(`t${idx}_alias`);
+        if (val(`t${idx}_starter`)) t.conversation_starter = val(`t${idx}_starter`);
+        // State assertion
+        if (checked(`t${idx}_sa_enabled`) !== undefined) {
+            t.state_assertion = {
+                enabled: checked(`t${idx}_sa_enabled`),
+                verify_endpoint: val(`t${idx}_sa_endpoint`) || '',
+                filter_field: val(`t${idx}_sa_filter`) || '',
+                field_assertions: parseAssertions(val(`t${idx}_sa_assertions`)),
+                expect_deletion: checked(`t${idx}_sa_deletion`),
+            };
+        }
+        // Pattern-specific fields
+        const pattern = t.pattern;
+        if (pattern === 'CREATE_WITH_AMENDMENT') {
+            const pool = splitComma(val(`t${idx}_amend_pool`));
+            if (val(`t${idx}_amend_entity`) || pool.length) {
+                t.amendment_config = {
+                    target_entity: val(`t${idx}_amend_entity`),
+                    amendment_utterance_template: val(`t${idx}_amend_template`),
+                    amended_value_pool: pool,
+                };
+            }
+        }
+        if (['RETRIEVE','MODIFY','DELETE'].includes(pattern)) {
+            const xSrc = val(`t${idx}_xref_task`);
+            if (xSrc) {
+                t.cross_task_refs = { lookup: {
+                    source_task_id: xSrc,
+                    source_record_alias: val(`t${idx}_xref_alias`),
+                    source_field: val(`t${idx}_xref_field`),
+                }};
+            }
+        }
+        if (pattern === 'MODIFY') {
+            t.modifiable_fields = splitComma(val(`t${idx}_mod_fields`));
+            t.modified_value_pool = parseModPool(val(`t${idx}_mod_pool`));
+        }
+        if (pattern === 'EDGE_CASE') {
+            t.negative_tests = collectNegTests(idx);
+        }
+        // Welcome-specific
+        if (val(`t${idx}_greeting`)) t.required_greeting_text = val(`t${idx}_greeting`);
+        const menuItems = splitComma(val(`t${idx}_menu`));
+        if (menuItems.length) t.required_menu_items = menuItems;
+        tasks.push(t);
+    });
+    return tasks;
+}
+
+function serializeFaqs() {
+    const faqs = [];
+    document.querySelectorAll('[id^="faq_panel_"]').forEach(panel => {
+        const idx = panel.id.replace('faq_panel_', '');
+        faqs.push({
+            primary_question: val(`faq${idx}_q`),
+            ground_truth_answer: val(`faq${idx}_a`),
+            required_keywords: splitComma(val(`faq${idx}_kw`)),
+            alternate_questions: (val(`faq${idx}_alts`) || '').split('\n').map(s => s.trim()).filter(Boolean),
+        });
+    });
+    return {
+        required_faqs: faqs,
+        min_alternate_questions: parseInt(val('faq_min_alts')) || 2,
+        semantic_similarity_threshold: parseFloat(val('faq_threshold')) || 0.80,
+    };
+}
+
+function serializeCompliance() {
+    const checks = [];
+    document.querySelectorAll('[id^="comp_panel_"]').forEach(panel => {
+        const idx = panel.id.replace('comp_panel_', '');
+        checks.push({
+            check_id: val(`comp${idx}_id`),
+            label: val(`comp${idx}_label`),
+            cbm_field: val(`comp${idx}_field`),
+            required_state: val(`comp${idx}_state`) || 'enabled',
+            critical: checked(`comp${idx}_critical`),
+            tooltip: val(`comp${idx}_tooltip`) || '',
+        });
+    });
+    return checks;
+}
+
+function serializeTooltips() {
+    const tips = [];
+    document.querySelectorAll('[id^="tip_panel_"]').forEach(panel => {
+        const idx = panel.id.replace('tip_panel_', '');
+        tips.push({ node_type: val(`tip${idx}_type`), text: val(`tip${idx}_text`) });
+    });
+    return tips;
+}
+
+// ===================================================================
+// COLLECTION HELPERS
+// ===================================================================
+function collectListItems(containerId, dataKey) {
+    return Array.from(document.querySelectorAll(`#${containerId} [data-key="${dataKey}"]`))
+        .map(el => el.value.trim()).filter(Boolean);
+}
+function collectEntityRows(containerId) {
+    return Array.from(document.querySelectorAll(`#${containerId} .dynamic-row`)).map(row => ({
+        name: row.querySelector('[data-entity="name"]')?.value || '',
+        description: row.querySelector('[data-entity="description"]')?.value || '',
+        validation: row.querySelector('[data-entity="validation"]')?.value || '',
+    })).filter(e => e.name);
+}
+function collectApiRows(containerId) {
+    return Array.from(document.querySelectorAll(`#${containerId} .dynamic-row`)).map(row => ({
+        name: row.querySelector('[data-api="name"]')?.value || '',
+        method: row.querySelector('[data-api="method"]')?.value || 'GET',
+        description: row.querySelector('[data-api="description"]')?.value || '',
+    })).filter(a => a.name);
+}
+function collectValidationRows(containerId) {
+    return Array.from(document.querySelectorAll(`#${containerId} .dynamic-row`)).map(row => ({
+        entity: row.querySelector('[data-vr="entity"]')?.value || '',
+        rule: row.querySelector('[data-vr="rule"]')?.value || '',
+        description: row.querySelector('[data-vr="description"]')?.value || '',
+    })).filter(r => r.entity || r.rule);
+}
+function collectEntityDefs(taskIdx) {
+    return Array.from(document.querySelectorAll(`#t${taskIdx}_entities .dynamic-row`)).map(row => ({
+        entity_key: row.querySelector('[data-ed="key"]')?.value || '',
+        semantic_hint: row.querySelector('[data-ed="hint"]')?.value || '',
+        value_pool: splitComma(row.querySelector('[data-ed="pool"]')?.value || ''),
+        validation_required: row.querySelector('[data-ed="validation"]')?.checked || false,
+        validation_description: row.querySelector('[data-ed="val_desc"]')?.value || null,
+    })).filter(e => e.entity_key);
+}
+function collectNodeDefs(taskIdx) {
+    return Array.from(document.querySelectorAll(`#t${taskIdx}_nodes .dynamic-row`)).map(row => ({
+        node_type: row.querySelector('[data-nd="type"]')?.value || '',
+        label: row.querySelector('[data-nd="label"]')?.value || '',
+        service_method: row.querySelector('[data-nd="method"]')?.value || null,
+        required: row.querySelector('[data-nd="required"]')?.checked !== false,
+    })).filter(n => n.node_type);
+}
+function collectNegTests(taskIdx) {
+    return Array.from(document.querySelectorAll(`#t${taskIdx}_negtests .dynamic-row`)).map(row => ({
+        invalid_value_pool: splitComma(row.querySelector('[data-nt="pool"]')?.value || ''),
+        expected_error_pattern: row.querySelector('[data-nt="pattern"]')?.value || '',
+        requires_re_entry_prompt: row.querySelector('[data-nt="re_entry"]')?.checked || false,
+    })).filter(n => n.invalid_value_pool.length);
+}
+
+// ===================================================================
+// UTILITIES
+// ===================================================================
+function val(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+function checked(id) { const el = document.getElementById(id); return el ? el.checked : false; }
+function splitComma(str) { return (str||'').split(',').map(s=>s.trim()).filter(Boolean); }
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function objToLines(obj) { if (!obj) return ''; return Object.entries(obj).map(([k,v])=>`${k}=${v}`).join('\n'); }
+function modPoolToLines(pool) { if (!pool) return ''; return Object.entries(pool).map(([k,v])=>`${k}=${Array.isArray(v)?v.join(','):v}`).join('\n'); }
+function parseAssertions(text) {
+    const obj = {};
+    (text||'').split('\n').forEach(line => {
+        const m = line.match(/^([^=]+)=(.*)$/);
+        if (m) obj[m[1].trim()] = m[2].trim();
+    });
+    return obj;
+}
+function parseModPool(text) {
+    const obj = {};
+    (text||'').split('\n').forEach(line => {
+        const m = line.match(/^([^=]+)=(.*)$/);
+        if (m) obj[m[1].trim()] = m[2].split(',').map(s=>s.trim()).filter(Boolean);
+    });
+    return obj;
+}
+
+function updateEmptyMessages() {
+    document.getElementById('tasksEmpty').style.display = document.querySelectorAll('[id^="task_panel_"]').length ? 'none' : '';
+    document.getElementById('faqsEmpty').style.display = document.querySelectorAll('[id^="faq_panel_"]').length ? 'none' : '';
+    document.getElementById('complianceEmpty').style.display = document.querySelectorAll('[id^="comp_panel_"]').length ? 'none' : '';
+    document.getElementById('tooltipsEmpty').style.display = document.querySelectorAll('[id^="tip_panel_"]').length ? 'none' : '';
+}
+
+// ===================================================================
+// VALIDATION
+// ===================================================================
+async function validateManifest() {
+    prepareFormSubmit();
+    const fullJson = buildFullJson();
+    const fd = new FormData();
+    fd.append('manifest_json', JSON.stringify(fullJson));
+    try {
+        const res = await fetch('/admin/manifest/validate', { method: 'POST', body: fd });
+        const html = await res.text();
+        document.getElementById('validationResults').innerHTML = html;
+        document.getElementById('validationResults').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch(e) {
+        document.getElementById('validationResults').innerHTML = `<div class="alert alert-danger">Validation request failed: ${e}</div>`;
+    }
+}
+
+function buildFullJson() {
+    const form = document.getElementById('manifestForm');
+    const fd = new FormData(form);
+    return {
+        manifest_id: fd.get('manifest_id') || '',
+        manifest_version: fd.get('manifest_version') || '1.0',
+        assessment_name: fd.get('assessment_name') || '',
+        assessment_type: fd.get('assessment_type') || '',
+        description: fd.get('description') || '',
+        conversation_starter: fd.get('conversation_starter') || 'Hi',
+        created_by: fd.get('created_by') || '',
+        notes: fd.get('notes') || '',
+        scoring_config: {
+            cbm_structural_weight: parseFloat(fd.get('cbm_weight')) || 0.0,
+            webhook_functional_weight: parseFloat(fd.get('webhook_weight')) || 0.80,
+            compliance_weight: parseFloat(fd.get('compliance_weight')) || 0.10,
+            faq_weight: parseFloat(fd.get('faq_weight')) || 0.10,
+            pass_threshold: parseFloat(fd.get('pass_threshold')) || 0.70,
+        },
+        tasks: serializeTasks(),
+        compliance_checks: serializeCompliance(),
+        faq_config: serializeFaqs(),
+        assignment_brief: serializeBrief(),
+        submission_config: serializeSubConfig(),
+        tooltips: serializeTooltips(),
+    };
+}
+
+// ===================================================================
+// TAB SWITCHING
+// ===================================================================
 function showTab(tab) {
     document.querySelectorAll('.formMode').forEach(el => el.classList.toggle('hidden', tab !== 'form'));
     document.querySelectorAll('.jsonMode').forEach(el => el.classList.toggle('hidden', tab !== 'json'));
@@ -195,29 +1172,7 @@ function showTab(tab) {
 
 function syncFormToJson() {
     try {
-        const form = document.getElementById('manifestForm');
-        const fd = new FormData(form);
-        const obj = {
-            manifest_id: fd.get('manifest_id') || '',
-            manifest_version: fd.get('manifest_version') || '1.0',
-            assessment_name: fd.get('assessment_name') || '',
-            assessment_type: fd.get('assessment_type') || '',
-            description: fd.get('description') || '',
-            conversation_starter: fd.get('conversation_starter') || 'Hi',
-            created_by: fd.get('created_by') || '',
-            notes: fd.get('notes') || '',
-            scoring_config: {
-                cbm_structural_weight: parseFloat(fd.get('cbm_weight')) || 0.4,
-                webhook_functional_weight: parseFloat(fd.get('webhook_weight')) || 0.4,
-                compliance_weight: parseFloat(fd.get('compliance_weight')) || 0.1,
-                faq_weight: parseFloat(fd.get('faq_weight')) || 0.1,
-                pass_threshold: parseFloat(fd.get('pass_threshold')) || 0.7,
-            },
-            tasks: JSON.parse(fd.get('tasks_json') || '[]'),
-            compliance_checks: JSON.parse(fd.get('compliance_json') || '[]'),
-            faq_config: JSON.parse(fd.get('faq_json') || '{}'),
-        };
-        document.getElementById('fullJsonEditor').value = JSON.stringify(obj, null, 2);
+        document.getElementById('fullJsonEditor').value = JSON.stringify(buildFullJson(), null, 2);
     } catch(e) {}
 }
 
@@ -229,10 +1184,10 @@ function validateJson() {
         if (!parsed.manifest_id) throw new Error('manifest_id is required');
         if (!parsed.assessment_name) throw new Error('assessment_name is required');
         if (!parsed.tasks || !parsed.tasks.length) throw new Error('At least one task is required');
-        msg.textContent = 'Valid JSON — ' + parsed.tasks.length + ' task(s)';
+        msg.textContent = '✓ Valid JSON — ' + parsed.tasks.length + ' task(s)';
         msg.style.color = 'var(--pass)';
     } catch(e) {
-        msg.textContent = 'Invalid: ' + e.message;
+        msg.textContent = '✗ Invalid: ' + e.message;
         msg.style.color = 'var(--fail)';
     }
 }
@@ -251,9 +1206,7 @@ function saveFromJson() {
         form.appendChild(input);
         document.body.appendChild(form);
         form.submit();
-    } catch(e) {
-        alert('Invalid JSON: ' + e.message);
-    }
+    } catch(e) { alert('Invalid JSON: ' + e.message); }
 }
 
 function handleJsonUpload(event) {
@@ -266,9 +1219,7 @@ function handleJsonUpload(event) {
             document.getElementById('fullJsonEditor').value = JSON.stringify(data, null, 2);
             showTab('json');
             validateJson();
-        } catch(err) {
-            alert('Invalid JSON file: ' + err.message);
-        }
+        } catch(err) { alert('Invalid JSON file: ' + err.message); }
     };
     reader.readAsText(file);
 }
@@ -279,11 +1230,8 @@ function downloadJson() {
     const blob = new Blob([el.value], {type: 'application/json'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const form = document.getElementById('manifestForm');
-    const id = form ? new FormData(form).get('manifest_id') || 'manifest' : 'manifest';
-    a.href = url;
-    a.download = id + '.json';
-    a.click();
+    const id = document.getElementById('fManifestId')?.value || 'manifest';
+    a.href = url; a.download = id + '.json'; a.click();
     URL.revokeObjectURL(url);
 }
 </script>

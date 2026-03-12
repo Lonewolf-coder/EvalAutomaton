@@ -30,6 +30,7 @@ MANIFESTS_DIR = Path("manifests")
 ARCHIVED_DIR = MANIFESTS_DIR / "archived"
 SCHEMA_DIR = MANIFESTS_DIR / "schema"
 DATA_DIR = Path("data")
+DATA_MANIFESTS_DIR = DATA_DIR / "manifests"
 
 
 def _load_all_evaluations() -> list[dict[str, Any]]:
@@ -99,12 +100,14 @@ def _load_manifest(manifest_id: str) -> dict[str, Any] | None:
 
 
 def _save_manifest(data: dict[str, Any]) -> Path:
-    """Save manifest to disk. Returns the file path."""
+    """Save manifest to both manifests/ and data/manifests/. Returns the manifests/ path."""
     MANIFESTS_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_MANIFESTS_DIR.mkdir(parents=True, exist_ok=True)
     manifest_id = data.get("manifest_id", "untitled")
+    payload = json.dumps(data, indent=2)
     path = MANIFESTS_DIR / f"{manifest_id}.json"
-    with path.open("w") as f:
-        json.dump(data, f, indent=2)
+    path.write_text(payload)
+    (DATA_MANIFESTS_DIR / f"{manifest_id}.json").write_text(payload)
     return path
 
 
@@ -229,8 +232,8 @@ _SAMPLE_MANIFEST: dict = {
     "created_by": "",
     "notes": "",
     "scoring_config": {
-        "cbm_structural_weight": 0.40,
-        "webhook_functional_weight": 0.40,
+        "cbm_structural_weight": 0.0,
+        "webhook_functional_weight": 0.80,
         "compliance_weight": 0.10,
         "faq_weight": 0.10,
         "pass_threshold": 0.70,
@@ -419,7 +422,45 @@ _SAMPLE_MANIFEST: dict = {
         {"node_type": "aiassist", "text": "Agent Node — enables LLM-powered entity handling and amendment support."},
         {"node_type": "service", "text": "Service Node — makes API calls (GET, POST, PUT, DELETE)."},
         {"node_type": "entity", "text": "Entity Node — collects a specific piece of information from the user."},
+        {"node_type": "message", "text": "Message Node — displays a message to the user."},
+        {"node_type": "form", "text": "Form Node — collects multiple fields in a structured form."},
+        {"node_type": "script", "text": "Script Node — runs a JavaScript function for custom logic."},
     ],
+    "assignment_brief": {
+        "scenario_title": "My Bot Assessment",
+        "scenario_description": "Build a Kore.ai XO Platform chatbot that handles Create, Retrieve, Modify, and Delete operations via a REST API.",
+        "what_to_build": [
+            "Welcome dialog with main menu",
+            "Create Record dialog (entities + POST API + Agent Node)",
+            "Retrieve Record dialog (GET API + entity lookup)",
+            "Modify Record dialog (GET + PUT APIs)",
+            "Delete Record dialog (DELETE API)",
+            "At least 2 FAQs",
+        ],
+        "entities_to_collect": [
+            {"name": "customerName", "description": "Customer full name (first + last)"},
+            {"name": "phoneNumber", "description": "10-digit phone number"},
+        ],
+        "api_endpoints": [
+            {"name": "Create Record", "method": "POST", "description": "Creates a new record"},
+            {"name": "Get Record", "method": "GET", "description": "Retrieves record by phone number"},
+            {"name": "Update Record", "method": "PUT", "description": "Updates an existing record"},
+            {"name": "Delete Record", "method": "DELETE", "description": "Removes a record"},
+        ],
+        "validation_rules": [
+            {"entity": "customerName", "rule": "must contain first and last name", "description": "First + Last name required"},
+            {"entity": "phoneNumber", "rule": "must be 10 digits", "description": "Numeric only, exactly 10 digits"},
+        ],
+        "faq_topics": ["working hours", "refund policy"],
+        "mock_api_setup_instructions": "Deploy the provided MockAPI collection. The evaluator will provide the base URL.",
+        "submission_instructions": "Export your bot as a ZIP from Kore.ai XO Platform and submit along with your webhook URL and mock API base URL.",
+    },
+    "submission_config": {
+        "max_attempts": 6,
+        "require_evaluator_confirmation": True,
+        "allow_evaluator_exception": True,
+        "feedback_mode": "immediate",
+    },
 }
 
 
@@ -435,6 +476,9 @@ async def manifest_new(request: Request):
         "tasks_json": json.dumps(sample["tasks"], indent=2),
         "compliance_json": json.dumps(sample["compliance_checks"], indent=2),
         "faq_json": json.dumps(sample["faq_config"], indent=2),
+        "assignment_brief_json": json.dumps(sample.get("assignment_brief", {}), indent=2),
+        "submission_config_json": json.dumps(sample.get("submission_config", {}), indent=2),
+        "tooltips_json": json.dumps(sample.get("tooltips", []), indent=2),
         "full_json": json.dumps(sample, indent=2),
         "error": error or None,
         "success": None,
@@ -470,6 +514,9 @@ async def manifest_edit(request: Request, manifest_id: str):
         "tasks_json": json.dumps(data.get("tasks", []), indent=2),
         "compliance_json": json.dumps(data.get("compliance_checks", []), indent=2),
         "faq_json": json.dumps(data.get("faq_config", {}), indent=2),
+        "assignment_brief_json": json.dumps(data.get("assignment_brief", {}), indent=2),
+        "submission_config_json": json.dumps(data.get("submission_config", {}), indent=2),
+        "tooltips_json": json.dumps(data.get("tooltips", []), indent=2),
         "full_json": json.dumps(data, indent=2),
         "error": error or None,
         "success": success or None,
@@ -488,14 +535,18 @@ async def manifest_save_form(
     conversation_starter: str = Form("Hi"),
     created_by: str = Form(""),
     notes: str = Form(""),
-    cbm_weight: str = Form("0.40"),
-    webhook_weight: str = Form("0.40"),
+    cbm_weight: str = Form("0.0"),
+    webhook_weight: str = Form("0.80"),
     compliance_weight: str = Form("0.10"),
     faq_weight: str = Form("0.10"),
     pass_threshold: str = Form("0.70"),
     tasks_json: str = Form("[]"),
     compliance_json: str = Form("[]"),
     faq_json: str = Form("{}"),
+    assignment_brief_json: str = Form("{}"),
+    submission_config_json: str = Form("{}"),
+    tooltips_json: str = Form("[]"),
+    state_seeding_json: str = Form("{}"),
 ):
     """Save manifest from form editor."""
     if not manifest_id or not assessment_name:
@@ -505,6 +556,10 @@ async def manifest_save_form(
         tasks = json.loads(tasks_json)
         compliance = json.loads(compliance_json)
         faq = json.loads(faq_json)
+        assignment_brief = json.loads(assignment_brief_json)
+        submission_config = json.loads(submission_config_json)
+        tooltips = json.loads(tooltips_json)
+        state_seeding = json.loads(state_seeding_json) if state_seeding_json else {}
     except json.JSONDecodeError as e:
         return RedirectResponse(url=f"/admin/manifest/edit/{manifest_id}?error=Invalid+JSON:+{e}", status_code=303)
 
@@ -527,16 +582,23 @@ async def manifest_save_form(
         "tasks": tasks,
         "compliance_checks": compliance,
         "faq_config": faq,
+        "assignment_brief": assignment_brief,
+        "submission_config": submission_config,
+        "tooltips": tooltips,
     }
+    if state_seeding:
+        data["state_seeding_config"] = state_seeding
 
     # If ID changed, remove old file
     if original_id and original_id != manifest_id:
         old_path = MANIFESTS_DIR / f"{original_id}.json"
         if old_path.exists():
             old_path.unlink()
+        old_data_path = DATA_MANIFESTS_DIR / f"{original_id}.json"
+        if old_data_path.exists():
+            old_data_path.unlink()
 
     _save_manifest(data)
-    # Redirect to edit page with success message so user stays in context
     return RedirectResponse(
         url=f"/admin/manifest/edit/{manifest_id}?success=Manifest+saved+successfully",
         status_code=303,
@@ -586,6 +648,37 @@ async def manifest_restore(request: Request, manifest_id: str):
     dst = MANIFESTS_DIR / f"{manifest_id}.json"
     shutil.move(str(src), str(dst))
     return RedirectResponse(url=f"/admin/manifests?message=Manifest+'{manifest_id}'+restored", status_code=303)
+
+
+@router.post("/manifest/validate", response_class=HTMLResponse)
+async def manifest_validate(request: Request, manifest_json: str = Form("{}")):
+    """Validate manifest JSON against MD-01–MD-12 rules. Returns an HTML fragment."""
+    from ..core.manifest import Manifest
+    from ..core.manifest_validator import Severity, validate_manifest
+
+    try:
+        data = json.loads(manifest_json)
+        manifest = Manifest(**data)
+        result = validate_manifest(manifest)
+    except Exception as e:
+        return HTMLResponse(
+            f'<div class="alert alert-danger"><strong>Parse error:</strong> {e}</div>'
+        )
+
+    if result.valid:
+        html = '<div class="alert alert-success"><strong>✓ Valid manifest</strong> — no defects found.</div>'
+    else:
+        rows = ""
+        for d in result.defects:
+            color = "danger" if d.severity == Severity.ERROR else "warning"
+            rows += (
+                f'<div class="alert alert-{color}" style="margin-bottom:.4rem;">'
+                f'<strong>[{d.rule_id}] {d.severity.value.upper()}</strong>: {d.message}'
+                f"</div>"
+            )
+        html = f'<div>{rows}</div>'
+
+    return HTMLResponse(html)
 
 
 @router.get("/manifest/schema", response_class=HTMLResponse)
