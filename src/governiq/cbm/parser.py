@@ -276,6 +276,11 @@ class CBMObject:
                 return dialog
         return None
 
+    @property
+    def component_map(self) -> dict[str, "CBMDialog"]:
+        """Map of dialog_id → CBMDialog for all parsed dialogs."""
+        return {d.dialog_id: d for d in self.dialogs}
+
     def find_dialog_fuzzy(self, name: str) -> tuple[CBMDialog | None, float]:
         """Fuzzy match a dialog name. Returns (dialog, similarity_score)."""
         if not self.dialogs:
