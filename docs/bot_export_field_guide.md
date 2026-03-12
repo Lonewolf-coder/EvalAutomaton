@@ -1,445 +1,929 @@
 # Kore.ai Bot Export — Field Reference Guide
 
-This document maps every field found in Kore.ai XO Platform bot exports (`appDefinition.json`).
-It is the authoritative reference for the CBM parser and blueprint generator.
-All paths are confirmed from real exports. Trust this over Kore.ai documentation — the actual export format differs from the docs in several critical places.
+This document maps every field confirmed in real Kore.ai XO Platform bot exports (`appDefinition.json`).
+All paths are verified from 9 real bot exports (2 Medical, 7 Travel). Trust this over Kore.ai documentation.
 
-**Status:** Initial version based on sample export. Will be expanded when real candidate bot exports are added to `tests/bot_exports/`.
+**Last updated:** Phase 1 — confirmed from real candidate exports in `tests/bot_exports/`.
 
 ---
 
-## Top-Level Keys
+## Critical Architecture: How Exports Are Structured
+
+A Kore.ai export is **NOT** a simple nested JSON. There are two layers:
+
+1. **`dialogs` array** — each dialog contains `nodes[]`, but nodes are **reference stubs only** (no content)
+2. **`dialogComponents` array** — contains all actual node content, keyed by `_id`
+
+Every node in a dialog has `type` and `componentId`. The parser **must** look up `componentId` in `dialogComponents` to get names, messages, service URLs, entity config, etc.
+
+```python
+# Build lookup once per parse
+comp_lookup = {c['_id']: c for c in export_data['dialogComponents']}
+
+# Resolve node content
+for node in dialog['nodes']:
+    component = comp_lookup[node['componentId']]  # actual content here
+```
+
+---
+
+## Top-Level Keys (Confirmed Present in All Exports)
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `botInfo` | object | Bot metadata (name, description, language, version) |
-| `dialogs` | array | All dialog task definitions |
+| `_id` | string | Bot ID (e.g. `"st-553e16f2-..."`) |
+| `refId` | string | Reference ID |
+| `type` | string | Always `"default"` |
+| `appType` | string | Always `"unified"` |
+| `purpose` | string | Always `"customer"` |
+| `defaultLanguage` | string | e.g. `"en"` |
+| `supportedLanguages` | array | e.g. `["en"]` or `["en", "es"]` |
+| `localeData` | object | Multi-language data including bot name — **bot name lives here** |
+| `environmentVersionInfo` | string | Bot version e.g. `"9.1.7"` |
+| `isSmartAssist` | boolean | |
+| `isAgentAssist` | boolean | |
+| `isNLEnabled` | boolean | |
+| `dialogs` | array | Dialog definitions (node stubs only) |
+| `dialogComponents` | array | All node content (resolved via componentId) |
 | `knowledgeTasks` | array | FAQ / Knowledge tasks |
-| `dialogGPTSettings` | array | LLM/DialogGPT configuration (**TRAP: array, not object**) |
-| `componentMap` | object | Dialog ID → dialog name mapping |
-| `channels` | array | Configured channel types (web, webhook, etc.) |
-| `trainingData` | object | NLP training utterances |
+| `dialogGPTSettings` | array | LLM/DialogGPT config (**TRAP: array, not object**) |
+| `llmConfiguration` | array | LLM feature configuration |
+| `customDashboards` | array | Custom analytics dashboards (may be empty) |
+| `contentVariables` | array | Content/environment variables |
+| `channels` | array | Configured channels (always empty in these exports) |
+| `forms` | array | Form definitions (linked from form components via `resourceId`) |
+| `botEvents` | object | Bot event handlers (14 event types) |
+| `patterns` | array | NLP patterns |
+| `advancedNLSettings` | array | NLP configuration |
+| `mlParams` | array | ML training parameters |
+| `smallTalk` | array | SmallTalk config |
+| `strict_pii` | boolean | PII protection mode |
+| `interruptsEnabled` | boolean | |
+| `sessionInactiveTime` | number | Session timeout in ms (e.g. 900000) |
 
-### Fields confirmed missing in sample (will be present in real exports):
-
-| Key | Type | Expected Contents |
-|-----|------|-------------------|
-| `entities` | array | Bot-level entity definitions (custom entity types) |
-| `customVariables` | object or array | Custom context variables defined at bot level |
-| `nlpSettings` | object | NLP model settings, confidence thresholds |
-| `botVersion` | string or object | Bot version metadata |
-| `importedPackages` | array | Shared components / packages imported |
-| `sharedComponents` | array | Reusable dialog components |
-| `dashboards` | array | Custom analytics dashboards |
-| `environmentVariables` | object | Environment-specific configuration variables |
-| `permissions` | object | Channel and feature permissions |
+**NOT present in any export:**
+- `botInfo` — **does not exist**. Bot name is at `localeData.en.name`
+- `componentMap` — **does not exist**. Use `dialogComponents` array instead
+- `trainingData` — not a top-level key. Training data is in `mlParams`
 
 ---
 
-## `botInfo` Object
+## Bot Metadata
+
+Bot name and description are **NOT** in a `botInfo` object. They are in `localeData`.
 
 ```json
 {
-  "botInfo": {
-    "name": "Medical Appointment Bot",
-    "description": "A chatbot for booking and managing medical appointments",
-    "defaultLanguage": "en"
-  }
+  "localeData": {
+    "en": {
+      "name": "Medi_Assistant",
+      "description": "...",
+      "invocationNames": [],
+      "nlpVersion": "..."
+    }
+  },
+  "environmentVersionInfo": "9.1.7",
+  "supportedLanguages": ["en"],
+  "defaultLanguage": "en"
 }
 ```
 
-| Field | Path | Type | Notes |
-|-------|------|------|-------|
-| Bot name | `botInfo.name` | string | |
-| Description | `botInfo.description` | string | |
-| Default language | `botInfo.defaultLanguage` | string | e.g. "en" |
-| Version | `botInfo.version` | string | May not be present in all exports |
+| Field | Path | Notes |
+|-------|------|-------|
+| Bot name | `localeData.en.name` | Primary bot name |
+| Bot description | `localeData.en.description` | May be empty |
+| Bot version | `environmentVersionInfo` | String, e.g. `"9.1.7"` |
+| Languages | `supportedLanguages` | List of language codes |
+| Default language | `defaultLanguage` | e.g. `"en"` |
+
+**Also available from `config.json`** (companion file in the export folder):
+```json
+{ "name": "Medi_Assistant", "envVariables": [...] }
+```
 
 ---
 
 ## `dialogs` Array
 
-Each element is a dialog task definition.
+Each dialog is a flow with ordered nodes. **Node content is NOT stored here** — only references.
 
 ```json
 {
   "dialogs": [
     {
-      "name": "Book Appointment",
-      "_id": "dialog_book",
-      "nodes": [ ... ]
+      "_id": "dg-0d026223-55a1-5fe0-92e4-78a67bf8af4b",
+      "refId": "...",
+      "lname": "modify appointment details",
+      "localeData": {
+        "en": {
+          "name": "Modify Appointment Details",
+          "shortDesc": "When User needs to modify specific appointment"
+        }
+      },
+      "nodes": [ ... reference stubs ... ],
+      "isHidden": false,
+      "isFollowUp": false,
+      "isAbandonment": false,
+      "contextLifeTime": {"options": "close"},
+      "interruptOptions": {"priority": "bot"},
+      "groups": [],
+      "sequences": []
     }
   ]
 }
 ```
 
-| Field | Path | Type | Notes |
-|-------|------|------|-------|
-| Dialog name | `dialogs[i].name` | string | User-defined name |
-| Dialog ID | `dialogs[i]._id` | string | Internal identifier |
-| Nodes array | `dialogs[i].nodes` | array | Ordered list of nodes |
-
-### Fields expected in real exports (not in sample):
-
-| Field | Path | Type | Notes |
-|-------|------|------|-------|
-| Description | `dialogs[i].description` | string | |
-| Type | `dialogs[i].type` | string | e.g. "dialog", "action" |
-| Enabled | `dialogs[i].enabled` | boolean | |
-| Intent utterances | `dialogs[i].intents` | array | Training utterances for this dialog |
-| Entry points | `dialogs[i].triggers` | array | What triggers this dialog |
+| Field | Path | Notes |
+|-------|------|-------|
+| Dialog ID | `dialog._id` | Internal ID (e.g. `"dg-..."`) |
+| Dialog name (display) | `dialog.localeData.en.name` | **Use this** — NOT `dialog.name` |
+| Dialog name (lowercase) | `dialog.lname` | Lowercase internal name |
+| Short description | `dialog.localeData.en.shortDesc` | |
+| Nodes (reference stubs) | `dialog.nodes` | Each has `type` + `componentId` only |
+| Hidden | `dialog.isHidden` | boolean |
+| Follow-up dialog | `dialog.isFollowUp` | boolean |
+| Abandonment handler | `dialog.isAbandonment` | boolean |
 
 ---
 
-## Node Structure
+## Node Reference Structure (in `dialogs[i].nodes`)
 
-Each node inside a dialog has this base structure:
+Every node in a dialog is a **reference stub only**. All content is in `dialogComponents`.
 
 ```json
 {
-  "nodeId": "node_post",
   "type": "service",
-  "name": "CreateBooking",
-  "component": { ... },
-  "transitions": [{ "target": "node_confirm_msg" }]
+  "componentId": "dc-0eb2824d-9b31-5b7e-a461-d73d9806a2d1",
+  "nodeId": "nd-srv-1382308b-0cef-49a1-a6f6-ac502c9a9fd4",
+  "transitions": [
+    {
+      "default": "nd-scr-0ac319d3-c233-4eb1-8f93-b7666f833827",
+      "metadata": {"color": "#D0D5DD", "connId": "..."}
+    }
+  ],
+  "vNameSpace": [],
+  "preConditions": [],
+  "useTaskLevelNs": true,
+  "nodeOptions": { ... }
 }
 ```
 
-| Field | Path | Type | Notes |
-|-------|------|------|-------|
-| Node ID | `nodes[i].nodeId` | string | Unique within dialog |
-| Node type | `nodes[i].type` | string | See Node Types below |
-| Node name | `nodes[i].name` | string | Developer-defined name |
-| Component | `nodes[i].component` | object | Type-specific configuration |
-| Transitions | `nodes[i].transitions` | array | Outgoing connections |
-
-### Transition structure:
-
-```json
-{ "target": "node_next_id" }
-```
-
-In real exports, transitions may have additional condition fields:
-
-```json
-{ "target": "node_success", "condition": "response.status == 200" }
-{ "target": "node_error", "condition": "response.status != 200" }
-```
+| Field | Path | Notes |
+|-------|------|-------|
+| Node type | `node.type` | Same value as the resolved component's `type` |
+| Component ID | `node.componentId` | Key to look up in `dialogComponents` |
+| Node ID | `node.nodeId` | Unique within dialog (e.g. `"nd-srv-..."`) |
+| Transitions | `node.transitions` | Array of outgoing connections (see Transitions) |
+| Node options | `node.nodeOptions` | Canvas/runtime config |
 
 ---
 
-## Node Types (Confirmed)
+## Transitions Structure
 
-| Type value | Constant | Description |
-|-----------|----------|-------------|
-| `"message"` | `NODE_TYPE_MESSAGE` | Displays text to the user |
-| `"entity"` | `NODE_TYPE_ENTITY` | Collects a specific entity from user |
-| `"service"` | `NODE_TYPE_SERVICE` | Makes an API call (GET, POST, PUT, DELETE) |
-| `"aiassist"` | `NODE_TYPE_AGENT` | AI Assist / Agent Node (**TRAP: not "agent"**) |
-| `"confirmation"` | `NODE_TYPE_CONFIRMATION` | Asks user to confirm before proceeding |
-| `"prompt"` | `NODE_TYPE_PROMPT` | Displays a prompt (similar to message) |
-| `"script"` | `NODE_TYPE_SCRIPT` | Executes JavaScript code |
-| `"logic"` | `NODE_TYPE_LOGIC` | Conditional branching |
-| `"form"` | `NODE_TYPE_FORM` | Form-based multi-entity collection |
-| `"webhook"` | `NODE_TYPE_WEBHOOK` | Outbound webhook call |
+Four transition variants found across all exports:
+
+### 1. Simple default
+```json
+{ "default": "nd-msg-abc123", "metadata": {"color": "#D0D5DD", "connId": "..."} }
+```
+
+### 2. Entity value condition
+```json
+{
+  "if": {"field": "nd-ent-xyz789", "op": "eq", "value": "ChangeTheDate"},
+  "then": "nd-ent-new_date",
+  "metadata": {...}
+}
+```
+
+### 3. Context path condition (logic nodes)
+```json
+{
+  "if": {"context": "context.dialogGPTInfo.winning_intents[0]", "op": "eq", "value": "Repeat"},
+  "then": "nd-gai-abc123",
+  "metadata": {...}
+}
+```
+
+### 4. DialogAct condition (yes/no)
+```json
+{ "if": {"dialogAct": "yes"}, "then": "nd-srv-abc123", "metadata": {...} }
+{ "if": {"dialogAct": "no"}, "then": "nd-scr-abc123", "metadata": {...} }
+```
+
+**Note:** Logic node branch conditions are on the **node's** `transitions` array — NOT in the component.
+
+---
+
+## `dialogComponents` Array
+
+The actual content store. All node content lives here. Look up by `_id`.
+
+```json
+{
+  "dialogComponents": [
+    {
+      "_id": "dc-0eb2824d-9b31-5b7e-a461-d73d9806a2d1",
+      "refId": "...",
+      "name": "GetAppointmentDetails",
+      "type": "service",
+      "piiDataEnabled": false,
+      "serviceNodeType": "custom",
+      ...type-specific fields...
+    }
+  ]
+}
+```
+
+**Common fields on ALL components:**
+
+| Field | Path | Notes |
+|-------|------|-------|
+| Component ID | `component._id` | Match against node's `componentId` |
+| Name | `component.name` | Developer-assigned node name |
+| Type | `component.type` | Same as node `type` |
+| PII enabled | `component.piiDataEnabled` | boolean |
+| Locale data | `component.localeData` | Multi-language content |
+| Parent ID | `component.parentId` | Parent component reference |
+
+---
+
+## Node Types — Confirmed Across All 9 Exports
+
+| Type value | Description | Present in |
+|-----------|-------------|------------|
+| `intent` | Dialog entry / intent node | All bots |
+| `message` | Displays text to user | All bots |
+| `entity` | Collects entity from user | All bots |
+| `service` | API call (GET/POST/PATCH/DELETE) | All bots |
+| `script` | Executes JavaScript | All bots |
+| `aiassist` | AI Assist / Agent Node | Some bots |
+| `generativeai` | LLM generative prompt node | Some bots |
+| `searchai` | SearchAI knowledge base query | Some bots |
+| `form` | Form-based input collection | All bots |
+| `logic` | Conditional branching | Most bots |
+| `dialogAct` | Yes/No confirmation prompt | Most bots |
+| `dynamicIntent` | Dynamic intent resolution | Some bots |
+| `agentTransfer` | Transfer to human agent | Some bots |
+
+**NOT found in any export:** `confirmation`, `webhook`, `prompt`
 
 ---
 
 ## Component Fields by Node Type
 
-### `message` node
+### `message` component
 
 ```json
-"component": {
-  "message": "Welcome to the bot! ..."
-}
-```
-
-| Field | Path | Notes |
-|-------|------|-------|
-| Message text | `component.message` | May also be at `.text`, `.prompt`, `.msg` |
-
-### `entity` node
-
-```json
-"component": {
-  "entityType": "phone",
-  "message": "Please provide your contact number."
-}
-```
-
-| Field | Path | Notes |
-|-------|------|-------|
-| Entity type | `component.entityType` | "string", "phone", "date", "time", "list", etc. |
-| Prompt text | `component.message` | May also be at `.prompt`, `.question` |
-| Validation rules | `component.validationRules` | Array; format varies by entity type |
-
-**Expected in real exports:**
-| Field | Path | Notes |
-|-------|------|-------|
-| Entity name/key | `component.entityName` or `name` at node level | Variable name stored in context |
-| List values | `component.listValues` | For list-type entities |
-| Required | `component.required` | boolean |
-| Error message | `component.invalidEntityError` | Message shown on invalid input |
-| Re-prompt count | `component.maxPromptCount` | How many times bot re-asks |
-
-### `service` node
-
-```json
-"component": {
-  "serviceType": "rest",
-  "method": "POST",
-  "url": "https://mockapi.io/appointments"
-}
-```
-
-| Field | Path | Notes |
-|-------|------|-------|
-| Service type | `component.serviceType` | "rest", "soap" |
-| HTTP method | `component.method` | GET, POST, PUT, PATCH, DELETE |
-| URL | `component.url` | May contain `{{context.var}}` placeholders |
-
-**Expected in real exports:**
-| Field | Path | Notes |
-|-------|------|-------|
-| Request headers | `component.headers` | Array of `{key, value}` pairs |
-| Request body | `component.requestBody` or `component.payload` | JSON template string |
-| Auth config | `component.auth` | Auth type and credentials ref |
-| Response path | `component.responsePath` | Where to store response in context |
-| Timeout | `component.timeout` | Milliseconds |
-
-### `aiassist` node (AI Assist / Agent Node)
-
-```json
-"component": {
-  "instructions": "Help the user book an appointment with the provided details.",
-  "exitScenario": {
-    "enabled": true
-  }
-}
-```
-
-| Field | Path | Notes |
-|-------|------|-------|
-| System instructions | `component.instructions` | System context / prompt given to LLM |
-| Exit scenario | `component.exitScenario` | When AI Assist hands back to dialog |
-| Exit enabled | `component.exitScenario.enabled` | boolean |
-
-**Expected in real exports (critical gaps to fill with real data):**
-| Field | Path | Notes |
-|-------|------|-------|
-| Entity collection rules | `component.entityCollection` or `component.entities` | Which entities to collect, in what order |
-| Tools / Actions | `component.tools` or `component.actions` | List of callable tools/actions |
-| Exit conditions | `component.exitScenario.conditions` | Array of condition objects |
-| Exit utterances | `component.exitScenario.utterances` | Trigger phrases for handback |
-| Temperature | `component.llmConfig.temperature` | LLM settings override |
-| Model override | `component.llmConfig.model` | Per-node model override |
-| Max turns | `component.maxTurns` | Maximum AI Assist conversation turns |
-
-### `confirmation` node
-
-```json
-"component": {
-  "message": "You entered {{contactNumber}}. Is that correct?"
-}
-```
-
-| Field | Path | Notes |
-|-------|------|-------|
-| Confirmation prompt | `component.message` | Text shown; may contain `{{variable}}` |
-
-**Expected in real exports:**
-| Field | Path | Notes |
-|-------|------|-------|
-| Yes target | `transitions[0]` where condition = "yes" | |
-| No target | `transitions[1]` where condition = "no" | |
-
-### `script` node
-
-**Not in sample — expected fields based on Kore.ai platform:**
-| Field | Path | Notes |
-|-------|------|-------|
-| Script code | `component.script` | JavaScript code string |
-| Script name | `name` at node level | Developer-assigned name |
-
-### `logic` node
-
-**Not in sample — expected fields:**
-| Field | Path | Notes |
-|-------|------|-------|
-| Conditions | `component.conditions` | Array of condition objects |
-| Branches | `transitions` | Each with a `condition` field |
-| Default branch | last `transitions` entry | No condition = default |
-
----
-
-## `dialogGPTSettings` (TRAP 1)
-
-```json
-"dialogGPTSettings": [
-  {
-    "dialogGPTLLMConfig": {
-      "enable": true,
-      "model": "gpt-4",
-      "temperature": 0.3
-    }
-  }
-]
-```
-
-**TRAP:** This is an **array**, not an object. Access via `[0]`.
-
-| Field | Path | Notes |
-|-------|------|-------|
-| Enabled | `dialogGPTSettings[0].dialogGPTLLMConfig.enable` | boolean |
-| Model | `dialogGPTSettings[0].dialogGPTLLMConfig.model` | |
-| Temperature | `dialogGPTSettings[0].dialogGPTLLMConfig.temperature` | |
-
----
-
-## `knowledgeTasks` / FAQs (TRAP 2)
-
-```json
-"knowledgeTasks": [
-  {
-    "name": "Medical FAQ",
-    "faqs": {
-      "faqs": [
-        {
-          "question": "What are your working hours?",
-          "answer": "...",
-          "alternateQuestions": ["When is the clinic open?", ...]
+{
+  "_id": "dc-051ac62c-...",
+  "name": "WelcomeMessage",
+  "type": "message",
+  "message": [
+    {
+      "channel": "default",
+      "localeData": {
+        "en": {
+          "text": "Welcome%20to%20the%20bot%21",
+          "type": "basic"
         }
-      ]
+      }
     }
-  }
-]
-```
-
-**TRAP:** The FAQ array is at `.faqs.faqs` (double-nested), **NOT** `.faqs`.
-
-| Field | Path | Notes |
-|-------|------|-------|
-| FAQ array | `knowledgeTasks[0].faqs.faqs` | Double-nested |
-| Question | `faqs[i].question` | Primary question |
-| Answer | `faqs[i].answer` | Ground truth answer |
-| Alternate questions | `faqs[i].alternateQuestions` | Array of alternate phrasings |
-
----
-
-## `channels` Array
-
-```json
-"channels": [
-  { "type": "web", "enabled": true },
-  { "type": "webhook", "enabled": true }
-]
-```
-
-| Field | Path | Notes |
-|-------|------|-------|
-| Channel type | `channels[i].type` | "web", "webhook", "slack", "teams", etc. |
-| Enabled | `channels[i].enabled` | boolean |
-
----
-
-## `trainingData` Object
-
-```json
-"trainingData": {
-  "utterances": [
-    { "intent": "Book Appointment", "utterance": "I want to book an appointment" }
   ]
 }
 ```
 
 | Field | Path | Notes |
 |-------|------|-------|
-| Utterances array | `trainingData.utterances` | |
-| Intent name | `trainingData.utterances[i].intent` | Maps to a dialog name |
-| Utterance text | `trainingData.utterances[i].utterance` | Training phrase |
+| Message text | `component.message[0].localeData.en.text` | **URL-encoded** — call `urllib.parse.unquote()` |
+| Message type | `component.message[0].localeData.en.type` | `"basic"` (plain text) or `"uxmap"` (template/JS) |
 
 ---
 
-## `componentMap` Object
-
-Maps dialog IDs to dialog names.
+### `entity` component
 
 ```json
-"componentMap": {
-  "dialog_welcome": "Welcome",
-  "dialog_book": "Book Appointment"
+{
+  "_id": "dc-6f677ed3-...",
+  "name": "preferredDate",
+  "type": "entity",
+  "entityType": "date",
+  "localeData": {
+    "en": {
+      "label": "What is your preferred date? (DD-MM-YYYY)",
+      "allowedValues": {
+        "values": [
+          {"title": "Monday", "value": "Monday", "synonyms": ["Mon", "monday"]}
+        ]
+      }
+    }
+  },
+  "message": [
+    {
+      "channel": "default",
+      "localeData": {
+        "en": {"text": "What%20is%20your%20preferred%20date%3F", "type": "basic"}
+      }
+    }
+  ],
+  "errorMessage": [
+    {
+      "channel": "default",
+      "localeData": {
+        "en": {"text": "Invalid%20date%20format.", "type": "basic"}
+      }
+    }
+  ]
 }
 ```
 
-Used for dialog name resolution when the dialog `_id` is known but the display name needs to be looked up.
+| Field | Path | Notes |
+|-------|------|-------|
+| Entity type | `component.entityType` | `"label"`, `"date"`, `"time"`, `"phone_number"`, `"list_of_values"`, etc. |
+| Entity prompt (label) | `component.localeData.en.label` | The question the bot asks |
+| Bot message (spoken prompt) | `component.message[0].localeData.en.text` | URL-encoded |
+| Error message | `component.errorMessage[0].localeData.en.text` | URL-encoded; shown on invalid input |
+| Allowed values | `component.localeData.en.allowedValues.values` | List of `{title, value, synonyms}` |
+| Array entity | `component.isArray` | boolean; entity accepts multiple values |
 
 ---
 
-## Fields NOT Yet Confirmed (Need Real Exports)
+### `service` component
 
-The following sections are expected based on Kore.ai platform knowledge but **have not been confirmed from a real candidate export**. These are the highest-priority items to map when real exports are uploaded.
-
-### AI Assist Entity Rules
-The most critical gap. Real AI Assist nodes likely have structured entity collection rules rather than just free-form instructions.
-
-**Likely paths to check:**
-- `component.entityCollection`
-- `component.entities` (array of entity config objects)
-- `component.slots`
-
-### Custom Dashboards
 ```json
-"dashboards": [
+{
+  "_id": "dc-0eb2824d-...",
+  "name": "GetAppointmentDetails",
+  "type": "service",
+  "endPoint": {
+    "host": "697b49380e6ff62c3c5b94c6.mockapi.io",
+    "port": "",
+    "path": "/api/appointments/patients?contactNumber={{context.contactNumber}}",
+    "protocol": "https",
+    "method": "get",
+    "connectorEnabled": false,
+    "piiDataEnabled": false
+  },
+  "authRequired": false,
+  "idp": "none",
+  "serviceAPITimeout": 20,
+  "payload": {"type": "raw", "value": "undefined"},
+  "headers": {"type": "raw", "value": "{\"Content-Type\":\"application/json\"}"},
+  "isClientCertEnabled": false
+}
+```
+
+| Field | Path | Notes |
+|-------|------|-------|
+| HTTP method | `component.endPoint.method` | `"get"`, `"post"`, `"patch"`, `"delete"`, `"put"` |
+| Host | `component.endPoint.host` | Domain (e.g. `"mockapi.io"`) |
+| Path | `component.endPoint.path` | May contain `{{context.var}}` |
+| Protocol | `component.endPoint.protocol` | `"https"` or `"http"` |
+| Full URL | `f"{protocol}://{host}{path}"` | Reconstruct — no single `url` field |
+| Auth required | `component.authRequired` | boolean |
+| Auth provider | `component.idp` | `"none"` or auth config |
+| Timeout (seconds) | `component.serviceAPITimeout` | Integer |
+| Request body | `component.payload` | `{type: "raw", value: "...JSON string..."}` |
+| Request headers | `component.headers` | `{type: "raw", value: "...JSON string..."}` |
+
+---
+
+### `script` component
+
+```json
+{
+  "_id": "dc-4be0e58b-...",
+  "name": "SAT_setSessionData",
+  "type": "script",
+  "script": "var%20l%3D%20koreUtil._%3B%0Avar%20refNumber%20%3D%20l.random(100000%2C999999)%3B..."
+}
+```
+
+| Field | Path | Notes |
+|-------|------|-------|
+| Script content | `component.script` | **URL-encoded** — call `urllib.parse.unquote()` |
+
+Decoded example:
+```javascript
+var l= koreUtil._;
+var refNumber = l.random(100000,999999);
+BotUserSession.put('phoneNumber', context.entities.SAT_phoneNumber);
+```
+
+---
+
+### `aiassist` component (AI Assist / Agent Node)
+
+**TRAP: The system context field has two inconsistent key names depending on bot version:**
+- `systemContext` (camelCase) — found in Medical bots + most Travel bots
+- `system_context` (snake_case) — found in Travel AI Agent (11)
+- Some bots have **both** keys simultaneously
+
+**Always try:** `ai.get('systemContext') or ai.get('system_context')`
+
+```json
+{
+  "_id": "dc-129037a0-...",
+  "name": "BookAppointmentAgent",
+  "type": "aiassist",
+  "generativeAI": {
+    "dynamicEntityConfig": {
+      "displayName": "Azure OpenAI by Kore.ai",
+      "integrationName": "koreopenai",
+      "model": "GPT-4o",
+      "temperature": 0.7,
+      "max_tokens": 1068,
+      "systemContext": "You are a medical appointment scheduling assistant...",
+      "dynamicEntities": [
+        {"name": "doctorType", "type": "label"},
+        {"name": "patientName", "type": "label"},
+        {"name": "contactNumber", "type": "phone_number"},
+        {"name": "preferredDate", "type": "date"},
+        {"name": "preferredTime", "type": "time"},
+        {"name": "reasonForVisit", "type": "label"}
+      ],
+      "rules": [
+        "Ask only missing info.",
+        "Validate each input and politely request corrections.",
+        "Maintain a professional, calm, and friendly tone"
+      ],
+      "exitScenarios": [
+        "Only when all entities are captured and valid."
+      ]
+    }
+  }
+}
+```
+
+| Field | Path | Notes |
+|-------|------|-------|
+| System context | `comp.generativeAI.dynamicEntityConfig` → `ai.get('systemContext') or ai.get('system_context')` | LLM system prompt — **two key variants** |
+| Integration | `comp.generativeAI.dynamicEntityConfig.integrationName` | e.g. `"koreopenai"` |
+| Model | `comp.generativeAI.dynamicEntityConfig.model` | e.g. `"GPT-4o"` |
+| Temperature | `comp.generativeAI.dynamicEntityConfig.temperature` | float |
+| Max tokens | `comp.generativeAI.dynamicEntityConfig.max_tokens` | integer |
+| Dynamic entities | `comp.generativeAI.dynamicEntityConfig.dynamicEntities` | List of `{name, type}` — entities to collect |
+| Collection rules | `comp.generativeAI.dynamicEntityConfig.rules` | List of string rules |
+| Exit scenarios | `comp.generativeAI.dynamicEntityConfig.exitScenarios` | List of string conditions for handing back |
+
+**NOT found:** `toolActions` — not present in any of the 9 exports analyzed.
+
+---
+
+### `generativeai` component (LLM Prompt Node)
+
+```json
+{
+  "_id": "dc-2a7457bc-...",
+  "name": "RefuseEvent",
+  "type": "generativeai",
+  "generativeAI": {
+    "settings": {
+      "model": "GPT-4o",
+      "integrationName": "openai",
+      "temperature": 0.5,
+      "max_tokens": 2500,
+      "system_context": ""
+    },
+    "promptFilterBasedOnModel": [
+      {
+        "name": "Default",
+        "featureKey": "generativeai",
+        "configuration": {
+          "endPoint": {"protocol": "https:", "host": "api.openai.com", ...},
+          "payloadFields": {
+            "model": "gpt-4o",
+            "messages": [{"role": "system", "content": "{{prompt}}"}]
+          }
+        }
+      }
+    ]
+  }
+}
+```
+
+| Field | Path | Notes |
+|-------|------|-------|
+| Model | `comp.generativeAI.settings.model` | e.g. `"GPT-4o"` |
+| Temperature | `comp.generativeAI.settings.temperature` | float |
+| System context | `comp.generativeAI.settings.system_context` | May be empty string |
+| Integration | `comp.generativeAI.settings.integrationName` | |
+| Prompt config | `comp.generativeAI.promptFilterBasedOnModel` | Array of model-specific prompt configs |
+
+---
+
+### `searchai` component
+
+```json
+{
+  "_id": "dc-86c7f947-...",
+  "name": "SearchAI_MultiIntent",
+  "type": "searchai",
+  "generativeAI": {
+    "settings": {"isSysIntAndCustomPrompt": false},
+    "searchConfig": {
+      "type": "custom",
+      "query": "{{context.userInputs.originalInput.sentence}}"
+    },
+    "searchFilters": {"type": "basic", "metaFilters": []},
+    "resultConfig": {
+      "answerSearch": true,
+      "includeChunksInResponse": false
+    }
+  }
+}
+```
+
+| Field | Path | Notes |
+|-------|------|-------|
+| Search query | `comp.generativeAI.searchConfig.query` | Usually `{{context.userInputs.originalInput.sentence}}` |
+| Search type | `comp.generativeAI.searchConfig.type` | `"custom"` |
+| Answer search | `comp.generativeAI.resultConfig.answerSearch` | boolean |
+
+---
+
+### `form` component
+
+```json
+{
+  "_id": "dc-2ac9a974-...",
+  "name": "CSAT5Options0001",
+  "type": "form",
+  "resourceId": "d3e64963-1e8f-5ddd-8c58-044ec1427261",
+  "message": [
+    {"channel": "default", "localeData": {"en": {"text": "Please click below...", "type": "basic"}}}
+  ],
+  "errorMessage": [...],
+  "submitMessage": [...]
+}
+```
+
+| Field | Path | Notes |
+|-------|------|-------|
+| Resource ID | `component.resourceId` | Links to `forms[i]['refId']` |
+| Intro message | `comp.message[0].localeData.en.text` | URL-encoded |
+| Error message | `comp.errorMessage[0].localeData.en.text` | URL-encoded |
+| Submit message | `comp.submitMessage[0].localeData.en.text` | URL-encoded |
+
+**Form definition in `forms` array** (linked via `resourceId`):
+```json
+{
+  "name": "CSAT5Options",
+  "displayName": "Feedback",
+  "type": "regular",
+  "refId": "d3e64963-1e8f-5ddd-8c58-044ec1427261",
+  "components": [
+    {
+      "name": "Score",
+      "type": "radio",
+      "metaData": {"displayName": "How was your previous interaction?", ...}
+    }
+  ]
+}
+```
+
+Link: `form_component['resourceId']` == `forms[i]['refId']`
+
+---
+
+### `dialogAct` component (Yes/No Confirmation)
+
+```json
+{
+  "_id": "dc-30478dd1-...",
+  "name": "SAT_ConfirmPhoneNumber",
+  "type": "dialogAct",
+  "message": [
+    {
+      "channel": "default",
+      "localeData": {
+        "en": {"type": "uxmap", "text": "var%20phoneNumber%20%3D%20..."}
+      }
+    }
+  ]
+}
+```
+
+| Field | Path | Notes |
+|-------|------|-------|
+| Confirmation prompt | `comp.message[0].localeData.en.text` | **URL-encoded**. Type may be `"uxmap"` (JS template) |
+| Message type | `comp.message[0].localeData.en.type` | `"basic"` or `"uxmap"` |
+
+Transitions on the dialogAct **node** determine the yes/no routing:
+```json
+{"if": {"dialogAct": "yes"}, "then": "nd-srv-abc123"}
+{"if": {"dialogAct": "no"}, "then": "nd-scr-abc123"}
+```
+
+---
+
+### `logic` component
+
+Logic components are **bare** — no condition data stored in the component itself.
+
+```json
+{
+  "_id": "dc-8b248710-...",
+  "name": "LogicNode",
+  "type": "logic",
+  "localeData": {...}
+}
+```
+
+**All branch conditions are on the dialog NODE's `transitions` array:**
+```json
+{
+  "type": "logic",
+  "componentId": "dc-8b248710-...",
+  "transitions": [
+    {
+      "if": {"context": "context.dialogGPTInfo.winning_intents[0]", "op": "eq", "value": "Repeat"},
+      "then": "nd-gai-abc123",
+      "metadata": {...}
+    },
+    {"default": "nd-gai-xyz789", "metadata": {...}}
+  ]
+}
+```
+
+---
+
+### `agentTransfer` component
+
+```json
+{
+  "_id": "dc-835a9fc7-...",
+  "name": "AgentTransferEvent",
+  "type": "agentTransfer",
+  "containmentType": "agenttransfer",
+  "localeData": {"en": {"label": "AgentTransferEvent"}}
+}
+```
+
+| Field | Path | Notes |
+|-------|------|-------|
+| Containment type | `component.containmentType` | Always `"agenttransfer"` |
+| Label | `component.localeData.en.label` | Display name |
+
+---
+
+### `dynamicIntent` component
+
+Minimal component — no additional content beyond standard fields.
+Used for dynamic intent resolution at runtime.
+
+---
+
+### `intent` component
+
+The entry/trigger node for a dialog. Contains intent training data in `localeData`.
+
+---
+
+## `dialogGPTSettings` (TRAP: Array)
+
+```json
+"dialogGPTSettings": [
   {
-    "name": "Appointment Dashboard",
-    "widgets": [ ... ],
-    "dataSource": "...",
-    "filters": [ ... ]
+    "conversationTypes": [
+      {"label": "Dialogs", "id": "dialogs"},
+      {"label": "FAQs", "id": "faqs"}
+    ],
+    "searchIndexId": "sixd-85eede49-...",
+    "dialogGPTLLMConfig": {
+      "name": "dialogGPT",
+      "defaultModel": "XO GPT - DialogGPT Model",
+      "integration": "korexo",
+      "enable": true,
+      "temperature": 0.5,
+      "maxTokens": 2000,
+      "conversationHistoryLength": 25,
+      "promptName": "System prompt"
+    },
+    "embeddingModelConfig": {
+      "modelName": [
+        {
+          "label": "XO GPT - BGE M3 Embeddings Model",
+          "id": "bge-m3",
+          "maxNumOfChunks": 5,
+          "similarityThreshold": 20
+        }
+      ]
+    },
+    "language": "en"
   }
 ]
 ```
 
-### Custom Variables
+**TRAP:** This is an **array**, not an object. Always access `[0]`.
+
+| Field | Path | Notes |
+|-------|------|-------|
+| Enabled | `dialogGPTSettings[0].dialogGPTLLMConfig.enable` | boolean |
+| Model | `dialogGPTSettings[0].dialogGPTLLMConfig.defaultModel` | e.g. `"XO GPT - DialogGPT Model"` |
+| Temperature | `dialogGPTSettings[0].dialogGPTLLMConfig.temperature` | float |
+| Max tokens | `dialogGPTSettings[0].dialogGPTLLMConfig.maxTokens` | integer |
+| History length | `dialogGPTSettings[0].dialogGPTLLMConfig.conversationHistoryLength` | integer |
+| Search index | `dialogGPTSettings[0].searchIndexId` | Used for SearchAI integration |
+
+---
+
+## `knowledgeTasks` / FAQs (TRAP: Double-Nested)
+
 ```json
-"customVariables": [
-  { "name": "appointmentId", "type": "string", "scope": "session" }
+"knowledgeTasks": [
+  {
+    "name": "Medi_Assistant",
+    "language": "en",
+    "isGraph": false,
+    "faqs": {
+      "faqs": [
+        {
+          "question": "What should I bring to my appointment?",
+          "label": "What should I bring to my appointment?",
+          "responseType": "message",
+          "answer": [
+            {
+              "text": "Bring a valid ID, insurance card, previous medical records...",
+              "type": "basic",
+              "channel": "default"
+            }
+          ],
+          "alternateQuestions": [
+            {"question": "What items do I need to bring?", "terms": [...], "tags": []}
+          ],
+          "alternateAnswers": [],
+          "faqStatus": true,
+          "conditionalResp": false
+        }
+      ],
+      "nodes": [...],
+      "synonyms": {...}
+    }
+  }
 ]
 ```
 
-### Bot-Level Entity Definitions
+**TRAP:** FAQ array is at `.faqs.faqs` (double-nested) — NOT `.faqs`.
+**TRAP:** `answer` is a **list**, not a string. Access `answer[0]['text']`.
+
+| Field | Path | Notes |
+|-------|------|-------|
+| FAQ array | `knowledgeTasks[0].faqs.faqs` | **Double-nested** |
+| Question | `faq.question` | Primary question |
+| Answer text | `faq.answer[0].text` | **List** — access `[0].text` for default channel |
+| Response type | `faq.responseType` | Usually `"message"` |
+| Alternate questions | `faq.alternateQuestions` | List of `{question, terms, tags}` |
+| Alternate answers | `faq.alternateAnswers` | List (usually empty) |
+| FAQ active | `faq.faqStatus` | boolean |
+
+---
+
+## `llmConfiguration` Array
+
 ```json
-"entities": [
-  { "name": "doctorType", "type": "list", "values": ["GP", "Specialist"] }
+"llmConfiguration": [
+  {
+    "featureList": [
+      {
+        "name": "conversation",
+        "defaultModel": "GPT-4o",
+        "integration": "koreopenai",
+        "displayName": "Azure OpenAI by Kore.ai",
+        "params": {"temperature": 0.5, "max_tokens": 2500},
+        "enable": true
+      },
+      {
+        "name": "dialogGPT",
+        "defaultModel": "XO GPT - DialogGPT Model",
+        "integration": "korexo",
+        "enable": true
+      },
+      {"name": "vectorGeneration", "defaultModel": "bge-m3", "enable": true},
+      {"name": "generativeai", "defaultModel": "GPT-4o", "enable": true}
+    ]
+  }
 ]
 ```
 
-### Version / Metadata
+| Field | Path | Notes |
+|-------|------|-------|
+| Feature list | `llmConfiguration[0].featureList` | List of enabled LLM features |
+| Feature name | `feature.name` | `"conversation"`, `"dialogGPT"`, `"generativeai"`, `"vectorGeneration"`, etc. |
+| Default model | `feature.defaultModel` | e.g. `"GPT-4o"`, `"bge-m3"` |
+| Integration | `feature.integration` | e.g. `"koreopenai"`, `"korexo"` |
+| Enabled | `feature.enable` | boolean (may be absent if false) |
+
+---
+
+## `customDashboards` Array
+
+Present in feature-rich bots (e.g. Travel VA New). Empty in Medical bots.
+
 ```json
-"botVersion": "2.1.0",
-"lastModified": "2026-01-15T10:00:00Z",
-"createdBy": "admin@company.com"
+"customDashboards": [
+  {
+    "name": "CustomAnalytics",
+    "properties": {
+      "0": {"ind": 0, "id": "wg-9d72ff12-...", "meta": 100, "metaHeight": 300}
+    },
+    "widgets": [
+      {
+        "_id": "wg-9d72ff12-...",
+        "name": "Message Count",
+        "type": "table",
+        "mode": "advanced",
+        "dimensions": [
+          {"fieldName": "Message Type", "displayName": "Message Type", "type": "string"},
+          {"fieldName": "Count", "displayName": "Count", "type": "number"}
+        ]
+      }
+    ]
+  }
+]
 ```
 
-### Imported Packages / Shared Components
+| Field | Path | Notes |
+|-------|------|-------|
+| Dashboard name | `dashboard.name` | |
+| Widgets | `dashboard.widgets` | List of widget definitions |
+| Widget name | `widget.name` | |
+| Widget type | `widget.type` | `"table"`, `"chart"`, etc. |
+| Dimensions | `widget.dimensions` | List of `{fieldName, displayName, type}` |
+
+---
+
+## `contentVariables` Array
+
 ```json
-"importedPackages": [
-  { "packageId": "pkg_123", "name": "Common Utilities", "version": "1.0" }
+"contentVariables": [
+  {
+    "key": "some_var",
+    "variableType": "env",
+    "value": "some_value",
+    "scope": "prePopulated"
+  }
 ]
+```
+
+| Field | Path | Notes |
+|-------|------|-------|
+| Variable key | `var.key` | Variable name |
+| Type | `var.variableType` | `"env"`, `"content"`, etc. |
+| Value | `var.value` | Variable value |
+
+---
+
+## `botEvents` Object
+
+14 event handlers for system events.
+
+```json
+"botEvents": {
+  "AGENT_TRANSFER_EVENT": [...handlers...],
+  "AMBIGUOUS_INTENTS": [...],
+  "ANSWER_GENERATION_EVENT": [...],
+  "CONVERSATION_END": [...],
+  "INTENT_UNIDENTIFIED": [...],
+  "INTERACTION_INTENTS": [...],
+  "MULTI_INTENT_EVENT": [...],
+  "ON_CONNECT_EVENT": [...],
+  "REPEAT_RESPONSE_EVENT": [...],
+  "RESTART_CONVERSATION_EVENT": [...],
+  "TASK_END_EVENT": [...],
+  "TASK_FAILURE_EVENT": [...],
+  "TELEPHONY_WELCOME_EVENT": [...],
+  "WELCOME_MESSAGE_EVENT": [...]
+}
+```
+
+---
+
+## `channels` Array
+
+Always empty in all 9 exports analyzed. Channel configurations are managed in the Kore.ai platform, not exported in the appDefinition.json.
+
+```json
+"channels": []
 ```
 
 ---
 
 ## Parser Traps Summary
 
-See `docs/parser_traps.md` for the full list.
+See `docs/parser_traps.md` for the full list with wrong code vs. correct code.
 
-| # | Trap | Description |
-|---|------|-------------|
-| 1 | dialogGPTSettings is an array | Access `[0].dialogGPTLLMConfig.enable`, not `.dialogGPTLLMConfig.enable` |
-| 2 | FAQ double-nesting | Access `knowledgeTasks[0].faqs.faqs`, not `knowledgeTasks[0].faqs` |
-| 3 | AI Assist node type | Type value is `"aiassist"`, not `"agent"` or `"agentNode"` |
-
----
-
-*Last updated: Phase 1 initial analysis. Update this document when real bot exports are analyzed.*
+| # | Trap | Quick Fix |
+|---|------|-----------|
+| 1 | `dialogGPTSettings` is an array | Access `[0].dialogGPTLLMConfig.enable` |
+| 2 | FAQ double-nesting | `knowledgeTasks[0].faqs.faqs` not `.faqs` |
+| 3 | `aiassist` type name | `"aiassist"` not `"agent"` or `"agentNode"` |
+| 4 | No `botInfo` key | Use `localeData.en.name` |
+| 5 | No `dialog.name` field | Use `dialog.localeData.en.name` |
+| 6 | Nodes are reference stubs | Resolve `componentId` → `dialogComponents` |
+| 7 | No `componentMap` key | Build `{comp._id: comp}` from `dialogComponents` |
+| 8 | Message/script URL-encoded | `urllib.parse.unquote(text)` |
+| 9 | FAQ `answer` is a list | `faq['answer'][0]['text']` |
+| 10 | Form links via `resourceId` | `forms_lookup[comp['resourceId']]` where key is `forms[i]['refId']` |
+| 11 | Logic conditions on node | `node['transitions'][i]['if']` not on component |
+| 12 | aiassist context key varies | `ai.get('systemContext') or ai.get('system_context')` |
