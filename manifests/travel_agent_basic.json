@@ -1,0 +1,776 @@
+{
+  "manifest_id": "travel-agent-basic-v1",
+  "manifest_version": "2.0",
+  "assessment_name": "Travel Agent",
+  "assessment_type": "travel",
+  "description": "Evaluates a candidate's travel agent built on Kore.ai XO Platform. Tests flight booking (happy path and amendment), booking retrieval, modification, cancellation, and FAQ capabilities. Uses agentic evaluation mode — an LLM-as-user conducts conversations dynamically and goals are assessed post-conversation.",
+  "webhook_url": "",
+  "mock_api_base_url": "",
+  "conversation_starter": "Hi",
+
+  "evaluation_engine_requirements": {
+    "llm_as_user": {
+      "required": true,
+      "status": "PENDING_ARCHITECTURE_REVIEW",
+      "description": "Agentic evaluation mode requires an LLM runtime (e.g. Claude API) to conduct conversations dynamically per turn. This is a new dependency — not part of the original EvalAutomaton webhook-only architecture. Must be scoped and approved before this manifest can be used in production.",
+      "fallback": "If LLM-as-user is unavailable, evaluation degrades to state-assertion-only mode: POST/GET/PUT/DELETE calls are confirmed via API logs and state endpoints. Conversational sub-scores (confirmation ordering, amendment handling) are held pending and flagged for manual evaluator review."
+    }
+  },
+
+  "conversation_evaluation_defaults": {
+    "mode": "agentic",
+    "entity_provision_strategy": "semantic_match_to_agent_prompt",
+    "max_turns": 25,
+    "event_handling": {
+      "on_restart_event": {
+        "strategy": "retry_once_with_penalty",
+        "penalty_points": 2,
+        "penalty_label": "Task required a restart during evaluation run",
+        "rationale": "DialogGPT and LLM behaviour is outside the candidate's direct control. One retry is granted. A second restart within the same task scores the task as incomplete.",
+        "max_retries": 1
+      },
+      "on_end_event_mid_task": "score_partial_based_on_state",
+      "on_max_turns_exceeded": "score_partial_based_on_state",
+      "on_api_timeout": "score_zero_log_timeout"
+    }
+  },
+
+  "tasks": [
+    {
+      "task_id": "task1",
+      "task_name": "Welcome Message",
+      "pattern": "WELCOME",
+      "dialog_name": "Welcome",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [
+        {
+          "node_type": "message",
+          "label": "Welcome greeting message displayed to user",
+          "required": true
+        },
+        {
+          "node_type": "entity",
+          "entity_type": "list",
+          "label": "List Entity presenting available services",
+          "required": true
+        }
+      ],
+      "required_greeting_text": "Welcome",
+      "required_menu_items": ["Book Flight", "Fetch Booking", "Modify Booking", "FAQ"],
+      "menu_matching_strategy": "semantic",
+      "semantic_similarity_threshold": 0.80,
+      "conversation_starter": "Hi",
+      "candidate_instructions": "Configure a Welcome Chat Flow that triggers when a user starts a conversation. Display a greeting message to the user. Present the available services using a List Entity. Based on the user's selection, automatically trigger the appropriate dialog task. The menu must cover: booking a flight, fetching a booking, modifying a booking, and FAQs.",
+      "weight": 5,
+      "sub_scores": [
+        {
+          "id": "greeting_displayed",
+          "label": "Greeting message is displayed to the user",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "list_entity_triggers_dialog",
+          "label": "List Entity correctly triggers the appropriate dialog task on selection",
+          "points": 3,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task2_booking1",
+      "task_name": "Book a Flight — Happy Path",
+      "pattern": "CREATE",
+      "dialog_name": "Book a Flight",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "passengerName",
+          "semantic_hint": "passenger's full name",
+          "value_pool": ["Alice Thompson", "James Brown", "Maria Garcia"],
+          "validation_required": true,
+          "validation_description": "Must contain both first name and last name"
+        },
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "contact phone number including country code",
+          "value_pool": ["+919876543210", "+447654321098", "+15559876543"],
+          "validation_required": true,
+          "validation_description": "Must include country code followed by 10 digits (e.g. +91XXXXXXXXXX)"
+        },
+        {
+          "entity_key": "boardingCity",
+          "semantic_hint": "boarding or departure city",
+          "value_pool": ["Mumbai", "London", "New York"],
+          "validation_required": true,
+          "validation_description": "Cannot be the same as destinationCity. Note: this entity was labelled departureCity in earlier versions — boardingCity is used to match the assignment brief. Candidates should label their entity node accordingly."
+        },
+        {
+          "entity_key": "destinationCity",
+          "semantic_hint": "destination city",
+          "value_pool": ["Delhi", "Paris", "Los Angeles"],
+          "validation_required": true,
+          "validation_description": "Cannot be the same as boardingCity"
+        },
+        {
+          "entity_key": "travelDate",
+          "semantic_hint": "date of travel in DD-MM-YYYY format",
+          "value_pool": {
+            "strategy": "relative_days_from_today",
+            "offsets": [90, 120, 150],
+            "format": "DD-MM-YYYY"
+          },
+          "validation_required": true,
+          "validation_description": "Must follow DD-MM-YYYY format. Do not validate against specific future dates — use format-only validation."
+        },
+        {
+          "entity_key": "emailAddress",
+          "semantic_hint": "passenger email address",
+          "value_pool": ["alice@example.com", "james@example.com", "maria@example.com"],
+          "validation_required": true,
+          "validation_description": "Must be a valid email format"
+        },
+        {
+          "entity_key": "seatPreference",
+          "semantic_hint": "preferred seat type — Window, Aisle, or Middle",
+          "value_pool": ["Window", "Aisle", "Middle"],
+          "validation_required": true,
+          "validation_description": "Must be one of: Window, Aisle, Middle"
+        }
+      ],
+      "agent_node_rules": [
+        "boardingCity and destinationCity must not be the same — re-prompt the user if they provide identical values for both",
+        "passengerName must contain both a first name and last name — re-prompt if only one name is provided",
+        "contactNumber must include a country code followed by exactly 10 digits (e.g. +91XXXXXXXXXX)",
+        "travelDate must follow DD-MM-YYYY format — re-prompt if the format is incorrect",
+        "Agent Node bookmark must clearly explain the node's purpose for other developers on the project"
+      ],
+      "required_nodes": [
+        {
+          "node_type": "aiassist",
+          "label": "Agent Node for entity collection with validation rules",
+          "required": true,
+          "bookmark_required": true,
+          "bookmark_hint": "Captures all 7 travel entities using LLM. Supports co-referencing (multiple entities in one message) and amendment (user corrects a value mid-conversation). Enforces: full name, contact number with country code, DD-MM-YYYY date format, and same-city rule."
+        },
+        {
+          "node_type": "service",
+          "label": "POST service node — send booking to backend",
+          "service_method": "POST",
+          "required": true,
+          "bookmark_required": true,
+          "bookmark_hint": "Sends all collected booking data to the backend via POST API. Handles error response — if the API call fails, the agent displays a polite error message informing the user the booking was not completed."
+        },
+        {
+          "node_type": "prompt",
+          "label": "Booking summary prompt — display captured details and ask user to confirm before proceeding",
+          "required": true
+        },
+        {
+          "node_type": "message",
+          "label": "Booking confirmation message — inform user booking is complete",
+          "required": true
+        }
+      ],
+      "cross_field_validations": [
+        {
+          "rule": "boardingCity != destinationCity",
+          "error_message": "Boarding city and destination city cannot be the same. Please provide a different destination.",
+          "enforced_via": "agent_node_instruction"
+        }
+      ],
+      "conversation_evaluation": {
+        "evaluator_persona": "user seeking to book a flight",
+        "goal_checks": [
+          {
+            "check_id": "all_entities_in_state",
+            "label": "All 7 entities collected and present in backend state",
+            "type": "state_assertion",
+            "timing": "post_conversation",
+            "required": true
+          },
+          {
+            "check_id": "confirmation_before_post",
+            "label": "Confirmation prompt fires before POST API call",
+            "type": "transcript_ordering",
+            "pattern_a": "confirm|is this correct|please confirm|correct\\?|details are|shall i proceed|want to proceed",
+            "pattern_b": "api_call:POST",
+            "a_must_precede_b": true
+          },
+          {
+            "check_id": "booking_in_backend",
+            "label": "Booking record confirmed in backend after POST",
+            "type": "state_assertion",
+            "timing": "post_conversation"
+          }
+        ]
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {
+          "passengerName": "passengerName",
+          "contactNumber": "contactNumber",
+          "boardingCity": "boardingCity",
+          "destinationCity": "destinationCity",
+          "travelDate": "travelDate",
+          "emailAddress": "emailAddress",
+          "seatPreference": "seatPreference"
+        }
+      },
+      "record_alias": "Booking1",
+      "candidate_instructions": "Design a dialog task that captures all 7 flight booking details from the user. Use an Agent Node to collect entities — do not use separate entity nodes for this task. Add a bookmark to the Agent Node explaining its purpose. Configure the following validation rules within the Agent Node: (1) full name required, (2) contact number must include country code + 10 digits, (3) boarding and destination city cannot be the same, (4) travel date must be in DD-MM-YYYY format — use format-only validation, not date-specific rules. Display a summary of the collected details using a Prompt Node and ask the user to confirm before submitting. Send the booking via a POST API request. If the API fails, display a clear and polite error message. Add a bookmark to the Service Node explaining its purpose.",
+      "weight": 20,
+      "sub_scores": [
+        {
+          "id": "agent_node_present_bookmarked",
+          "label": "Agent Node present with required bookmark explaining its purpose",
+          "points": 4,
+          "method": "cbm"
+        },
+        {
+          "id": "validation_rules_in_agent_node",
+          "label": "All 4 validation rules present in Agent Node instructions (name, contact, date format, same-city)",
+          "points": 4,
+          "method": "cbm"
+        },
+        {
+          "id": "confirmation_before_post",
+          "label": "Confirmation prompt fires before POST API call — verified via transcript ordering",
+          "points": 4,
+          "method": "webhook"
+        },
+        {
+          "id": "post_api_and_state",
+          "label": "POST API called successfully and booking confirmed in backend state",
+          "points": 8,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task2_booking2",
+      "task_name": "Book a Flight — Amendment",
+      "pattern": "CREATE_WITH_AMENDMENT",
+      "dialog_name": "Book a Flight",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "passengerName",
+          "semantic_hint": "passenger's full name",
+          "value_pool": ["David Lee", "Sophia Patel", "Carlos Rodriguez"]
+        },
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "contact phone number including country code",
+          "value_pool": ["+916543210987", "+445432109876", "+14321098765"]
+        },
+        {
+          "entity_key": "boardingCity",
+          "semantic_hint": "boarding or departure city",
+          "value_pool": ["Chicago", "Toronto", "Berlin"]
+        },
+        {
+          "entity_key": "destinationCity",
+          "semantic_hint": "destination city",
+          "value_pool": ["Miami", "Tokyo", "Rome"]
+        },
+        {
+          "entity_key": "travelDate",
+          "semantic_hint": "date of travel in DD-MM-YYYY format",
+          "value_pool": {
+            "strategy": "relative_days_from_today",
+            "offsets": [95, 125, 155],
+            "format": "DD-MM-YYYY"
+          }
+        },
+        {
+          "entity_key": "emailAddress",
+          "semantic_hint": "passenger email address",
+          "value_pool": ["david@example.com", "sophia@example.com", "carlos@example.com"]
+        },
+        {
+          "entity_key": "seatPreference",
+          "semantic_hint": "preferred seat type",
+          "value_pool": ["Window", "Aisle"]
+        }
+      ],
+      "required_nodes": [
+        {
+          "node_type": "aiassist",
+          "label": "Agent Node — must support mid-conversation entity amendment",
+          "required": true,
+          "bookmark_required": true,
+          "bookmark_hint": "Handles entity amendment — allows users to correct previously provided information mid-conversation before the booking is confirmed."
+        }
+      ],
+      "amendment_config": {
+        "target_entity": "contactNumber",
+        "amendment_utterance_template": "Actually, change my contact number to {amended_value}",
+        "amended_value_pool": ["+911111111111", "+912222222222", "+913333333333"],
+        "inject_after": "all_entities_collected",
+        "detect_collection_complete_by": "bot_shows_summary_or_asks_to_confirm",
+        "detection_pattern": "confirm|summary|details are|you have provided|is this correct|shall i proceed"
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {
+          "passengerName": "passengerName",
+          "contactNumber": "contactNumber"
+        }
+      },
+      "record_alias": "Booking2",
+      "co_reference_test": true,
+      "candidate_instructions": "This task tests the Agent Node's ability to handle entity amendment mid-conversation. The evaluator will provide all 7 entities, then correct the contact number after the summary is shown but before confirmation. Ensure the Agent Node supports this correction and that the amended value is saved correctly when the booking is submitted.",
+      "weight": 10,
+      "sub_scores": [
+        {
+          "id": "amendment_handled",
+          "label": "Agent Node handles mid-conversation amendment to contactNumber correctly",
+          "points": 5,
+          "method": "webhook"
+        },
+        {
+          "id": "amended_value_in_state",
+          "label": "Amended contact number (not original) is saved in backend state",
+          "points": 5,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task3_retrieve",
+      "task_name": "Fetch Booking Details",
+      "pattern": "RETRIEVE",
+      "dialog_name": "Fetch Booking",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "registered mobile number for booking lookup",
+          "value_pool": [],
+          "confirmation_required": true
+        }
+      ],
+      "required_nodes": [
+        {
+          "node_type": "entity",
+          "label": "Contact number entity node",
+          "required": true
+        },
+        {
+          "node_type": "confirmation",
+          "label": "Confirm mobile number with user before making GET call",
+          "required": true
+        },
+        {
+          "node_type": "service",
+          "label": "GET service node — retrieve booking details",
+          "service_method": "GET",
+          "required": true
+        }
+      ],
+      "confirmation_check": {
+        "method": "webhook_transcript_ordering",
+        "expected_bot_pattern": "confirm|correct|is this your number|please confirm|right number|is that correct",
+        "api_must_fire_after": "confirmation_turn",
+        "description": "The GET API call must appear in the API log only after the user has confirmed their mobile number. Evaluator verifies ordering in the webhook transcript — not tied to a specific turn number."
+      },
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking1",
+          "source_record_alias": "Booking1",
+          "source_field": "contactNumber"
+        }
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {
+          "contactNumber": "contactNumber"
+        }
+      },
+      "candidate_instructions": "Ask the user for their mobile number. Capture it using an entity node. Before calling the API, ask the user to confirm the entered number — the GET request must only be triggered after the user confirms. Retrieve and display the booking details. If no booking is found, display an appropriate message.",
+      "weight": 10,
+      "sub_scores": [
+        {
+          "id": "confirmation_before_get",
+          "label": "Confirmation prompt fires before GET API call — verified via transcript ordering",
+          "points": 4,
+          "method": "webhook"
+        },
+        {
+          "id": "get_returns_booking",
+          "label": "GET API returns correct booking data for the provided contact number",
+          "points": 6,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task3_edge",
+      "task_name": "Fetch Booking — Invalid Contact Number",
+      "pattern": "EDGE_CASE",
+      "dialog_name": "Fetch Booking",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [],
+      "negative_tests": [
+        {
+          "invalid_value_pool": ["0000000000", "abcdefghij", "123"],
+          "expected_error_pattern": "not found|no booking|invalid|does not exist|no record",
+          "requires_re_entry_prompt": true
+        }
+      ],
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking1",
+          "source_record_alias": "Booking1",
+          "source_field": "contactNumber"
+        }
+      },
+      "candidate_instructions": "If no booking is found for the provided mobile number, display an appropriate error message informing the user no booking exists. Allow the user to re-enter a different mobile number and try again.",
+      "weight": 5,
+      "sub_scores": [
+        {
+          "id": "error_message_shown",
+          "label": "Clear error message displayed when no booking found for invalid contact number",
+          "points": 3,
+          "method": "webhook"
+        },
+        {
+          "id": "re_entry_prompt",
+          "label": "User is offered the opportunity to re-enter their mobile number",
+          "points": 2,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task4_modify",
+      "task_name": "Modify Booking — Change Travel Date",
+      "pattern": "MODIFY",
+      "dialog_name": "Modify Booking",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "registered mobile number for booking lookup",
+          "value_pool": []
+        },
+        {
+          "entity_key": "modificationChoice",
+          "semantic_hint": "modification option selected by the user",
+          "entity_type": "list",
+          "options": ["Cancel booking", "Change travel date"],
+          "value_pool": ["Change travel date"]
+        },
+        {
+          "entity_key": "newTravelDate",
+          "semantic_hint": "new travel date in DD-MM-YYYY format",
+          "value_pool": {
+            "strategy": "relative_days_from_today",
+            "offsets": [180, 210, 240],
+            "format": "DD-MM-YYYY"
+          }
+        }
+      ],
+      "required_nodes": [
+        {
+          "node_type": "service",
+          "label": "GET service node — retrieve existing booking before modification",
+          "service_method": "GET",
+          "required": true
+        },
+        {
+          "node_type": "entity",
+          "entity_type": "list",
+          "label": "List Entity presenting modification options: Cancel booking / Change travel date",
+          "required": true
+        },
+        {
+          "node_type": "entity",
+          "label": "New travel date entity node",
+          "required": true
+        },
+        {
+          "node_type": "service",
+          "label": "PUT service node — update travel date in backend",
+          "service_method": "PUT",
+          "required": true
+        }
+      ],
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking1",
+          "source_record_alias": "Booking1",
+          "source_field": "contactNumber"
+        }
+      },
+      "modifiable_fields": ["travelDate"],
+      "modified_value_pool": {
+        "travelDate": {
+          "strategy": "relative_days_from_today",
+          "offsets": [180, 210, 240],
+          "format": "DD-MM-YYYY"
+        }
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {
+          "contactNumber": "contactNumber",
+          "travelDate": "travelDate"
+        }
+      },
+      "candidate_instructions": "Ask the user for their mobile number. Retrieve the existing booking using a GET API and display the details. Present modification options using a List Entity: 'Cancel booking' or 'Change travel date'. This task evaluates the 'Change travel date' branch — ask the user for a new travel date, then send a PUT API request to update the booking. Important: when configuring date validation, use format-only rules (DD-MM-YYYY) — do not hardcode specific future dates. The evaluation system supplies dates at least 90 days from the assessment date.",
+      "weight": 10,
+      "sub_scores": [
+        {
+          "id": "get_before_modify",
+          "label": "GET API fires before modification — existing booking retrieved and displayed",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "list_entity_options_presented",
+          "label": "List Entity presents both modification options to the user",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "new_date_captured",
+          "label": "New travel date captured from user input",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "put_updates_backend",
+          "label": "PUT API called and updated travel date confirmed in backend state",
+          "points": 4,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task4_cancel",
+      "task_name": "Cancel Booking 2",
+      "pattern": "DELETE",
+      "dialog_name": "Modify Booking",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "modificationChoice",
+          "semantic_hint": "cancel booking option selected from modification list",
+          "entity_type": "list",
+          "value_pool": ["Cancel booking"]
+        }
+      ],
+      "required_nodes": [
+        {
+          "node_type": "service",
+          "label": "DELETE service node — remove booking from backend",
+          "service_method": "DELETE",
+          "required": true
+        }
+      ],
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking2",
+          "source_record_alias": "Booking2",
+          "source_field": "contactNumber"
+        }
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {},
+        "expect_deletion": true
+      },
+      "candidate_instructions": "When the user selects 'Cancel booking' from the modification options, send a DELETE API request to remove the booking from the backend. After deletion, confirm to the user that the booking has been successfully cancelled.",
+      "weight": 10,
+      "sub_scores": [
+        {
+          "id": "delete_api_called",
+          "label": "DELETE API called using Booking2 contact number",
+          "points": 6,
+          "method": "webhook"
+        },
+        {
+          "id": "booking_absent_post_deletion",
+          "label": "Booking2 is no longer retrievable in backend state after deletion",
+          "points": 4,
+          "method": "webhook"
+        }
+      ]
+    }
+  ],
+
+  "faq_config": {
+    "required_faqs": [
+      {
+        "faq_id": "faq1",
+        "primary_question": "What is an e-ticket?",
+        "ground_truth_answer": "An e-ticket is a digital airline ticket stored electronically in the airline's reservation system. It replaces a traditional paper ticket and can be retrieved using your booking reference number.",
+        "required_keywords": ["digital", "electronic", "reservation", "booking reference"],
+        "alternate_questions": [
+          "What does e-ticket mean?",
+          "Can you explain what an electronic ticket is?"
+        ]
+      },
+      {
+        "faq_id": "faq2",
+        "primary_question": "How do I know my reservation was booked?",
+        "ground_truth_answer": "Once your booking is confirmed, you will receive a booking reference number. You can verify your reservation at any time by providing your registered contact number to the travel agent.",
+        "required_keywords": ["booking reference", "confirmed", "contact number"],
+        "alternate_questions": [
+          "How will I get confirmation of my booking?",
+          "What happens after I complete my booking?"
+        ]
+      },
+      {
+        "faq_id": "faq3",
+        "primary_question": "How do I get my e-ticket details?",
+        "ground_truth_answer": "You can access your e-ticket details by selecting 'Fetch Booking' and providing your registered mobile number. Your complete booking information will be displayed.",
+        "required_keywords": ["mobile number", "Fetch Booking", "booking information"],
+        "alternate_questions": [
+          "Where can I find my e-ticket?",
+          "How do I access my ticket information?"
+        ]
+      },
+      {
+        "faq_id": "faq4",
+        "primary_question": "How do I print my ticket?",
+        "ground_truth_answer": "To print your ticket, retrieve your booking details using your mobile number, then select the print option. You can also visit the airline's website and enter your booking reference to download and print your e-ticket.",
+        "required_keywords": ["mobile number", "booking reference", "print"],
+        "alternate_questions": [
+          "Can I get a printed copy of my ticket?",
+          "How do I get a physical copy of my boarding pass?"
+        ]
+      },
+      {
+        "faq_id": "faq5",
+        "primary_question": "What is the latest time I can cancel my flight?",
+        "ground_truth_answer": "You can cancel your flight up to 24 hours before the scheduled departure time. Cancellations made within 24 hours of departure may be subject to airline cancellation fees.",
+        "required_keywords": ["24 hours", "cancel", "departure"],
+        "alternate_questions": [
+          "How late can I cancel my booking?",
+          "Is there a deadline for flight cancellation?"
+        ]
+      }
+    ],
+    "min_alternate_questions": 2,
+    "semantic_similarity_threshold": 0.80,
+    "functional_verification": {
+      "enabled": true,
+      "min_faqs_to_verify_via_webhook": 2,
+      "verify_faq_ids": ["faq1", "faq5"],
+      "note": "faq1 and faq5 selected for live verification — one informational, one policy-based, representing the spread of FAQ types."
+    }
+  },
+
+  "compliance_checks": [
+    {
+      "check_id": "compliance_dialoggpt",
+      "label": "DialogGPT is enabled",
+      "cbm_field": "dialogGPTSettings[0].dialogGPTLLMConfig.enable",
+      "required_state": "enabled",
+      "critical": true,
+      "challengeable": false,
+      "tooltip": "DialogGPT must be enabled for the Agent Node to function correctly. This is a binary check — either the flag is set or it is not. This sub-score is not open to grievance challenge."
+    }
+  ],
+
+  "scoring_config": {
+    "total_points": 100,
+    "pass_threshold": 70,
+    "evaluator_overrides_allowed": true,
+    "override_requires_reason": true,
+    "cbm_used_for": ["faq_structural", "compliance", "agent_node_bookmarks"],
+    "webhook_used_for": ["task_functional", "faq_functional"],
+    "note": "CBM is not used for task flow scoring. Its role is limited to: (1) verifying FAQ structural configuration, (2) verifying Agent Node bookmarks, (3) compliance checks.",
+    "task_scores": [
+      { "task_id": "task1",         "label": "Welcome Message",                  "max_points": 5  },
+      { "task_id": "task2_booking1","label": "Book a Flight — Happy Path",        "max_points": 20 },
+      { "task_id": "task2_booking2","label": "Book a Flight — Amendment",         "max_points": 10 },
+      { "task_id": "task3_retrieve","label": "Fetch Booking Details",             "max_points": 10 },
+      { "task_id": "task3_edge",    "label": "Fetch Booking — Invalid Contact",   "max_points": 5  },
+      { "task_id": "task4_modify",  "label": "Modify Booking — Change Date",      "max_points": 10 },
+      { "task_id": "task4_cancel",  "label": "Cancel Booking 2",                  "max_points": 10 },
+      { "task_id": "faq_structural","label": "FAQ Structural Check (CBM)",        "max_points": 10 },
+      { "task_id": "faq_functional","label": "FAQ Functional Check (Webhook)",    "max_points": 10 },
+      { "task_id": "compliance",    "label": "Compliance — DialogGPT Enabled",   "max_points": 10 }
+    ],
+    "faq_scoring": {
+      "structural_points": 10,
+      "structural_method": "cbm",
+      "structural_checks": [
+        { "check": "all_5_faqs_configured", "points": 5 },
+        { "check": "all_alternates_present_min_2_each", "points": 5 }
+      ],
+      "functional_points": 10,
+      "functional_method": "webhook",
+      "functional_checks": [
+        { "faq_id": "faq1", "points": 5 },
+        { "faq_id": "faq5", "points": 5 }
+      ]
+    }
+  },
+
+  "grievance_config": {
+    "enabled": true,
+    "challenge_window_hours": 48,
+    "evaluator_response_sla_hours": 72,
+    "escalation_enabled": true,
+    "evidence_retention_days": 90,
+    "challengeable_methods": ["webhook", "cbm"],
+    "non_challengeable": ["compliance"],
+    "evidence_captured_per_run": [
+      "full_conversation_transcript_json",
+      "full_conversation_transcript_human_readable",
+      "cbm_field_extraction_report",
+      "per_sub_score_pass_fail_with_check_detail",
+      "semantic_similarity_scores_with_matched_strings",
+      "api_call_log_with_method_url_request_response",
+      "turn_timestamps"
+    ],
+    "evaluator_override_fields": {
+      "override_score": "number",
+      "override_reason": "string (required)",
+      "supporting_evidence": "string (optional — paste transcript excerpt or note manual observation)"
+    }
+  },
+
+  "state_seeding_config": {
+    "enabled": true,
+    "schema_validation": true,
+    "seed_endpoint": "",
+    "teardown_endpoint": "",
+    "note": "Pre-test seed and post-test teardown endpoints must be configured to prevent state bleed between evaluation runs."
+  },
+
+  "tooltips": [
+    { "node_type": "aiassist",     "text": "Agent Node — uses LLM to collect entities conversationally. Supports co-referencing (multiple entities in one message) and amendment (correcting a value mid-conversation). Validation rules and booking instructions should be configured here." },
+    { "node_type": "service",      "text": "Service Node — makes API calls to external systems (GET, POST, PUT, DELETE). Add a bookmark explaining the purpose of each Service Node." },
+    { "node_type": "entity",       "text": "Entity Node — collects a specific piece of information from the user. For menu navigation, use a List Entity type." },
+    { "node_type": "message",      "text": "Message Node — displays information to the user. Used for confirmations, summaries, and error messages." },
+    { "node_type": "confirmation", "text": "Confirmation Node — asks the user to confirm a value or action before proceeding." },
+    { "node_type": "prompt",       "text": "Prompt Node — displays captured details and asks the user to confirm before the dialog proceeds to an API call." }
+  ],
+
+  "created_by": "GovernIQ Admin",
+  "notes": "Travel Agent basic assessment — co-authored v2.0. Key changes from v1: assessment_name updated, agentic evaluation mode (LLM-as-user, PENDING_ARCHITECTURE_REVIEW), entity nodes removed from booking task (Agent Node handles collection), emailAddress added, seatPreference made mandatory, boardingCity key aligned to assignment brief, same-city validation via Agent Node rules, relative date offsets replace hardcoded dates, Task 3 confirmation evaluated via transcript ordering, 5 FAQs replacing 2, CBM role restricted to FAQ structural + compliance + bookmarks, 100-point granular scoring with evaluator overrides, grievance/rebuttal system added."
+}
