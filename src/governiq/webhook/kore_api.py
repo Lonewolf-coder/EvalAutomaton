@@ -8,6 +8,7 @@ Leverages Kore.ai public APIs to get:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
@@ -72,6 +73,32 @@ class KoreAPIClient:
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json",
                 },
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def _api_post_kore(self, endpoint: str, payload: dict | None = None) -> dict[str, Any]:
+        """Make an authenticated POST request using analytics-tier 'auth:' header."""
+        token = await self._ensure_token()
+        url = f"{self.credentials.platform_url}{endpoint}"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                url,
+                json=payload or {},
+                headers={"auth": token, "Content-Type": "application/json"},
+            )
+            response.raise_for_status()
+            return response.json()
+
+    async def _api_get_kore(self, endpoint: str, params: dict | None = None) -> dict[str, Any]:
+        """Make an authenticated GET request using analytics-tier 'auth:' header."""
+        token = await self._ensure_token()
+        url = f"{self.credentials.platform_url}{endpoint}"
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                url,
+                params=params,
+                headers={"auth": token, "Content-Type": "application/json"},
             )
             response.raise_for_status()
             return response.json()
@@ -159,3 +186,144 @@ class KoreAPIClient:
             results["intent_stats"] = {"error": str(e)}
 
         return results
+
+    # -----------------------------------------------------------------------
+    # Debug Logs
+    # -----------------------------------------------------------------------
+
+    async def get_debug_logs(self, session_id: str, limit: int = 100) -> dict[str, Any]:
+        """Fetch debug logs for a specific session."""
+        endpoint = f"/api/public/bot/{self.credentials.bot_id}/debuglogs"
+        try:
+            return await self._api_get(endpoint, {"sessionId": session_id, "limit": limit})
+        except Exception as e:
+            logger.error("Failed to get debug logs: %s", e)
+            return {"error": str(e)}
+
+    # -----------------------------------------------------------------------
+    # Analytics API (analytics-tier — uses 'auth:' header)
+    # -----------------------------------------------------------------------
+
+    _ANALYTICS_TYPES = [
+        "successintent",
+        "failintent",
+        "unhandledutterance",
+        "tasksuccess",
+        "taskfailure",
+    ]
+
+    async def get_analytics_deep(
+        self,
+        analytics_type: str,
+        from_dt: datetime,
+        to_dt: datetime,
+        session_id: str | None = None,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Fetch analytics of a specific type, optionally filtered by session."""
+        endpoint = f"/api/public/bot/{self.credentials.bot_id}/getAnalytics"
+        filters: dict[str, Any] = {
+            "from": from_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "to": to_dt.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        }
+        if session_id:
+            filters["sessionId"] = session_id
+        payload = {
+            "type": analytics_type,
+            "filters": filters,
+            "sort": {"order": "desc", "by": "timestamp"},
+            "limit": limit,
+        }
+        try:
+            return await self._api_post_kore(endpoint, payload)
+        except Exception as e:
+            logger.error("Failed to get analytics (%s): %s", analytics_type, e)
+            return {"error": str(e)}
+
+    async def get_all_analytics_for_session(
+        self,
+        session_id: str,
+        from_dt: datetime,
+        to_dt: datetime,
+    ) -> dict[str, Any]:
+        """Fetch all 5 analytics types concurrently for a session."""
+        tasks = [
+            self.get_analytics_deep(t, from_dt, to_dt, session_id=session_id)
+            for t in self._ANALYTICS_TYPES
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return {
+            atype: ({"error": str(r)} if isinstance(r, Exception) else r)
+            for atype, r in zip(self._ANALYTICS_TYPES, results)
+        }
+
+    async def get_messages_for_session(
+        self, session_id: str, user_id: str, limit: int = 100
+    ) -> dict[str, Any]:
+        """Fetch conversation messages for a specific session."""
+        endpoint = f"/api/public/bot/{self.credentials.bot_id}/getMessages"
+        try:
+            return await self._api_post_kore(endpoint, {
+                "sessionId": [session_id],
+                "userId": user_id,
+                "limit": limit,
+                "includeTraceId": "true",
+            })
+        except Exception as e:
+            logger.error("Failed to get messages: %s", e)
+            return {"error": str(e)}
+
+    async def find_intent(self, utterance: str, bot_name: str) -> dict[str, Any]:
+        """Run an utterance through the NLP engine to find the matched intent."""
+        endpoint = f"/api/v1.1/rest/bot/{self.credentials.bot_id}/findIntent"
+        token = await self._ensure_token()
+        url = f"{self.credentials.platform_url}{endpoint}"
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    url,
+                    params={"fetchConfiguredTasks": "false"},
+                    json={"input": utterance, "streamName": bot_name},
+                    headers={"auth": token, "Content-Type": "application/json"},
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error("Failed to find intent: %s", e)
+            return {"error": str(e)}
+
+    # -----------------------------------------------------------------------
+    # Batch Testing API
+    # -----------------------------------------------------------------------
+
+    async def get_batch_test_suites(self) -> dict[str, Any]:
+        """List all batch test suites for the bot."""
+        endpoint = f"/api/public/bot/{self.credentials.bot_id}/testsuite"
+        try:
+            return await self._api_get_kore(endpoint)
+        except Exception as e:
+            logger.error("Failed to list test suites: %s", e)
+            return {"error": str(e)}
+
+    async def run_batch_test_suite(self, suite_name: str, stream_id: str) -> dict[str, Any]:
+        """Trigger a batch test suite run."""
+        endpoint = f"/api/public/bot/{self.credentials.bot_id}/testsuite/{suite_name}/run"
+        try:
+            return await self._api_post_kore(endpoint, {"streamId": stream_id})
+        except Exception as e:
+            logger.error("Failed to run test suite '%s': %s", suite_name, e)
+            return {"error": str(e)}
+
+    async def get_batch_test_results(
+        self, suite_name: str, run_id: str, stream_id: str
+    ) -> dict[str, Any]:
+        """Fetch results for a completed batch test suite run."""
+        endpoint = (
+            f"/api/public/bot/{self.credentials.bot_id}"
+            f"/testsuite/{suite_name}/run/{run_id}/results"
+        )
+        try:
+            return await self._api_get_kore(endpoint, {"streamId": stream_id})
+        except Exception as e:
+            logger.error("Failed to get test results for '%s/%s': %s", suite_name, run_id, e)
+            return {"error": str(e)}

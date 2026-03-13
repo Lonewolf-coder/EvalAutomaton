@@ -77,11 +77,13 @@ class PatternExecutor(ABC):
         context: RuntimeContext,
         webhook: WebhookClient,
         driver: ConversationDriver,
+        kore_api: Any = None,
     ):
         self.task = task
         self.context = context
         self.webhook = webhook
         self.driver = driver
+        self.kore_api = kore_api
 
     @abstractmethod
     async def execute(self) -> PatternResult:
@@ -114,3 +116,56 @@ class PatternExecutor(ABC):
                 display += "..."
             lines.append(f"{prefix} {display}")
         return "\n\n".join(lines)
+
+    def _analyse_debug_logs(self, result: "PatternResult", debug: dict) -> None:
+        """Append debug log analysis as CheckResult entries to the pattern result."""
+        from ..core.scoring import CheckStatus
+
+        if "error" in debug:
+            result.checks.append(CheckResult(
+                check_id=f"webhook.{self.task.task_id}.debug_logs",
+                task_id=self.task.task_id,
+                pipeline="webhook",
+                label="Debug logs retrieval",
+                status=CheckStatus.INFO,
+                details=f"Debug logs unavailable: {debug['error']}",
+                score=0.0,
+                weight=0.0,
+            ))
+            return
+
+        # Intent match check
+        intent_name = debug.get("intentName", "")
+        if self.task.dialog_name.lower() not in intent_name.lower():
+            result.checks.append(CheckResult(
+                check_id=f"webhook.{self.task.task_id}.intent_match",
+                task_id=self.task.task_id,
+                pipeline="webhook",
+                label="Debug log: intent name match",
+                status=CheckStatus.WARNING,
+                details=(
+                    f"Expected dialog '{self.task.dialog_name}' in intent name, "
+                    f"but got '{intent_name}'."
+                ),
+                score=0.0,
+                weight=0.0,
+            ))
+
+        # Service node payload coverage check
+        for call in debug.get("serviceNodeCalls", []):
+            request_payload = call.get("requestPayload", {})
+            for entity in self.task.required_entities:
+                if entity.entity_key not in request_payload:
+                    result.checks.append(CheckResult(
+                        check_id=f"webhook.{self.task.task_id}.payload.{entity.entity_key}",
+                        task_id=self.task.task_id,
+                        pipeline="webhook",
+                        label=f"Debug log: entity '{entity.entity_key}' in service payload",
+                        status=CheckStatus.FAIL,
+                        details=(
+                            f"Entity '{entity.entity_key}' not found in service node "
+                            f"request payload."
+                        ),
+                        score=0.0,
+                        weight=0.0,
+                    ))

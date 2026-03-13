@@ -144,6 +144,9 @@ class Scorecard:
     # Kore.ai public API insights (bot details, analytics, intent stats)
     kore_api_insights: dict[str, Any] = field(default_factory=dict)
 
+    # Per-task analytics data from analytics pipeline
+    analytics_by_task: dict[str, Any] = field(default_factory=dict)
+
     @property
     def overall_score(self) -> float:
         """Compute weighted overall score.
@@ -271,4 +274,5 @@ class Scorecard:
             ],
             "faq_score": round(self.faq_score, 4),
             "kore_api_insights": self.kore_api_insights,
+            "analytics_by_task": self.analytics_by_task,
         }

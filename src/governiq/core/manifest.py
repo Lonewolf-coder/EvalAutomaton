@@ -103,6 +103,14 @@ class RequiredNode(BaseModel):
     label: str = Field(..., description="Human-readable label for dashboard display")
     service_method: str | None = Field(default=None, description="For service nodes: GET, POST, PUT, DELETE")
     required: bool = Field(default=True)
+    ux_template_type: str | None = Field(
+        default=None,
+        description=(
+            "If set, CBM evaluator enforces that at least one node of this type "
+            "uses this UX template. Values: 'quick_reply', 'carousel', 'button', 'list'. "
+            "FAIL if plain text (basic) found where template is required."
+        ),
+    )
 
 
 class FAQItem(BaseModel):

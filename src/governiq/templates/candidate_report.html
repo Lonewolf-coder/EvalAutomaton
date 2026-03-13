@@ -320,6 +320,43 @@
                 {% endif %}
             </div>
 
+            {% if sc.analytics_by_task %}
+            <div class="divider"></div>
+            <h4 style="margin-bottom:.75rem;"><i data-lucide="bar-chart-2" class="icon icon-sm"></i> Per-Task Analytics Breakdown</h4>
+            <div class="grid-2">
+                {% for task_id, task_data in sc.analytics_by_task.items() %}
+                {% set an = task_data.get('analytics', {}) %}
+                {% if an and not an.get('error') %}
+                <div class="card" style="margin-bottom:0;">
+                    <div class="card-header"><h4 style="font-size:.85rem;">{{ task_id }}</h4></div>
+                    <div class="card-body text-small">
+                        {% set success_logs = (an.get('successintent') or {}).get('logs', []) %}
+                        {% set fail_logs = (an.get('failintent') or {}).get('logs', []) %}
+                        {% set unhandled_logs = (an.get('unhandledutterance') or {}).get('logs', []) %}
+                        <span class="badge badge-pass">{{ success_logs | length }} success</span>
+                        {% if fail_logs | length > 0 %}
+                        <span class="badge badge-fail" style="margin-left:.25rem;">{{ fail_logs | length }} failed</span>
+                        {% endif %}
+                        {% if unhandled_logs | length > 0 %}
+                        <span class="badge badge-warn" style="margin-left:.25rem;">{{ unhandled_logs | length }} unhandled</span>
+                        {% endif %}
+                        {% if fail_logs %}
+                        <details style="margin-top:.5rem;">
+                            <summary style="cursor:pointer; color:var(--danger); font-size:.8rem;">Failed intents ({{ [fail_logs | length, 5] | min }})</summary>
+                            <ul style="margin:.25rem 0 0 1rem; padding:0; font-size:.78rem;">
+                                {% for log in fail_logs[:5] %}
+                                <li>{{ log.get('utterance', log.get('_id', '—')) }}</li>
+                                {% endfor %}
+                            </ul>
+                        </details>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+
             {% if sc.kore_api_insights.get('bot_details') and sc.kore_api_insights.bot_details.get('error') %}
             <div class="alert alert-warning" style="margin-top:1rem;">
                 <i data-lucide="alert-triangle" class="icon icon-sm" style="flex-shrink:0;"></i>
