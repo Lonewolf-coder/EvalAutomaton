@@ -56,7 +56,8 @@
         }
       ],
       "required_greeting_text": "Welcome",
-      "required_menu_items": ["Book Appointment", "Fetch Appointment", "Reschedule Appointment", "FAQ"],
+      "required_menu_items": ["Book Appointment", "Fetch Appointment", "Reschedule Appointment"],
+      "optional_menu_items": ["FAQ"],
       "menu_matching_strategy": "semantic",
       "semantic_similarity_threshold": 0.80,
       "conversation_starter": "Hi",

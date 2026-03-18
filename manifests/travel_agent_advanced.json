@@ -57,9 +57,9 @@
       "required_menu_items": [
         "Book Flight",
         "Fetch Booking",
-        "Modify Booking",
-        "FAQ"
+        "Modify Booking"
       ],
+      "optional_menu_items": ["FAQ"],
       "menu_matching_strategy": "semantic",
       "semantic_similarity_threshold": 0.8,
       "conversation_starter": "Hi",

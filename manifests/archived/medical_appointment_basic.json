@@ -19,7 +19,8 @@
         { "node_type": "message", "label": "Welcome greeting message node", "required": true }
       ],
       "required_greeting_text": "Welcome",
-      "required_menu_items": ["book", "appointment", "retrieve", "modify", "cancel", "FAQ"],
+      "required_menu_items": ["book", "appointment", "retrieve", "modify", "cancel"],
+      "optional_menu_items": ["FAQ"],
       "conversation_starter": "Hi",
       "weight": 0.5
     },
