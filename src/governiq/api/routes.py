@@ -32,7 +32,17 @@ class EvaluationRequest(BaseModel):
     candidate_id: str = ""
     webhook_url: str = ""
     llm_api_key: str = ""
+    llm_model: str = "claude-haiku-4-5-20251001"
     cbm_only: bool = False
+
+
+class AnalyticsRefreshResponse(BaseModel):
+    session_id: str
+    analytics_status: str
+    analytics_last_checked_at: str | None
+    tasks_with_data: int = 0
+    total_tasks: int = 0
+    message: str = ""
 
 
 class EvaluationResponse(BaseModel):
@@ -180,5 +190,77 @@ async def list_results():
                 "candidate_id": data.get("candidate_id"),
                 "assessment_name": data.get("assessment_name"),
                 "overall_score": data.get("overall_score"),
+                "analytics_status": data.get("analytics_status", "pending"),
+                "analytics_last_checked_at": data.get("analytics_last_checked_at"),
             })
     return {"results": results}
+
+
+@router.post("/evaluations/{session_id}/refresh-analytics", response_model=AnalyticsRefreshResponse)
+async def refresh_analytics(session_id: str):
+    """Re-fetch Kore.ai analytics for a completed evaluation session.
+
+    Safe to call multiple times. Kore.ai analytics data can take up to 10 hours
+    to appear after a session ends. Each call overwrites the previous analytics
+    data with the latest results and updates analytics_status and
+    analytics_last_checked_at on the saved scorecard.
+
+    Status values:
+      - pending:   No data returned from Kore.ai yet.
+      - partial:   Some tasks have data, others are still processing.
+      - available: All tasks have analytics data.
+    """
+    # Build a minimal engine — no manifest/bot needed, just persist_dir + credentials
+    from ..core.manifest import Manifest
+    from ..webhook.jwt_auth import KoreCredentials
+    import os
+
+    kore_bot_id     = os.environ.get("KORE_BOT_ID", "")
+    kore_client_id  = os.environ.get("KORE_CLIENT_ID", "")
+    kore_client_secret = os.environ.get("KORE_CLIENT_SECRET", "")
+    kore_platform_url  = os.environ.get("KORE_PLATFORM_URL", "https://bots.kore.ai")
+
+    kore_credentials: KoreCredentials | None = None
+    if kore_bot_id and kore_client_id and kore_client_secret:
+        kore_credentials = KoreCredentials(
+            bot_id=kore_bot_id,
+            client_id=kore_client_id,
+            client_secret=kore_client_secret,
+            platform_url=kore_platform_url,
+        )
+
+    # Minimal manifest needed only to satisfy EvaluationEngine.__init__
+    try:
+        _dummy_manifest = Manifest(
+            manifest_id="_refresh",
+            assessment_name="_refresh",
+            webhook_url="",
+            tasks=[],
+        )
+    except Exception:
+        _dummy_manifest = None
+
+    if _dummy_manifest is None:
+        raise HTTPException(status_code=500, detail="Could not construct engine for refresh.")
+
+    engine = EvaluationEngine(
+        manifest=_dummy_manifest,
+        kore_credentials=kore_credentials,
+    )
+
+    try:
+        result = await engine.run_analytics_refresh(session_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Scorecard '{session_id}' not found.")
+    except Exception as e:
+        logger.exception("Analytics refresh failed for session '%s'", session_id)
+        raise HTTPException(status_code=500, detail=f"Refresh error: {e}")
+
+    return AnalyticsRefreshResponse(
+        session_id=result["session_id"],
+        analytics_status=result["analytics_status"],
+        analytics_last_checked_at=result.get("analytics_last_checked_at"),
+        tasks_with_data=result.get("tasks_with_data", 0),
+        total_tasks=result.get("total_tasks", 0),
+        message=result.get("message", ""),
+    )

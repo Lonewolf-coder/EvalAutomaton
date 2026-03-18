@@ -320,10 +320,36 @@
                 {% endif %}
             </div>
 
-            {% if sc.analytics_by_task %}
             <div class="divider"></div>
-            <h4 style="margin-bottom:.75rem;"><i data-lucide="bar-chart-2" class="icon icon-sm"></i> Per-Task Analytics Breakdown</h4>
-            <div class="grid-2">
+            <!-- Per-Task Analytics — deferred, refreshable -->
+            <div style="display:flex; align-items:center; gap:.75rem; margin-bottom:.75rem; flex-wrap:wrap;">
+                <h4 style="margin:0;"><i data-lucide="bar-chart-2" class="icon icon-sm"></i> Per-Task Analytics</h4>
+                {% if sc.analytics_status == 'available' %}
+                <span class="badge badge-pass" style="font-size:.75rem;">&#10003; Available</span>
+                {% elif sc.analytics_status == 'partial' %}
+                <span class="badge badge-warn" style="font-size:.75rem;">&#9680; Partial</span>
+                {% else %}
+                <span class="badge" style="background:var(--muted); color:#fff; font-size:.75rem;">&#9900; Pending</span>
+                {% endif %}
+                {% if sc.analytics_last_checked_at %}
+                <span class="text-muted" style="font-size:.78rem;">Last checked: {{ sc.analytics_last_checked_at }}</span>
+                {% endif %}
+                {% if sc.session_id %}
+                <button
+                    id="btn-refresh-analytics"
+                    onclick="refreshAnalytics('{{ sc.session_id }}')"
+                    style="margin-left:auto; padding:.3rem .75rem; font-size:.8rem; cursor:pointer;
+                           background:var(--primary); color:#fff; border:none; border-radius:var(--radius);">
+                    <i data-lucide="refresh-cw" class="icon icon-sm" style="margin-right:.25rem;"></i> Refresh Analytics
+                </button>
+                {% endif %}
+            </div>
+            <p class="text-muted text-small" style="margin-bottom:.75rem;">
+                Kore.ai analytics can take up to 10 hours to process. Click <strong>Refresh Analytics</strong> to check for updated data at any time.
+            </p>
+            <div id="analytics-status-msg" style="display:none;" class="alert alert-warning" style="margin-bottom:.5rem;"></div>
+            {% if sc.analytics_by_task %}
+            <div class="grid-2" id="analytics-grid">
                 {% for task_id, task_data in sc.analytics_by_task.items() %}
                 {% set an = task_data.get('analytics', {}) %}
                 {% if an and not an.get('error') %}
@@ -355,7 +381,36 @@
                 {% endif %}
                 {% endfor %}
             </div>
+            {% else %}
+            <p class="text-muted text-small" id="analytics-empty">No analytics data yet. Click Refresh Analytics after the evaluation session has had time to process on the Kore.ai platform.</p>
             {% endif %}
+
+            <script>
+            async function refreshAnalytics(sessionId) {
+                const btn = document.getElementById('btn-refresh-analytics');
+                const msgEl = document.getElementById('analytics-status-msg');
+                btn.disabled = true;
+                btn.textContent = 'Refreshing…';
+                msgEl.style.display = 'none';
+                try {
+                    const resp = await fetch(`/api/v1/evaluations/${sessionId}/refresh-analytics`, {method: 'POST'});
+                    const data = await resp.json();
+                    if (!resp.ok) {
+                        msgEl.textContent = data.detail || 'Refresh failed.';
+                        msgEl.style.display = 'flex';
+                    } else {
+                        // Reload page to show updated analytics
+                        window.location.reload();
+                    }
+                } catch(e) {
+                    msgEl.textContent = 'Network error — please try again.';
+                    msgEl.style.display = 'flex';
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i data-lucide="refresh-cw" class="icon icon-sm" style="margin-right:.25rem;"></i> Refresh Analytics';
+                }
+            }
+            </script>
 
             {% if sc.kore_api_insights.get('bot_details') and sc.kore_api_insights.bot_details.get('error') %}
             <div class="alert alert-warning" style="margin-top:1rem;">

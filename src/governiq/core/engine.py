@@ -174,8 +174,15 @@ class EvaluationEngine:
             task_sessions = {}
         eval_end_time = datetime.utcnow()
 
-        # Step 7A: Analytics pipeline (gated internally on kore_api_client + task_sessions)
-        await self._run_analytics_pipeline(task_sessions, eval_start_time, eval_end_time, scorecard)
+        # Step 7A: Persist session IDs + eval window for deferred analytics refresh.
+        # Analytics are NOT fetched now — Kore.ai can take up to 10 hours to process data.
+        # Use POST /api/v1/evaluations/{session_id}/refresh-analytics to fetch when ready.
+        scorecard.task_sessions = {tid: list(v) for tid, v in task_sessions.items()}
+        scorecard.eval_window = {
+            "from": eval_start_time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "to": eval_end_time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        }
+        scorecard.analytics_status = "pending"
 
         # Step 7: Fetch Kore.ai public API insights
         if self.kore_api_client:
@@ -245,6 +252,114 @@ class EvaluationEngine:
 
         self._save_scorecard(scorecard)
         return scorecard
+
+    async def run_analytics_refresh(self, session_id: str) -> dict[str, Any]:
+        """Fetch analytics for a completed evaluation session on demand.
+
+        Safe to call multiple times at any interval. Each call overwrites the
+        previous analytics_by_task data with the latest results from Kore.ai.
+
+        Returns a summary dict indicating current analytics_status and
+        analytics_last_checked_at so callers can decide whether to retry.
+        """
+        results_dir = self.persist_dir / "results"
+        path = results_dir / f"scorecard_{session_id}.json"
+        if not path.exists():
+            raise FileNotFoundError(f"Scorecard not found: {session_id}")
+
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        task_sessions_raw: dict[str, list[str]] = data.get("task_sessions", {})
+        eval_window: dict[str, str] = data.get("eval_window", {})
+
+        if not task_sessions_raw or not eval_window:
+            return {
+                "session_id": session_id,
+                "analytics_status": "pending",
+                "analytics_last_checked_at": None,
+                "message": "No session data stored — was this evaluation run without webhook?",
+            }
+
+        if not self.kore_api_client:
+            return {
+                "session_id": session_id,
+                "analytics_status": data.get("analytics_status", "pending"),
+                "analytics_last_checked_at": data.get("analytics_last_checked_at"),
+                "message": "No Kore.ai credentials configured — cannot fetch analytics.",
+            }
+
+        from_dt = datetime.strptime(eval_window["from"], "%Y-%m-%dT%H:%M:%S.000Z")
+        to_dt = datetime.strptime(eval_window["to"], "%Y-%m-%dT%H:%M:%S.000Z")
+
+        # Reconstruct task_sessions as dict[task_id -> (kore_sid, from_id)]
+        task_sessions: dict[str, tuple[str, str]] = {
+            tid: (v[0], v[1]) for tid, v in task_sessions_raw.items() if len(v) >= 2
+        }
+
+        # Rebuild a minimal scorecard shell to pass to the analytics pipeline
+        scorecard = Scorecard(
+            session_id=data["session_id"],
+            candidate_id=data.get("candidate_id", ""),
+            manifest_id=data.get("manifest_id", ""),
+            assessment_name=data.get("assessment_name", ""),
+            analytics_by_task=data.get("analytics_by_task", {}),
+            task_sessions=task_sessions_raw,
+            eval_window=eval_window,
+        )
+        # Restore existing task_scores so analytics CheckResults attach correctly
+        for ts_data in data.get("task_scores", []):
+            scorecard.task_scores.append(
+                TaskScore(task_id=ts_data["task_id"], task_name=ts_data["task_name"])
+            )
+
+        await self._run_analytics_pipeline(task_sessions, from_dt, to_dt, scorecard)
+
+        # Determine status from results
+        total_tasks = len(task_sessions)
+        tasks_with_data = sum(
+            1
+            for td in scorecard.analytics_by_task.values()
+            if isinstance(td.get("analytics"), dict)
+            and "error" not in td["analytics"]
+            and any(
+                (td["analytics"].get(t) or {}).get("logs")
+                for t in ["successintent", "failintent", "unhandledutterance",
+                          "tasksuccess", "taskfailure"]
+            )
+        )
+
+        if tasks_with_data == 0:
+            status = "pending"
+        elif tasks_with_data < total_tasks:
+            status = "partial"
+        else:
+            status = "available"
+
+        now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        scorecard.analytics_status = status
+        scorecard.analytics_last_checked_at = now_iso
+
+        # Merge analytics results back into the full saved scorecard and re-save
+        data["analytics_by_task"] = scorecard.analytics_by_task
+        data["analytics_status"] = status
+        data["analytics_last_checked_at"] = now_iso
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+        logger.info(
+            "Analytics refresh complete for session '%s': status=%s, tasks_with_data=%d/%d",
+            session_id, status, tasks_with_data, total_tasks,
+        )
+
+        return {
+            "session_id": session_id,
+            "analytics_status": status,
+            "analytics_last_checked_at": now_iso,
+            "tasks_with_data": tasks_with_data,
+            "total_tasks": total_tasks,
+            "analytics_by_task": scorecard.analytics_by_task,
+        }
 
     async def _run_webhook_pipeline(
         self, context: RuntimeContext, scorecard: Scorecard
