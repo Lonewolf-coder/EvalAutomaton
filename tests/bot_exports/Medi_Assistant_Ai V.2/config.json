@@ -1,0 +1,31 @@
+{
+    "name": "app6",
+    "envVariables": [
+        {
+            "key": "host",
+            "value": "https://platform.kore.ai/",
+            "variableType": "env",
+            "hint": "",
+            "scope": "prePopulated",
+            "group": "",
+            "propagateValue": false,
+            "vNameSpace": [
+                "5f97e330ade5b8100b912d1a"
+            ],
+            "isSecured": false
+        },
+        {
+            "key": "botId",
+            "value": "st-7175429f-d65e-5dd7-acc7-46cbdb8bd544",
+            "variableType": "env",
+            "hint": "",
+            "scope": "prePopulated",
+            "group": "",
+            "propagateValue": false,
+            "vNameSpace": [
+                "5f97e330ade5b8100b912d1a"
+            ],
+            "isSecured": false
+        }
+    ]
+}

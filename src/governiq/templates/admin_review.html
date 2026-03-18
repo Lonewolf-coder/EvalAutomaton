@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Review — {{ sc.candidate_id }} — Admin{% endblock %}
+
+{% block content %}
+<div class="container-wide">
+    <div class="flex-between spacer no-print">
+        <div>
+            <h1><i data-lucide="clipboard-check" class="icon icon-lg" style="margin-right:.4rem;"></i> Evaluator Review</h1>
+            <p class="text-muted">{{ sc.assessment_name }} &mdash; Candidate: {{ sc.candidate_id or 'N/A' }} &mdash; Session: {{ sc.session_id }}</p>
+        </div>
+        <div class="flex gap-2">
+            <a href="/admin/" class="btn btn-outline"><i data-lucide="arrow-left" class="icon icon-sm"></i> Back to Dashboard</a>
+            <button onclick="window.print()" class="btn btn-primary"><i data-lucide="printer" class="icon icon-sm"></i> Print Report</button>
+        </div>
+    </div>
+
+    <!-- VERDICT BANNER -->
+    <div class="card spacer">
+        <div class="card-body" style="display:flex; gap:2rem; align-items:center; flex-wrap:wrap;">
+            <div class="score-ring score-ring--lg {% if sc.overall_score >= 0.7 %}score-ring--pass{% elif sc.overall_score >= 0.5 %}score-ring--warn{% else %}score-ring--fail{% endif %}">
+                {{ (sc.overall_score * 100) | round(1) }}%
+            </div>
+            <div style="flex:1; min-width:250px;">
+                <h2 style="margin-bottom:.5rem;">
+                    {% if sc.has_critical_failures %}<i data-lucide="shield-alert" class="icon icon-lg" style="color:var(--fail);"></i> Critical Compliance Failure
+                    {% elif sc.overall_score >= 0.7 %}<i data-lucide="shield-check" class="icon icon-lg" style="color:var(--pass);"></i> Assessment Passed
+                    {% elif sc.overall_score >= 0.5 %}<i data-lucide="alert-triangle" class="icon icon-lg" style="color:var(--warn);"></i> Needs Improvement
+                    {% else %}<i data-lucide="shield-x" class="icon icon-lg" style="color:var(--fail);"></i> Assessment Not Passed{% endif %}
+                </h2>
+                <p class="text-muted"><i data-lucide="user" class="icon icon-sm"></i> Candidate: <strong>{{ sc.candidate_id or 'N/A' }}</strong></p>
+                <div class="progress-bar" style="max-width:400px; margin-top:.5rem;">
+                    <div class="progress-fill {% if sc.overall_score >= 0.7 %}progress-fill--pass{% elif sc.overall_score >= 0.5 %}progress-fill--warn{% else %}progress-fill--fail{% endif %}" style="width:{{ (sc.overall_score * 100) | round(1) }}%"></div>
+                </div>
+            </div>
+            <div>
+                <div class="grid-2" style="gap:.5rem;">
+                    <div class="card" style="padding:.75rem 1rem;">
+                        <div class="stat-card" style="padding:0;">
+                            <div class="stat-icon stat-icon--blue" style="width:28px;height:28px;"><i data-lucide="list-checks" class="icon icon-sm"></i></div>
+                            <div><div class="stat-value" style="font-size:1.1rem;">{{ task_summary.passed }}/{{ task_summary.total }}</div><div class="stat-label">Tasks</div></div>
+                        </div>
+                    </div>
+                    <div class="card" style="padding:.75rem 1rem;">
+                        <div class="stat-card" style="padding:0;">
+                            <div class="stat-icon stat-icon--purple" style="width:28px;height:28px;"><i data-lucide="shield" class="icon icon-sm"></i></div>
+                            <div><div class="stat-value" style="font-size:1.1rem;">{{ compliance_summary.passed }}/{{ compliance_summary.total }}</div><div class="stat-label">Compliance</div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if sc.has_critical_failures %}
+    <div class="alert alert-danger"><i data-lucide="shield-alert" class="icon" style="flex-shrink:0;margin-top:2px;"></i> <div><strong>Critical:</strong> This submission has critical compliance failures. Manual evaluator review is required before any pass decision.</div></div>
+    {% endif %}
+    {% if sc.state_seeded %}
+    <div class="alert alert-warning"><i data-lucide="database" class="icon" style="flex-shrink:0;margin-top:2px;"></i> <div><strong>State Seeded:</strong> Tasks 3/4 were tested against engine-seeded data because the bot did not create records through conversation in Task 2. This is flagged for evaluator awareness.</div></div>
+    {% endif %}
+
+    <!-- COMPLIANCE -->
+    {% if sc.compliance_results %}
+    <div class="card spacer">
+        <div class="card-header"><div class="flex-between"><h3><i data-lucide="shield" class="icon" style="margin-right:.4rem;"></i> Compliance Checks</h3><span class="badge {% if compliance_summary.all_passed %}badge-pass{% else %}badge-fail{% endif %}">{{ compliance_summary.passed }}/{{ compliance_summary.total }}</span></div></div>
+        <div class="card-body">
+            {% for cr in sc.compliance_results %}
+            <div class="check-row">
+                <div class="check-icon check-icon--{% if cr.status == 'pass' %}pass{% elif cr.status == 'fail' %}fail{% else %}warn{% endif %}">
+                    {% if cr.status == 'pass' %}<i data-lucide="check" class="icon icon-sm"></i>{% elif cr.status == 'fail' %}<i data-lucide="x" class="icon icon-sm"></i>{% else %}<i data-lucide="alert-triangle" class="icon icon-sm"></i>{% endif %}
+                </div>
+                <div style="flex:1;">
+                    <div class="check-label">{{ cr.label }} {% if cr.critical %}<span class="badge badge-fail"><i data-lucide="shield-alert" class="icon icon-sm"></i> CRITICAL</span>{% endif %}</div>
+                    <div class="check-detail">Required: <strong>{{ cr.required_state }}</strong> | Found: <strong>{{ cr.actual_value if cr.actual_value is not none else 'not found' }}</strong></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- PER-TASK -->
+    {% for ts in sc.task_scores %}
+    <div class="card spacer">
+        <div class="card-header">
+            <div class="flex-between" style="flex-wrap:wrap; gap:.5rem;">
+                <h3><i data-lucide="clipboard-check" class="icon" style="margin-right:.4rem;"></i> {{ ts.task_name }}</h3>
+                <div class="flex gap-1">
+                    <span class="badge badge-info"><i data-lucide="file-code" class="icon icon-sm"></i> CBM: {{ (ts.cbm_score * 100) | round(0) }}%</span>
+                    <span class="badge badge-primary"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook: {{ (ts.webhook_score * 100) | round(0) }}%</span>
+                    {% if ts.all_passed %}<span class="badge badge-pass"><i data-lucide="check-circle-2" class="icon icon-sm"></i> PASSED</span>{% else %}<span class="badge badge-fail"><i data-lucide="eye" class="icon icon-sm"></i> REVIEW</span>{% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="grid-2">
+                <div style="border-left:3px solid #7c3aed; padding-left:1rem;">
+                    <h4 style="color:#7c3aed; margin-bottom:.75rem;"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Results</h4>
+                    {% if ts.webhook_checks %}
+                        {% for check in ts.webhook_checks %}
+                        <div class="check-row">
+                            <div class="check-icon check-icon--{% if check.status == 'pass' %}pass{% elif check.status == 'fail' %}fail{% elif check.status == 'warning' %}warn{% else %}info{% endif %}">
+                                {% if check.status == 'pass' %}<i data-lucide="check" class="icon icon-sm"></i>{% elif check.status == 'fail' %}<i data-lucide="x" class="icon icon-sm"></i>{% elif check.status == 'warning' %}<i data-lucide="alert-triangle" class="icon icon-sm"></i>{% else %}<i data-lucide="info" class="icon icon-sm"></i>{% endif %}
+                            </div>
+                            <div><div class="check-label">{{ check.label }}</div><div class="check-detail">{{ check.details }}</div></div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p class="text-small text-muted" style="font-style:italic;"><i data-lucide="info" class="icon icon-sm"></i> No webhook data &mdash; CBM-only evaluation.</p>
+                    {% endif %}
+                </div>
+
+                <div style="border-left:3px solid #1e40af; padding-left:1rem;">
+                    <h4 style="color:#1e40af; margin-bottom:.75rem;"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Evaluator Reference Panel</h4>
+                    {% for check in ts.cbm_checks %}
+                    <div class="check-row">
+                        <div class="check-icon check-icon--{% if check.status == 'pass' %}pass{% elif check.status == 'fail' %}fail{% elif check.status == 'warning' %}warn{% else %}info{% endif %}">
+                            {% if check.status == 'pass' %}<i data-lucide="check" class="icon icon-sm"></i>{% elif check.status == 'fail' %}<i data-lucide="x" class="icon icon-sm"></i>{% elif check.status == 'warning' %}<i data-lucide="alert-triangle" class="icon icon-sm"></i>{% else %}<i data-lucide="info" class="icon icon-sm"></i>{% endif %}
+                        </div>
+                        <div><div class="check-label">{{ check.label }}</div><div class="check-detail">{{ check.details }}</div></div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {% if ts.evidence_cards %}
+            <div class="divider"></div>
+            <h4 style="margin-bottom:.75rem;"><i data-lucide="file-search" class="icon icon-sm"></i> Evidence Cards</h4>
+            {% for card in ts.evidence_cards %}
+            <div class="evidence evidence--{{ card.color }}">
+                <div class="evidence-header" onclick="this.nextElementSibling.classList.toggle('hidden')">
+                    <strong>{{ card.title }}</strong>
+                    <span class="evidence-pipe"><i data-lucide="{% if card.pipeline == 'webhook' %}webhook{% else %}file-code{% endif %}" class="icon icon-sm"></i> {{ card.pipeline }}</span>
+                </div>
+                <div class="evidence-body">
+                    <pre>{{ card.content }}</pre>
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- Kore.ai Platform Insights -->
+    {% if sc.kore_api_insights and sc.kore_api_insights.keys() | list | length > 0 and not sc.kore_api_insights.get('error') %}
+    <div class="card spacer">
+        <div class="card-header">
+            <div class="flex-between">
+                <h3><i data-lucide="activity" class="icon" style="margin-right:.4rem;"></i> Kore.ai Platform Insights</h3>
+                <span class="badge badge-info"><i data-lucide="globe" class="icon icon-sm"></i> Public API Data</span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="grid-3">
+                {% if sc.kore_api_insights.get('bot_details') and not sc.kore_api_insights.bot_details.get('error') %}
+                <div>
+                    <h4><i data-lucide="bot" class="icon icon-sm"></i> Bot Details</h4>
+                    {% set bd = sc.kore_api_insights.bot_details %}
+                    <p class="text-small"><strong>Name:</strong> {{ bd.get('name', bd.get('botName', 'N/A')) }}</p>
+                    <p class="text-small"><strong>Type:</strong> {{ bd.get('type', bd.get('botType', 'N/A')) }}</p>
+                    <p class="text-small"><strong>Language:</strong> {{ bd.get('defaultLanguage', 'N/A') }}</p>
+                </div>
+                {% endif %}
+                {% if sc.kore_api_insights.get('analytics') and not sc.kore_api_insights.analytics.get('error') %}
+                <div>
+                    <h4><i data-lucide="bar-chart-3" class="icon icon-sm"></i> Analytics (30d)</h4>
+                    {% set an = sc.kore_api_insights.analytics %}
+                    <p class="text-small"><strong>Conversations:</strong> {{ an.get('totalConversations', 'N/A') }}</p>
+                    <p class="text-small"><strong>Success:</strong> {{ an.get('successfulConversations', 'N/A') }}</p>
+                    <p class="text-small"><strong>Users:</strong> {{ an.get('uniqueUsers', 'N/A') }}</p>
+                </div>
+                {% endif %}
+                {% if sc.kore_api_insights.get('intent_stats') and not sc.kore_api_insights.intent_stats.get('error') %}
+                <div>
+                    <h4><i data-lucide="brain" class="icon icon-sm"></i> Intent Detection</h4>
+                    {% set it = sc.kore_api_insights.intent_stats %}
+                    <p class="text-small"><strong>Intents:</strong> {{ it.get('intents', 'N/A') }}</p>
+                    <p class="text-small"><strong>Accuracy:</strong> {{ it.get('accuracy', 'N/A') }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Raw JSON -->
+    <details class="spacer no-print">
+        <summary style="cursor:pointer; font-weight:600; color:var(--primary); padding:.5rem 0;"><i data-lucide="code-2" class="icon icon-sm"></i> Raw Scorecard JSON</summary>
+        <div class="card" style="margin-top:.5rem;">
+            <div class="card-body">
+                <pre style="font-size:.75rem; overflow-x:auto; max-height:400px; overflow-y:auto; background:#0f172a; color:#e2e8f0; padding:1rem; border-radius:var(--radius);">{{ sc | tojson(indent=2) }}</pre>
+            </div>
+        </div>
+    </details>
+</div>
+{% endblock %}

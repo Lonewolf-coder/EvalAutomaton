@@ -32,6 +32,7 @@ class EdgeCasePattern(PatternExecutor):
         for i, neg_test in enumerate(self.task.negative_tests):
             try:
                 await self.webhook.start_session()
+                await self.webhook.warm_up()
 
                 opening = await self.driver.generate_opening(self.task)
                 if not opening:
@@ -130,6 +131,17 @@ class EdgeCasePattern(PatternExecutor):
             except Exception as e:
                 result.error = str(e)
                 all_passed = False
+
+        # Conversation transcript evidence (across all edge case iterations)
+        if result.transcript_turns:
+            result.evidence_cards.append(EvidenceCard(
+                card_id=f"webhook.{self.task.task_id}.transcript",
+                task_id=self.task.task_id,
+                title=f"Conversation Transcript — {self.task.task_name}",
+                content=self._format_transcript(result.transcript_turns),
+                color=EvidenceCardColor.BLUE if all_passed else EvidenceCardColor.AMBER,
+                pipeline="webhook",
+            ))
 
         result.success = all_passed
         return result

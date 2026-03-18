@@ -39,6 +39,8 @@ from ..cbm.evaluator import (
 from ..cbm.parser import CBMObject, parse_bot_export, parse_bot_export_file
 from ..patterns import get_pattern_executor
 from ..webhook.driver import KoreWebhookClient, LLMConversationDriver
+from ..webhook.jwt_auth import KoreCredentials
+from ..webhook.kore_api import KoreAPIClient
 from ..webhook.state_inspector import StateInspector
 
 logger = logging.getLogger(__name__)
@@ -48,22 +50,42 @@ class EvaluationEngine:
     """The GovernIQ Universal Evaluation Engine.
 
     Domain-agnostic. Knows six patterns. Manifest tells it everything else.
+    Webhook is the authority for pass/fail. CBM is informational only.
     """
 
     def __init__(
         self,
         manifest: Manifest,
         llm_api_key: str = "",
-        llm_model: str = "gpt-4o",
+        llm_model: str = "claude-haiku-4-5-20251001",
+        llm_base_url: str = "https://api.anthropic.com/v1",
+        llm_api_format: str = "anthropic",
         persist_dir: str = "./data",
+        kore_bearer_token: str = "",
+        kore_credentials: KoreCredentials | None = None,
     ):
         self.manifest = manifest
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
+        self.kore_bearer_token = kore_bearer_token
+        self.kore_credentials = kore_credentials
 
-        self.driver = LLMConversationDriver(api_key=llm_api_key, model=llm_model)
-        self.webhook_client = KoreWebhookClient(webhook_url=manifest.webhook_url)
+        self.driver = LLMConversationDriver(
+            api_key=llm_api_key,
+            model=llm_model,
+            base_url=llm_base_url,
+            api_format=llm_api_format,
+        )
+        self.webhook_client = KoreWebhookClient(
+            webhook_url=manifest.webhook_url,
+            bearer_token=kore_bearer_token,
+            kore_credentials=kore_credentials,
+            webhook_config=manifest.webhook_config,
+        )
         self.state_inspector = StateInspector()
+        self.kore_api_client: KoreAPIClient | None = None
+        if kore_credentials and kore_bearer_token:
+            self.kore_api_client = KoreAPIClient(kore_credentials)
 
     async def run_full_evaluation(
         self,
@@ -126,21 +148,36 @@ class EvaluationEngine:
         # Step 5: FAQ structural checks
         logger.info("=== FAQ Structural Checks ===")
         faq_checks, faq_cards = evaluate_faqs_structural(cbm, self.manifest)
-        # Add FAQ results to a dedicated task score
         if faq_checks:
             faq_task_score = TaskScore(task_id="faq", task_name="FAQs")
             faq_task_score.cbm_checks = faq_checks
             faq_task_score.evidence_cards = faq_cards
             scorecard.task_scores.append(faq_task_score)
+            # Compute faq_score from the FAQ check results
+            scored = [c for c in faq_checks if c.status != CheckStatus.UNTESTABLE]
+            if scored:
+                total_w = sum(c.weight for c in scored)
+                scorecard.faq_score = sum(c.score * c.weight for c in scored) / total_w if total_w else 0.0
 
         # Step 6: Run Webhook Pipeline (Pipeline B) — all tasks
         logger.info("=== Pipeline B: Webhook Journey ===")
-        if self.manifest.webhook_url:
+        if self.manifest.webhook_url or self.kore_bearer_token:
             await self._run_webhook_pipeline(context, scorecard)
         else:
-            logger.info("No webhook URL configured — skipping webhook pipeline.")
+            logger.info("No webhook URL or Kore credentials — skipping webhook pipeline.")
 
-        # Step 7: Persist context and results
+        # Step 7: Fetch Kore.ai public API insights
+        if self.kore_api_client:
+            logger.info("=== Kore.ai Public API Insights ===")
+            try:
+                insights = await self.kore_api_client.get_all_insights()
+                scorecard.kore_api_insights = insights
+                logger.info("Kore.ai API insights captured: %s", list(insights.keys()))
+            except Exception as e:
+                logger.warning("Failed to fetch Kore.ai API insights: %s", e)
+                scorecard.kore_api_insights = {"error": str(e)}
+
+        # Step 8: Persist context and results
         context.save(self.persist_dir / "runtime_contexts")
         self._save_scorecard(scorecard)
 
@@ -190,6 +227,10 @@ class EvaluationEngine:
             faq_task_score.cbm_checks = faq_checks
             faq_task_score.evidence_cards = faq_cards
             scorecard.task_scores.append(faq_task_score)
+            scored = [c for c in faq_checks if c.status != CheckStatus.UNTESTABLE]
+            if scored:
+                total_w = sum(c.weight for c in scored)
+                scorecard.faq_score = sum(c.score * c.weight for c in scored) / total_w if total_w else 0.0
 
         self._save_scorecard(scorecard)
         return scorecard
@@ -216,7 +257,31 @@ class EvaluationEngine:
                 pattern_result = await executor.execute()
             except Exception as e:
                 logger.error("Pattern execution failed for task '%s': %s", task.task_id, e)
-                continue
+                # Create a synthetic failure result instead of silently skipping
+                from ..patterns.base import PatternResult
+                pattern_result = PatternResult(
+                    task_id=task.task_id,
+                    pattern=task.pattern.value,
+                    success=False,
+                    error=str(e),
+                )
+                pattern_result.checks.append(CheckResult(
+                    check_id=f"webhook.{task.task_id}.execution",
+                    task_id=task.task_id,
+                    pipeline="webhook",
+                    label="Pattern execution",
+                    status=CheckStatus.FAIL,
+                    details=f"Pattern execution error: {e}",
+                    score=0.0,
+                ))
+                pattern_result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{task.task_id}.error",
+                    task_id=task.task_id,
+                    title=f"Webhook Error — {task.task_name}",
+                    content=f"Pattern: {task.pattern.value}\nError: {e}",
+                    color=EvidenceCardColor.RED,
+                    pipeline="webhook",
+                ))
 
             # Find the matching task score and add webhook results
             task_score = next(
@@ -235,12 +300,14 @@ class EvaluationEngine:
                 )
                 scorecard.task_scores.append(new_ts)
 
-            # State Inspector verification
+            # State Inspector verification — only if webhook succeeded
+            # (running after failure just adds confusing "Record not found" checks)
             if task.state_assertion and task.state_assertion.enabled:
-                si_checks, si_cards = await self.state_inspector.verify_task(task, context)
-                if task_score:
-                    task_score.webhook_checks.extend(si_checks)
-                    task_score.evidence_cards.extend(si_cards)
+                if pattern_result.success:
+                    si_checks, si_cards = await self.state_inspector.verify_task(task, context)
+                    if task_score:
+                        task_score.webhook_checks.extend(si_checks)
+                        task_score.evidence_cards.extend(si_cards)
 
             # State seeding check for CREATE tasks
             if task.pattern in (EnginePattern.CREATE, EnginePattern.CREATE_WITH_AMENDMENT):

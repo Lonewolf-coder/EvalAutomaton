@@ -42,6 +42,7 @@ class CreateWithAmendmentPattern(PatternExecutor):
 
         try:
             await self.webhook.start_session()
+            await self.webhook.warm_up()
 
             # Opening
             opening = await self.driver.generate_opening(self.task)
@@ -223,6 +224,16 @@ class CreateWithAmendmentPattern(PatternExecutor):
 
             result.success = amendment_sent and confirmation_sent
 
+            if result.transcript_turns:
+                result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{self.task.task_id}.transcript",
+                    task_id=self.task.task_id,
+                    title=f"Conversation Transcript — {self.task.task_name}",
+                    content=self._format_transcript(result.transcript_turns),
+                    color=EvidenceCardColor.BLUE,
+                    pipeline="webhook",
+                ))
+
         except Exception as e:
             result.error = str(e)
             result.checks.append(CheckResult(
@@ -234,6 +245,16 @@ class CreateWithAmendmentPattern(PatternExecutor):
                 details=f"Execution error: {e}",
                 score=0.0,
             ))
+            if result.transcript_turns:
+                result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{self.task.task_id}.transcript",
+                    task_id=self.task.task_id,
+                    title=f"Conversation Transcript (partial) — {self.task.task_name}",
+                    content=self._format_transcript(result.transcript_turns),
+                    color=EvidenceCardColor.AMBER,
+                    pipeline="webhook",
+                    details={"error": str(e)},
+                ))
 
         return result
 

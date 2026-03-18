@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}Submit Assessment — Candidate Portal{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="flex-between spacer">
+        <div>
+            <h1><i data-lucide="upload-cloud" class="icon icon-lg" style="margin-right:.4rem;"></i> Submit Your Assessment</h1>
+            <p class="text-muted">Upload your bot export to be evaluated for certification.</p>
+        </div>
+        <span class="portal-badge portal-badge--candidate">Candidate Portal</span>
+    </div>
+
+    <!-- Steps -->
+    <div class="steps no-print">
+        <div class="step active"><div class="step-num"><i data-lucide="upload" class="icon icon-sm"></i></div><div class="step-label">Upload Files</div></div>
+        <div class="step"><div class="step-num"><i data-lucide="scan-search" class="icon icon-sm"></i></div><div class="step-label">Review Details</div></div>
+        <div class="step"><div class="step-num"><i data-lucide="file-bar-chart" class="icon icon-sm"></i></div><div class="step-label">View Report</div></div>
+    </div>
+
+    {% if error %}
+    <div class="alert alert-danger"><i data-lucide="alert-circle" class="icon icon-sm"></i> {{ error }}</div>
+    {% endif %}
+
+    <div class="grid-2">
+        <!-- Submission Form -->
+        <div>
+            <form id="submissionForm" action="/candidate/submit" method="post" enctype="multipart/form-data">
+                <div class="card spacer">
+                    <div class="card-header"><h3><i data-lucide="user" class="icon" style="margin-right:.4rem;"></i> Your Details</h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label">Your Name</label>
+                            <input type="text" name="candidate_name" class="form-input" placeholder="e.g. Jane Smith" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Email Address</label>
+                            <input type="email" name="candidate_email" class="form-input" placeholder="e.g. jane.smith@example.com" required>
+                            <div class="form-hint">Your email will be used as your unique identifier for all submissions.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card spacer">
+                    <div class="card-header"><h3><i data-lucide="clipboard-list" class="icon" style="margin-right:.4rem;"></i> Assessment Selection</h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label">Assessment Type</label>
+                            <select name="assessment_type" class="form-select" required>
+                                <option value="">-- Select your assessment --</option>
+                                {% for m in available_manifests %}
+                                <option value="{{ m.id }}">{{ m.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-hint">Select the assessment you are submitting for.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card spacer">
+                    <div class="card-header"><h3><i data-lucide="file-json" class="icon" style="margin-right:.4rem;"></i> Bot Export File</h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="file-upload" id="exportUpload">
+                                <input type="file" name="bot_export" accept=".json,.zip" required>
+                                <div class="file-upload-icon"><i data-lucide="file-up" class="icon icon-xl" style="color:var(--primary);"></i></div>
+                                <div class="file-upload-text">Click to upload your bot export</div>
+                                <div class="file-upload-hint">Accepts <strong>.json</strong> or <strong>.zip</strong> — Export from Kore.ai XO Platform &rarr; Bot Settings &rarr; Export</div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card spacer">
+                    <div class="card-header"><h3><i data-lucide="key-round" class="icon" style="margin-right:.4rem;"></i> Kore.ai Platform Credentials <span class="badge badge-warn">Required for Webhook Testing</span></h3></div>
+                    <div class="card-body">
+                        <div class="alert alert-info" style="margin-bottom:1rem;">
+                            <i data-lucide="info" class="icon icon-sm" style="flex-shrink:0;margin-top:2px;"></i>
+                            <span>These credentials are used to generate a JWT token for authenticating with your bot's webhook and Kore.ai APIs. Find them under Bot Settings &rarr; API Extensions &rarr; JWT App.</span>
+                        </div>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label"><i data-lucide="bot" class="icon icon-sm"></i> Bot ID</label>
+                                <input type="text" name="bot_id" class="form-input" placeholder="e.g. st-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                                <div class="form-hint">Your bot's unique ID from Kore.ai platform.</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label"><i data-lucide="tag" class="icon icon-sm"></i> Bot Name <span class="badge badge-grey">Optional</span></label>
+                                <input type="text" name="bot_name" class="form-input" placeholder="e.g. Medical Appointment Bot">
+                                <div class="form-hint">Human-readable bot name. If blank, Bot ID will be used.</div>
+                            </div>
+                        </div>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label"><i data-lucide="fingerprint" class="icon icon-sm"></i> Client ID</label>
+                                <input type="text" name="client_id" class="form-input" placeholder="e.g. cs-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                                <div class="form-hint">The Client ID from your JWT app credentials.</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label"><i data-lucide="lock" class="icon icon-sm"></i> Client Secret</label>
+                                <input type="password" name="client_secret" class="form-input" placeholder="Your client secret key">
+                                <div class="form-hint">The Client Secret from your JWT app. Used to sign the JWT token.</div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label"><i data-lucide="webhook" class="icon icon-sm"></i> Bot Webhook URL <span class="badge badge-grey">Optional if using Kore credentials</span></label>
+                            <input type="url" name="webhook_url" class="form-input" placeholder="e.g. https://bots.kore.ai/hooks/...">
+                            <div class="form-hint">Your bot's webhook URL. If Bot ID + Client ID + Client Secret are provided, the system uses Kore.ai's BotMessages API directly (recommended). The webhook URL serves as a fallback.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card spacer">
+                    <div class="card-header"><h3><i data-lucide="server" class="icon" style="margin-right:.4rem;"></i> Mock API Details <span class="badge badge-grey">Optional</span></h3></div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label class="form-label"><i data-lucide="link" class="icon icon-sm"></i> Mock API Base URL</label>
+                            <input type="url" name="mock_api_url" class="form-input" placeholder="e.g. https://mockapi.io/projects/abc123/appointments">
+                            <div class="form-hint">The base URL of your mockapi.io endpoint. Used for API state verification.</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label"><i data-lucide="braces" class="icon icon-sm"></i> Mock API Record Schema (JSON)</label>
+                            <textarea name="mock_api_schema" class="form-textarea" rows="6" placeholder='e.g. {"patientName": "string", "contactNumber": "string", "appointmentDate": "string", "appointmentTime": "string"}'></textarea>
+                            <div class="form-hint">Provide the JSON field schema your Mock API expects. Since the bot uses Agent Node (LLM-powered), we cannot infer the schema automatically. This is used for state seeding if the booking flow doesn't create a record.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-lg btn-block">
+                    <i data-lucide="send" class="icon"></i> Submit for Evaluation
+                </button>
+            </form>
+        </div>
+
+        <!-- Info Panel -->
+        <div>
+            <div class="card spacer">
+                <div class="card-header"><h3><i data-lucide="list-ordered" class="icon" style="margin-right:.4rem;"></i> What Happens After You Submit</h3></div>
+                <div class="card-body">
+                    <div class="check-row">
+                        <div class="check-icon check-icon--info"><i data-lucide="file-search" class="icon icon-sm"></i></div>
+                        <div><div class="check-label">Your bot export is parsed</div><div class="check-detail">We read the JSON to understand what dialogs, entities, service nodes, and FAQs your bot contains.</div></div>
+                    </div>
+                    <div class="check-row">
+                        <div class="check-icon check-icon--info"><i data-lucide="scan-search" class="icon icon-sm"></i></div>
+                        <div><div class="check-label">Structural checks run automatically</div><div class="check-detail">We verify that all required components exist: correct dialog names, entity nodes, Agent Node, POST/GET/PUT/DELETE service calls, FAQ entries.</div></div>
+                    </div>
+                    <div class="check-row">
+                        <div class="check-icon check-icon--info"><i data-lucide="message-square" class="icon icon-sm"></i></div>
+                        <div><div class="check-label">Live conversation tests (if webhook provided)</div><div class="check-detail">An AI driver talks to your bot, tests booking, retrieval, modification, cancellation, and edge cases.</div></div>
+                    </div>
+                    <div class="check-row">
+                        <div class="check-icon check-icon--info"><i data-lucide="bar-chart-3" class="icon icon-sm"></i></div>
+                        <div><div class="check-label">You get a detailed report</div><div class="check-detail">Every check is explained in plain English. You see exactly what passed, what failed, and what to fix.</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h3><i data-lucide="check-square" class="icon" style="margin-right:.4rem;"></i> Checklist Before Submitting</h3></div>
+                <div class="card-body">
+                    <div class="check-row">
+                        <div class="check-icon check-icon--warn"><i data-lucide="alert-triangle" class="icon icon-sm"></i></div>
+                        <div><div class="check-label">Bot export is a valid JSON file</div><div class="check-detail">Export from Kore.ai, not a screenshot or PDF.</div></div>
+                    </div>
+                    <div class="check-row">
+                        <div class="check-icon check-icon--warn"><i data-lucide="alert-triangle" class="icon icon-sm"></i></div>
+                        <div><div class="check-label">DialogGPT is enabled</div><div class="check-detail">Go to Bot Settings > Intelligence > DialogGPT and make sure it's ON before exporting.</div></div>
+                    </div>
+                    <div class="check-row">
+                        <div class="check-icon check-icon--warn"><i data-lucide="alert-triangle" class="icon icon-sm"></i></div>
+                        <div><div class="check-label">All dialogs are published</div><div class="check-detail">Unpublished dialogs will not appear in the export.</div></div>
+                    </div>
+                    <div class="check-row">
+                        <div class="check-icon check-icon--warn"><i data-lucide="alert-triangle" class="icon icon-sm"></i></div>
+                        <div><div class="check-label">FAQs have alternate questions</div><div class="check-detail">Each FAQ should have at least 2 alternate phrasings.</div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_scripts %}
+<script>
+document.querySelectorAll('.file-upload').forEach(label => {
+    const input = label.querySelector('input[type="file"]');
+    input.addEventListener('change', () => {
+        if (input.files.length > 0) {
+            label.classList.add('has-file');
+            label.querySelector('.file-upload-text').textContent = input.files[0].name;
+            label.querySelector('.file-upload-hint').textContent = (input.files[0].size / 1024).toFixed(1) + ' KB';
+        }
+    });
+});
+</script>
+{% endblock %}
+{% endblock %}

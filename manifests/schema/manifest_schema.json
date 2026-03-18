@@ -1,0 +1,498 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://governiq.io/schemas/manifest/v1.0",
+  "title": "GovernIQ Assessment Manifest",
+  "description": "Complete schema for defining an assessment evaluation manifest. The manifest tells the GovernIQ engine what to check — it never executes logic itself. Every task maps to exactly one of six engine patterns: CREATE, CREATE_WITH_AMENDMENT, RETRIEVE, MODIFY, DELETE, EDGE_CASE.",
+  "type": "object",
+  "required": ["manifest_id", "assessment_name", "assessment_type", "tasks"],
+  "properties": {
+    "manifest_id": {
+      "type": "string",
+      "description": "Unique identifier for this manifest (e.g. 'medical_appointment_basic')."
+    },
+    "manifest_version": {
+      "type": "string",
+      "default": "1.0",
+      "description": "Schema version for forward compatibility."
+    },
+    "assessment_name": {
+      "type": "string",
+      "description": "Human-readable name shown in the UI (e.g. 'Medical Appointment Bot - Basic')."
+    },
+    "assessment_type": {
+      "type": "string",
+      "description": "Domain category (e.g. 'medical', 'travel', 'hr'). Purely informational — the engine is domain-agnostic."
+    },
+    "description": {
+      "type": "string",
+      "default": "",
+      "description": "Optional description of what this assessment evaluates."
+    },
+    "webhook_url": {
+      "type": "string",
+      "default": "",
+      "description": "Bot's webhook URL. Usually provided by the candidate at submission time, not in the manifest."
+    },
+    "mock_api_base_url": {
+      "type": "string",
+      "default": "",
+      "description": "Candidate's Mock API endpoint. Usually provided at submission time."
+    },
+    "conversation_starter": {
+      "type": "string",
+      "default": "Hi",
+      "description": "Fallback opening message if LLM is unavailable. LLM is primary for conversation start."
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered list of tasks the engine will execute. Each task maps to exactly one EnginePattern.",
+      "items": { "$ref": "#/$defs/TaskDefinition" }
+    },
+    "faq_config": {
+      "$ref": "#/$defs/FAQConfig",
+      "description": "FAQ evaluation configuration. FAQs are checked structurally (CBM) and optionally via webhook."
+    },
+    "compliance_checks": {
+      "type": "array",
+      "default": [],
+      "description": "Platform compliance checks (e.g. DialogGPT enabled, channels configured).",
+      "items": { "$ref": "#/$defs/ComplianceCheck" }
+    },
+    "scoring_config": {
+      "$ref": "#/$defs/ScoringConfig",
+      "description": "Weight configuration for scoring. Webhook is the authority — CBM is informational."
+    },
+    "state_seeding_config": {
+      "$ref": "#/$defs/StateSeedingConfig",
+      "description": "State seeding prevents cascade failures when CREATE tasks fail."
+    },
+    "tooltips": {
+      "type": "array",
+      "default": [],
+      "description": "Help text for evaluators, displayed alongside node types in the report.",
+      "items": { "$ref": "#/$defs/Tooltip" }
+    },
+    "assignment_brief": {
+      "$ref": "#/$defs/AssignmentBrief",
+      "description": "Candidate-facing: what to build, entities, APIs, submission instructions."
+    },
+    "submission_config": {
+      "$ref": "#/$defs/SubmissionConfig",
+      "description": "Controls retry logic and evaluator confirmation flow."
+    },
+    "created_by": {
+      "type": "string",
+      "default": "",
+      "description": "Author of this manifest."
+    },
+    "notes": {
+      "type": "string",
+      "default": "",
+      "description": "Internal notes for evaluators."
+    }
+  },
+  "$defs": {
+    "EnginePattern": {
+      "type": "string",
+      "enum": ["CREATE", "CREATE_WITH_AMENDMENT", "RETRIEVE", "MODIFY", "DELETE", "EDGE_CASE"],
+      "description": "The six evaluation patterns. CREATE: collect entities + POST. CREATE_WITH_AMENDMENT: same but change one entity mid-conversation. RETRIEVE: look up by identifier. MODIFY: retrieve then update. DELETE: cancel/remove. EDGE_CASE: inject invalid input."
+    },
+    "DialogNamePolicy": {
+      "type": "string",
+      "enum": ["exact", "contains", "semantic"],
+      "default": "contains",
+      "description": "How to match dialog names in the bot export. 'contains' is recommended — 'exact' requires byte-for-byte match."
+    },
+    "EntityDefinition": {
+      "type": "object",
+      "required": ["entity_key", "semantic_hint"],
+      "description": "An entity the bot must collect during conversation.",
+      "properties": {
+        "entity_key": {
+          "type": "string",
+          "description": "Must match the bot's entity node name exactly (e.g. 'patientName', 'contactNumber')."
+        },
+        "semantic_hint": {
+          "type": "string",
+          "description": "Natural language description for the LLM driver (e.g. 'the patient\\'s full name')."
+        },
+        "value_pool": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Realistic test values the driver picks from. Leave empty for cross-task references."
+        },
+        "validation_required": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the bot is expected to have validation rules for this entity."
+        },
+        "validation_description": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Describes expected validation (e.g. 'must be 10-digit number')."
+        }
+      }
+    },
+    "AmendmentConfig": {
+      "type": "object",
+      "required": ["target_entity", "amendment_utterance_template", "amended_value_pool"],
+      "description": "Configuration for CREATE_WITH_AMENDMENT pattern. Tests the Agent Node's ability to handle mid-conversation changes.",
+      "properties": {
+        "target_entity": {
+          "type": "string",
+          "description": "Entity key to change mid-conversation (e.g. 'contactNumber')."
+        },
+        "amendment_utterance_template": {
+          "type": "string",
+          "description": "Template the driver uses to request the change. Must contain {amended_value} placeholder."
+        },
+        "amended_value_pool": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Values to substitute for the amended entity."
+        }
+      }
+    },
+    "CrossTaskReference": {
+      "type": "object",
+      "required": ["source_task_id", "source_record_alias", "source_field"],
+      "description": "Links a task to data produced by an earlier task (e.g. 'use bookingId from Booking1').",
+      "properties": {
+        "source_task_id": {
+          "type": "string",
+          "description": "Task ID that created the record."
+        },
+        "source_record_alias": {
+          "type": "string",
+          "description": "Record alias from the source task (e.g. 'Booking1')."
+        },
+        "source_field": {
+          "type": "string",
+          "description": "Field name in the source record (e.g. 'bookingId', 'contactNumber')."
+        }
+      }
+    },
+    "StateAssertion": {
+      "type": "object",
+      "required": ["verify_endpoint", "filter_field"],
+      "description": "After webhook conversation, verify the API state matches expectations.",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "verify_endpoint": {
+          "type": "string",
+          "description": "GET endpoint URL to query for verification."
+        },
+        "filter_field": {
+          "type": "string",
+          "description": "Field used to locate the record in the API response."
+        },
+        "field_assertions": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "default": {},
+          "description": "Map of entity_key → JSON path in API response for value comparison."
+        },
+        "expect_deletion": {
+          "type": "boolean",
+          "default": false,
+          "description": "For DELETE pattern: expect the record to be absent."
+        }
+      }
+    },
+    "NegativeTest": {
+      "type": "object",
+      "required": ["invalid_value_pool", "expected_error_pattern"],
+      "description": "Edge case test: inject invalid input and verify graceful error handling.",
+      "properties": {
+        "invalid_value_pool": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Invalid values to inject (e.g. 'xyz', '0000000000')."
+        },
+        "expected_error_pattern": {
+          "type": "string",
+          "description": "Regex or keyword the bot's error response must contain."
+        },
+        "requires_re_entry_prompt": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the bot should prompt the user to try again."
+        }
+      }
+    },
+    "RequiredNode": {
+      "type": "object",
+      "required": ["node_type", "label"],
+      "description": "A node that must exist in the dialog for the CBM structural check.",
+      "properties": {
+        "node_type": {
+          "type": "string",
+          "description": "Node type to look for: 'aiassist' (Agent Node), 'service', 'entity', 'message', 'form', 'script', 'prompt'."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable label shown in the report."
+        },
+        "service_method": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "For service nodes: 'GET', 'POST', 'PUT', 'DELETE'."
+        },
+        "required": {
+          "type": "boolean",
+          "default": true,
+          "description": "If false, absence produces a warning instead of a failure."
+        }
+      }
+    },
+    "FAQItem": {
+      "type": "object",
+      "required": ["primary_question", "ground_truth_answer"],
+      "description": "A single FAQ the bot must support.",
+      "properties": {
+        "primary_question": {
+          "type": "string",
+          "description": "The main question text."
+        },
+        "ground_truth_answer": {
+          "type": "string",
+          "description": "The expected answer content."
+        },
+        "required_keywords": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Keywords that must appear in the bot's answer."
+        },
+        "alternate_questions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Alternative phrasings the bot should also handle."
+        }
+      }
+    },
+    "FAQConfig": {
+      "type": "object",
+      "description": "FAQ evaluation settings.",
+      "properties": {
+        "required_faqs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FAQItem" },
+          "default": [],
+          "description": "List of FAQs the bot must implement."
+        },
+        "min_alternate_questions": {
+          "type": "integer",
+          "default": 2,
+          "description": "Minimum alternate phrasings per FAQ."
+        },
+        "semantic_similarity_threshold": {
+          "type": "number",
+          "default": 0.80,
+          "description": "Threshold for semantic FAQ matching (future phase)."
+        }
+      }
+    },
+    "ComplianceCheck": {
+      "type": "object",
+      "required": ["check_id", "label", "cbm_field", "required_state"],
+      "description": "A platform compliance check verified against the bot export.",
+      "properties": {
+        "check_id": { "type": "string" },
+        "label": {
+          "type": "string",
+          "description": "Human-readable label (e.g. 'DialogGPT must be enabled')."
+        },
+        "cbm_field": {
+          "type": "string",
+          "description": "Dot-path into the CBM object (e.g. 'dialog_gpt_enabled')."
+        },
+        "required_state": {
+          "type": "string",
+          "enum": ["enabled", "disabled", "present"],
+          "description": "Expected state of the field."
+        },
+        "critical": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, failure auto-fails the entire assessment regardless of score."
+        },
+        "tooltip": {
+          "type": "string",
+          "default": "",
+          "description": "Explanation shown to evaluators."
+        }
+      }
+    },
+    "ScoringConfig": {
+      "type": "object",
+      "description": "Scoring weights. Webhook is the authority (0.80) — CBM is informational only (0.0).",
+      "properties": {
+        "cbm_structural_weight": { "type": "number", "default": 0.0 },
+        "webhook_functional_weight": { "type": "number", "default": 0.80 },
+        "compliance_weight": { "type": "number", "default": 0.10 },
+        "faq_weight": { "type": "number", "default": 0.10 },
+        "pass_threshold": { "type": "number", "default": 0.70, "description": "Minimum overall score to pass (0.0 to 1.0)." }
+      }
+    },
+    "StateSeedingConfig": {
+      "type": "object",
+      "description": "State seeding injects synthetic data when CREATE fails, preventing cascade failures in RETRIEVE/MODIFY tasks.",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "schema_validation": { "type": "boolean", "default": true },
+        "seed_endpoint": { "type": "string", "default": "", "description": "POST endpoint for seeding. Falls back to mock_api_base_url if empty." }
+      }
+    },
+    "Tooltip": {
+      "type": "object",
+      "required": ["node_type", "text"],
+      "properties": {
+        "node_type": { "type": "string" },
+        "text": { "type": "string" }
+      }
+    },
+    "TaskDefinition": {
+      "type": "object",
+      "required": ["task_id", "task_name", "pattern", "dialog_name"],
+      "description": "A single evaluation task. Each task maps to exactly one EnginePattern.",
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "description": "Unique identifier (e.g. 'task1', 'task2_booking1')."
+        },
+        "task_name": {
+          "type": "string",
+          "description": "Human-readable name shown in the report."
+        },
+        "pattern": { "$ref": "#/$defs/EnginePattern" },
+        "dialog_name": {
+          "type": "string",
+          "description": "Expected dialog name in the bot export."
+        },
+        "dialog_name_policy": { "$ref": "#/$defs/DialogNamePolicy" },
+        "required_entities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EntityDefinition" },
+          "default": []
+        },
+        "required_nodes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/RequiredNode" },
+          "default": []
+        },
+        "amendment_config": {
+          "oneOf": [{ "$ref": "#/$defs/AmendmentConfig" }, { "type": "null" }],
+          "default": null,
+          "description": "Required for CREATE_WITH_AMENDMENT pattern."
+        },
+        "cross_task_refs": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/CrossTaskReference" },
+          "default": {},
+          "description": "References to data from earlier tasks (for RETRIEVE, MODIFY, DELETE)."
+        },
+        "state_assertion": {
+          "oneOf": [{ "$ref": "#/$defs/StateAssertion" }, { "type": "null" }],
+          "default": null
+        },
+        "record_alias": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Cache key for RuntimeContext (e.g. 'Booking1')."
+        },
+        "negative_tests": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/NegativeTest" },
+          "default": []
+        },
+        "required_greeting_text": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "For welcome/greeting task: expected greeting text."
+        },
+        "required_menu_items": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "For welcome task: menu items the bot must display."
+        },
+        "conversation_starter": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Override opening message for this specific task."
+        },
+        "co_reference_test": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, tests providing two entities in one utterance."
+        },
+        "modifiable_fields": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "For MODIFY pattern: which fields can be changed."
+        },
+        "modified_value_pool": {
+          "type": "object",
+          "additionalProperties": { "type": "array", "items": { "type": "string" } },
+          "default": {},
+          "description": "For MODIFY pattern: new values for each modifiable field."
+        },
+        "weight": {
+          "type": "number",
+          "default": 1.0,
+          "description": "Scoring weight multiplier for this task."
+        },
+        "expected_output": {
+          "$ref": "#/$defs/ExpectedOutput",
+          "description": "Per-task pass criteria authored at manifest time, validated in Phase 5."
+        }
+      }
+    },
+    "AssignmentBrief": {
+      "type": "object",
+      "description": "Candidate-facing brief: what to build, entities to collect, API endpoints, submission instructions.",
+      "properties": {
+        "scenario_title": { "type": "string", "default": "" },
+        "scenario_description": { "type": "string", "default": "" },
+        "what_to_build": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "entities_to_collect": { "type": "array", "items": { "type": "object" }, "default": [] },
+        "api_endpoints": { "type": "array", "items": { "type": "object" }, "default": [] },
+        "validation_rules": { "type": "array", "items": { "type": "object" }, "default": [] },
+        "faq_topics": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "mock_api_setup_instructions": { "type": "string", "default": "" },
+        "submission_instructions": { "type": "string", "default": "" }
+      }
+    },
+    "SubmissionConfig": {
+      "type": "object",
+      "description": "Controls retry logic and evaluator confirmation flow.",
+      "properties": {
+        "max_attempts": { "type": "integer", "default": 6 },
+        "require_evaluator_confirmation": { "type": "boolean", "default": true },
+        "allow_evaluator_exception": { "type": "boolean", "default": true },
+        "feedback_mode": {
+          "type": "string",
+          "enum": ["immediate", "after_all_attempts", "never"],
+          "default": "immediate"
+        }
+      }
+    },
+    "ExpectedOutput": {
+      "type": "object",
+      "description": "Per-task pass criteria authored at manifest time, validated in Phase 5.",
+      "properties": {
+        "score_min": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.0 },
+        "must_pass_checks": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "evidence_required": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "notes": { "type": "string", "default": "" }
+      }
+    }
+  }
+}

@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}How Evaluation Works — GovernIQ{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:900px;">
+    <h1 class="spacer"><i data-lucide="info" class="icon icon-lg" style="margin-right:.4rem;"></i> How Evaluation Works</h1>
+
+    <div class="card spacer">
+        <div class="card-header"><h3><i data-lucide="telescope" class="icon" style="margin-right:.4rem;"></i> Overview</h3></div>
+        <div class="card-body">
+            <p>GovernIQ evaluates chatbot assessments using two independent pipelines that run against your bot. The results from both are merged into a single scorecard.</p>
+            <p class="text-muted text-small" style="margin-top:.5rem;">The evaluation engine is <strong>domain-agnostic</strong>. It doesn't know what a flight, appointment, or leave request is. It knows six testing patterns. A configuration file (called a "manifest") tells it what to check for each assessment type. This means new assessment types cost zero code changes.</p>
+        </div>
+    </div>
+
+    <h2 class="spacer"><i data-lucide="git-branch" class="icon" style="margin-right:.4rem;"></i> The Two Pipelines</h2>
+
+    <div class="grid-2 spacer">
+        <div class="card">
+            <div class="card-header" style="background:var(--info-bg); border-bottom-color:var(--border);">
+                <h3 style="color:var(--info);"><i data-lucide="file-code" class="icon"></i> Pipeline A: Structural Analysis (CBM)</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-small">Parses your exported bot JSON and checks its <strong>structure</strong>:</p>
+                <ul class="text-small" style="margin:.75rem 0; padding-left:1.5rem; color:var(--muted);">
+                    <li>Are all required dialogs present?</li>
+                    <li>Does each dialog have the right nodes (entity, service, message, Agent Node)?</li>
+                    <li>Are POST, GET, PUT, DELETE service nodes configured?</li>
+                    <li>Are entity validation rules set up?</li>
+                    <li>Are FAQs present with alternate phrasings?</li>
+                    <li>Is DialogGPT enabled?</li>
+                </ul>
+                <p class="text-small text-muted"><strong>Key property:</strong> Deterministic. Same export always produces the same result. Can be re-run at any time.</p>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header" style="background:var(--accent-bg); border-bottom-color:var(--border);">
+                <h3 style="color:var(--accent);"><i data-lucide="webhook" class="icon"></i> Pipeline B: Live Conversation (Webhook)</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-small">An AI driver talks to your live bot and tests its <strong>behavior</strong>:</p>
+                <ul class="text-small" style="margin:.75rem 0; padding-left:1.5rem; color:var(--muted);">
+                    <li>Can the bot greet users and show available options?</li>
+                    <li>Can it collect all required entities for a booking?</li>
+                    <li>Can it handle mid-conversation amendments (Agent Node test)?</li>
+                    <li>Does data actually reach the Mock API?</li>
+                    <li>Can it retrieve, modify, and cancel records?</li>
+                    <li>Does it handle invalid input gracefully?</li>
+                </ul>
+                <p class="text-small text-muted"><strong>Key property:</strong> Tests real behavior. A bot can have the right structure but still fail in practice.</p>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="spacer"><i data-lucide="blocks" class="icon" style="margin-right:.4rem;"></i> The Six Testing Patterns</h2>
+    <div class="card spacer">
+        <div class="card-body">
+            <p class="text-small text-muted spacer">Every task in every assessment maps to exactly one of these patterns:</p>
+            <table class="table">
+                <thead><tr><th>Pattern</th><th>What the Engine Does</th><th>What It Checks</th></tr></thead>
+                <tbody>
+                    <tr><td><span class="badge badge-pass"><i data-lucide="plus-circle" class="icon icon-sm"></i> CREATE</span></td><td>Drives a conversation to collect all required entities, then triggers a POST to your API</td><td>Were all entities collected? Was the record saved to the API correctly?</td></tr>
+                    <tr><td><span class="badge badge-info"><i data-lucide="edit-3" class="icon icon-sm"></i> CREATE + AMEND</span></td><td>Same as CREATE, but mid-conversation changes one entity value before confirmation</td><td>Does the Agent Node support amendment? Does the final record have the amended value?</td></tr>
+                    <tr><td><span class="badge badge-info"><i data-lucide="search" class="icon icon-sm"></i> RETRIEVE</span></td><td>Asks the bot to look up an existing record using data from a previous task</td><td>Did the bot return the correct data? Does it match the API record?</td></tr>
+                    <tr><td><span class="badge badge-warn"><i data-lucide="pencil" class="icon icon-sm"></i> MODIFY</span></td><td>Retrieves a record then asks to change one or more fields</td><td>Was the modification saved to the API? Do the new values match?</td></tr>
+                    <tr><td><span class="badge badge-fail"><i data-lucide="trash-2" class="icon icon-sm"></i> DELETE</span></td><td>Asks the bot to cancel/delete a record</td><td>Is the record actually gone from the API?</td></tr>
+                    <tr><td><span class="badge badge-grey"><i data-lucide="shield-alert" class="icon icon-sm"></i> EDGE CASE</span></td><td>Injects an invalid value (wrong phone number, bad date, etc.)</td><td>Does the bot respond with a clear error message? Does it offer to try again?</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <h2 class="spacer"><i data-lucide="calculator" class="icon" style="margin-right:.4rem;"></i> Scoring</h2>
+    <div class="card spacer">
+        <div class="card-body">
+            <div class="grid-2" style="gap:1.5rem;">
+                <div class="method-card"><div class="method-num" style="background:var(--info-bg);color:var(--info);"><i data-lucide="file-code" class="icon icon-sm"></i></div><div><div class="method-title">CBM Structural — 40%</div><div class="method-desc">Does the bot have the right internal structure?</div></div></div>
+                <div class="method-card"><div class="method-num" style="background:var(--accent-bg);color:var(--accent);"><i data-lucide="webhook" class="icon icon-sm"></i></div><div><div class="method-title">Webhook Functional — 40%</div><div class="method-desc">Does the bot actually work in conversation?</div></div></div>
+                <div class="method-card"><div class="method-num" style="background:var(--pass-bg);color:var(--pass);"><i data-lucide="shield" class="icon icon-sm"></i></div><div><div class="method-title">Compliance — 10%</div><div class="method-desc">Are platform settings correct? (DialogGPT, channels, language)</div></div></div>
+                <div class="method-card"><div class="method-num" style="background:var(--warn-bg);color:var(--warn);"><i data-lucide="help-circle" class="icon icon-sm"></i></div><div><div class="method-title">FAQs — 10%</div><div class="method-desc">Are FAQs implemented with correct answers and alternates?</div></div></div>
+            </div>
+            <div class="divider"></div>
+            <div class="grid-3" style="text-align:center;">
+                <div><span class="badge badge-pass" style="font-size:.9rem; padding:.4rem 1rem;"><i data-lucide="shield-check" class="icon icon-sm"></i> PASS: 70%+</span><p class="text-small text-muted" style="margin-top:.25rem;">No critical failures</p></div>
+                <div><span class="badge badge-warn" style="font-size:.9rem; padding:.4rem 1rem;"><i data-lucide="eye" class="icon icon-sm"></i> REVIEW: 50-69%</span><p class="text-small text-muted" style="margin-top:.25rem;">Some areas need work</p></div>
+                <div><span class="badge badge-fail" style="font-size:.9rem; padding:.4rem 1rem;"><i data-lucide="shield-x" class="icon icon-sm"></i> FAIL: Below 50%</span><p class="text-small text-muted" style="margin-top:.25rem;">Major gaps found</p></div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="spacer"><i data-lucide="database" class="icon" style="margin-right:.4rem;"></i> State Seeding (Fairness)</h2>
+    <div class="card spacer">
+        <div class="card-body">
+            <p class="text-small">If the bot fails to create a booking through conversation (Task 2), Tasks 3 and 4 (retrieval, modification) cannot be tested fairly. To prevent unfair cascade failures, the engine will:</p>
+            <ol class="text-small" style="padding-left:1.5rem; color:var(--muted); margin:.75rem 0;">
+                <li>Validate the candidate's Mock API schema against what the bot tried to send</li>
+                <li>If the schema matches, insert a synthetic record into the Mock API</li>
+                <li>Run Tasks 3 and 4 against the seeded data</li>
+                <li>Flag the scorecard with an amber warning: "Tasks tested against seeded data"</li>
+            </ol>
+            <p class="text-small text-muted">This ensures you still get feedback on retrieval and modification, even if booking failed.</p>
+        </div>
+    </div>
+
+    <h2 class="spacer"><i data-lucide="lightbulb" class="icon" style="margin-right:.4rem;"></i> Key Decisions</h2>
+    <div class="card spacer">
+        <div class="card-body">
+            <div class="check-row">
+                <div class="check-icon check-icon--info"><i data-lucide="sparkles" class="icon icon-sm"></i></div>
+                <div><div class="check-label">DialogGPT: Enabled = Pass</div><div class="check-detail">The assessment requires DialogGPT to be enabled. If it's ON in your bot, this passes. If OFF, this is a critical failure.</div></div>
+            </div>
+            <div class="check-row">
+                <div class="check-icon check-icon--info"><i data-lucide="git-branch" class="icon icon-sm"></i></div>
+                <div><div class="check-label">Both pipelines are independent</div><div class="check-detail">CBM and webhook pipelines run separately. They don't affect each other during execution. Scores are merged only at the end.</div></div>
+            </div>
+            <div class="check-row">
+                <div class="check-icon check-icon--info"><i data-lucide="edit-3" class="icon icon-sm"></i></div>
+                <div><div class="check-label">Booking 2 = Amendment test only</div><div class="check-detail">Booking 2 is not a separate booking. It's the same flow as Booking 1, but mid-conversation one entity value is changed to test the Agent Node's amendment capability.</div></div>
+            </div>
+            <div class="check-row">
+                <div class="check-icon check-icon--info"><i data-lucide="link" class="icon icon-sm"></i></div>
+                <div><div class="check-label">Tasks 3 & 4 reuse Task 2 data</div><div class="check-detail">The evaluation is stateful. Data from the booking task is used for retrieval and modification. This mirrors how a real user would interact with the bot.</div></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

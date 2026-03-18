@@ -99,3 +99,18 @@ class PatternExecutor(ABC):
         transcript = self.context.get_transcript(self.task.task_id)
         if transcript:
             transcript.add_turn(role, content)
+
+    @staticmethod
+    def _format_transcript(turns: list[dict[str, str]]) -> str:
+        """Format conversation transcript for evidence cards."""
+        lines = []
+        for turn in turns:
+            role = turn.get("role", "unknown")
+            content = turn.get("content", "")
+            prefix = ">> BOT:" if role == "bot" else "<< USER:"
+            # Truncate very long messages
+            display = content[:500]
+            if len(content) > 500:
+                display += "..."
+            lines.append(f"{prefix} {display}")
+        return "\n\n".join(lines)

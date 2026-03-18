@@ -29,8 +29,9 @@ class CreatePattern(PatternExecutor):
         confirmation_sent = False
 
         try:
-            # Start session
+            # Start session and warm up webhook connection
             await self.webhook.start_session()
+            await self.webhook.warm_up()
 
             # Generate and send opening message
             opening = await self.driver.generate_opening(self.task)
@@ -115,43 +116,82 @@ class CreatePattern(PatternExecutor):
                 result.cached_record = entities_provided
 
             # Generate check results
-            result.checks.append(CheckResult(
-                check_id=f"webhook.{self.task.task_id}.entity_collection",
-                task_id=self.task.task_id,
-                pipeline="webhook",
-                label="All required entities collected",
-                status=CheckStatus.PASS if entities_provided.keys() >= entities_needed
-                       else CheckStatus.FAIL,
-                details=(
-                    f"Collected: {', '.join(entities_provided.keys())}. "
-                    f"Missing: {', '.join(entities_needed - entities_provided.keys()) or 'none'}."
-                ),
-                score=len(entities_provided) / max(len(entities_needed), 1),
-            ))
+            if entities_needed:
+                # Standard CREATE task — check entities and confirmation
+                result.checks.append(CheckResult(
+                    check_id=f"webhook.{self.task.task_id}.entity_collection",
+                    task_id=self.task.task_id,
+                    pipeline="webhook",
+                    label="All required entities collected",
+                    status=CheckStatus.PASS if entities_provided.keys() >= entities_needed
+                           else CheckStatus.FAIL,
+                    details=(
+                        f"Collected: {', '.join(entities_provided.keys())}. "
+                        f"Missing: {', '.join(entities_needed - entities_provided.keys()) or 'none'}."
+                    ),
+                    score=len(entities_provided) / len(entities_needed),
+                ))
 
-            result.checks.append(CheckResult(
-                check_id=f"webhook.{self.task.task_id}.confirmation",
-                task_id=self.task.task_id,
-                pipeline="webhook",
-                label="Booking confirmation received",
-                status=CheckStatus.PASS if confirmation_sent else CheckStatus.FAIL,
-                details="Confirmation step completed." if confirmation_sent
-                        else "No confirmation step detected.",
-                score=1.0 if confirmation_sent else 0.0,
-            ))
+                result.checks.append(CheckResult(
+                    check_id=f"webhook.{self.task.task_id}.confirmation",
+                    task_id=self.task.task_id,
+                    pipeline="webhook",
+                    label="Booking confirmation received",
+                    status=CheckStatus.PASS if confirmation_sent else CheckStatus.FAIL,
+                    details="Confirmation step completed." if confirmation_sent
+                            else "No confirmation step detected.",
+                    score=1.0 if confirmation_sent else 0.0,
+                ))
 
-            # Evidence card
-            result.evidence_cards.append(EvidenceCard(
-                card_id=f"webhook.{self.task.task_id}.create",
-                task_id=self.task.task_id,
-                title=f"Booking Created — {self.task.record_alias or self.task.task_id}",
-                content=self._format_record_evidence(entities_provided, confirmation_sent),
-                color=EvidenceCardColor.GREEN if confirmation_sent else EvidenceCardColor.RED,
-                pipeline="webhook",
-                details={"entities": entities_provided, "turns": turn_count},
-            ))
+                # Evidence card — record summary
+                result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{self.task.task_id}.create",
+                    task_id=self.task.task_id,
+                    title=f"Booking Created — {self.task.record_alias or self.task.task_id}",
+                    content=self._format_record_evidence(entities_provided, confirmation_sent),
+                    color=EvidenceCardColor.GREEN if confirmation_sent else EvidenceCardColor.RED,
+                    pipeline="webhook",
+                    details={"entities": entities_provided, "turns": turn_count},
+                ))
 
-            result.success = confirmation_sent and entities_provided.keys() >= entities_needed
+                result.success = confirmation_sent and entities_provided.keys() >= entities_needed
+            else:
+                # Zero-entity task (e.g., Welcome/greeting) — just verify bot responded
+                result.checks.append(CheckResult(
+                    check_id=f"webhook.{self.task.task_id}.bot_response",
+                    task_id=self.task.task_id,
+                    pipeline="webhook",
+                    label="Bot responded to greeting",
+                    status=CheckStatus.PASS if bot_response else CheckStatus.FAIL,
+                    details=f"Bot response: {bot_response[:200]}" if bot_response
+                            else "No response received from bot.",
+                    score=1.0 if bot_response else 0.0,
+                ))
+
+                # Evidence card — greeting response
+                result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{self.task.task_id}.greeting",
+                    task_id=self.task.task_id,
+                    title=f"Greeting Response — {self.task.task_name}",
+                    content=f"**Bot Response:**\n{bot_response}" if bot_response
+                            else "**No response received.**",
+                    color=EvidenceCardColor.GREEN if bot_response else EvidenceCardColor.RED,
+                    pipeline="webhook",
+                ))
+
+                result.success = bool(bot_response)
+
+            # Evidence card — conversation transcript (all tasks)
+            if result.transcript_turns:
+                result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{self.task.task_id}.transcript",
+                    task_id=self.task.task_id,
+                    title=f"Conversation Transcript — {self.task.task_name}",
+                    content=self._format_transcript(result.transcript_turns),
+                    color=EvidenceCardColor.BLUE,
+                    pipeline="webhook",
+                    details={"turn_count": len(result.transcript_turns)},
+                ))
 
         except Exception as e:
             result.error = str(e)
@@ -164,6 +204,17 @@ class CreatePattern(PatternExecutor):
                 details=f"Execution error: {e}",
                 score=0.0,
             ))
+            # Still include whatever transcript we collected before the error
+            if result.transcript_turns:
+                result.evidence_cards.append(EvidenceCard(
+                    card_id=f"webhook.{self.task.task_id}.transcript",
+                    task_id=self.task.task_id,
+                    title=f"Conversation Transcript (partial) — {self.task.task_name}",
+                    content=self._format_transcript(result.transcript_turns),
+                    color=EvidenceCardColor.AMBER,
+                    pipeline="webhook",
+                    details={"turn_count": len(result.transcript_turns), "error": str(e)},
+                ))
 
         return result
 

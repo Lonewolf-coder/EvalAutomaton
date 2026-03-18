@@ -1,15 +1,26 @@
-"""GovernIQ Universal Evaluation Platform — FastAPI Application Entry Point."""
+"""GovernIQ Universal Evaluation Platform — FastAPI Application Entry Point.
+
+Serves two portals from a single server:
+  /candidate/  — Candidate submission, history, and detailed report
+  /admin/      — Evaluator dashboard, review, and manifest management
+  /api/v1/     — REST API for programmatic access
+  /            — Landing page with links to both portals
+  /how-it-works — Explanation of the evaluation methodology
+"""
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from .api.routes import router as api_router
-from .dashboard.routes import router as dashboard_router
+from .candidate.routes import router as candidate_router
+from .admin.routes import router as admin_router
 
 # Configure logging
 logging.basicConfig(
@@ -22,20 +33,46 @@ app = FastAPI(
     description=(
         "Domain-agnostic assessment evaluation engine that automates "
         "evaluation of candidate bot submissions for certification. "
-        "The engine knows six execution patterns; manifests provide all domain knowledge."
+        "Two portals: Candidate (submit & view reports) and Admin (review & manage)."
     ),
     version="0.1.0",
 )
 
-# Static files for the dashboard
+# Static files
 static_dir = Path(__file__).parent / "dashboard" / "static"
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-# API routes
+# Templates (shared across portals)
+TEMPLATE_DIR = Path(__file__).parent / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+
+# Register routers
 app.include_router(api_router)
+app.include_router(candidate_router)
+app.include_router(admin_router)
 
-# Dashboard routes
-app.include_router(dashboard_router)
+
+# ---------------------------------------------------------------------------
+# Landing page and shared routes
+# ---------------------------------------------------------------------------
+
+@app.get("/", response_class=HTMLResponse)
+async def landing_page(request: Request):
+    """Landing page with links to both portals."""
+    return templates.TemplateResponse("landing.html", {
+        "request": request,
+        "portal": None,
+    })
+
+
+@app.get("/how-it-works", response_class=HTMLResponse)
+async def how_it_works(request: Request):
+    """Explanation of how the evaluation engine works."""
+    return templates.TemplateResponse("how_it_works.html", {
+        "request": request,
+        "portal": None,
+    })
 
 
 @app.get("/health")
