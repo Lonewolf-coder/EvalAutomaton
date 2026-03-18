@@ -18,7 +18,8 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class EnginePattern(str, Enum):
-    """The seven patterns the engine knows. Every task maps to exactly one."""
+    """Engine patterns — every task maps to exactly one."""
+    # Core CRUD patterns
     CREATE = "CREATE"
     CREATE_WITH_AMENDMENT = "CREATE_WITH_AMENDMENT"
     RETRIEVE = "RETRIEVE"
@@ -26,6 +27,12 @@ class EnginePattern(str, Enum):
     DELETE = "DELETE"
     EDGE_CASE = "EDGE_CASE"
     WELCOME = "WELCOME"
+    # Advanced-assessment patterns
+    INTERRUPTION = "INTERRUPTION"   # Global interruption handling mid-dialog
+    LANGUAGE = "LANGUAGE"           # Multi-language / language-switch verification
+    FORM = "FORM"                   # Digital form with fields, validation, conditional visibility
+    SURVEY = "SURVEY"               # NPS / feedback survey triggered at dialog end
+    CBM_ONLY = "CBM_ONLY"           # Structural inspection via CBM only — no webhook conversation
 
 
 class DialogNamePolicy(str, Enum):

@@ -1,4 +1,4 @@
-"""Engine Patterns — The seven patterns the engine knows.
+"""Engine Patterns — all patterns the engine knows.
 
 Every task in every manifest is assigned one pattern. The manifest configures
 how the pattern runs for that specific task. The pattern logic itself never changes.
@@ -12,10 +12,17 @@ from .modify import ModifyPattern
 from .delete import DeletePattern
 from .edge_case import EdgeCasePattern
 from .welcome import WelcomePattern
+# Advanced-assessment patterns
+from .interruption import InterruptionPattern
+from .language import LanguagePattern
+from .form import FormPattern
+from .survey import SurveyPattern
+from .cbm_only import CbmOnlyPattern
 from ..core.manifest import EnginePattern
 
 
 PATTERN_REGISTRY: dict[EnginePattern, type[PatternExecutor]] = {
+    # Core patterns
     EnginePattern.CREATE: CreatePattern,
     EnginePattern.CREATE_WITH_AMENDMENT: CreateWithAmendmentPattern,
     EnginePattern.RETRIEVE: RetrievePattern,
@@ -23,6 +30,12 @@ PATTERN_REGISTRY: dict[EnginePattern, type[PatternExecutor]] = {
     EnginePattern.DELETE: DeletePattern,
     EnginePattern.EDGE_CASE: EdgeCasePattern,
     EnginePattern.WELCOME: WelcomePattern,
+    # Advanced patterns
+    EnginePattern.INTERRUPTION: InterruptionPattern,
+    EnginePattern.LANGUAGE: LanguagePattern,
+    EnginePattern.FORM: FormPattern,
+    EnginePattern.SURVEY: SurveyPattern,
+    EnginePattern.CBM_ONLY: CbmOnlyPattern,
 }
 
 
