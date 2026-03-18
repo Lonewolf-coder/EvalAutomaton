@@ -103,11 +103,15 @@ class TaskScore:
 
     @property
     def all_passed(self) -> bool:
-        """A task passes only if webhook tests pass. CBM alone cannot qualify."""
+        """A task passes only if webhook tests pass. CBM alone cannot qualify.
+
+        WARNING is treated as non-blocking (used for optional items that are
+        desirable but not required — their absence does not constitute failure).
+        """
         if not self.webhook_checks:
             return False  # Cannot pass without webhook testing
         return all(
-            c.status in (CheckStatus.PASS, CheckStatus.INFO, CheckStatus.UNTESTABLE)
+            c.status in (CheckStatus.PASS, CheckStatus.WARNING, CheckStatus.INFO, CheckStatus.UNTESTABLE)
             for c in self.webhook_checks
         )
 

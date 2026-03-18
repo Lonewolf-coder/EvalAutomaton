@@ -57,7 +57,8 @@
         }
       ],
       "required_greeting_text": "Welcome",
-      "required_menu_items": ["Book Flight", "Fetch Booking", "Modify Booking", "FAQ"],
+      "required_menu_items": ["Book Flight", "Fetch Booking", "Modify Booking"],
+      "optional_menu_items": ["FAQ"],
       "menu_matching_strategy": "semantic",
       "semantic_similarity_threshold": 0.80,
       "conversation_starter": "Hi",

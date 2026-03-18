@@ -243,6 +243,14 @@ class TaskDefinition(BaseModel):
     # Welcome-specific fields
     required_greeting_text: str | None = None
     required_menu_items: list[str] = Field(default_factory=list)
+    optional_menu_items: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Menu items that are desirable but not required. "
+            "Missing optional items produce a WARNING (not FAIL) and do not "
+            "reduce the task score or block the task from passing."
+        ),
+    )
 
     # Conversation starter override
     conversation_starter: str | None = None

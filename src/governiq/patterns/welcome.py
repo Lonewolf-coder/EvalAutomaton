@@ -4,6 +4,8 @@ Send an opening greeting, then verify the bot:
   1. Displays a welcome/greeting message containing the required text.
   2. Presents the required menu items (checked by case-insensitive substring match;
      semantic matching deferred to the LLM-as-user phase).
+  3. Optionally checks for optional_menu_items — missing optional items produce a
+     WARNING and full score rather than a FAIL, so the task still passes.
 
 WELCOME is the only pattern that does not collect entities or call any mock API.
 It is always task1 in any manifest.
@@ -31,10 +33,11 @@ class WelcomePattern(PatternExecutor):
 
         required_greeting = (self.task.required_greeting_text or "").strip()
         required_items: list[str] = list(self.task.required_menu_items or [])
+        optional_items: list[str] = list(self.task.optional_menu_items or [])
 
         greeting_found = False
-        items_found: dict[str, bool] = {item: False for item in required_items}
-        # Accumulate all bot text across initial turns for a final scan
+        required_found: dict[str, bool] = {item: False for item in required_items}
+        optional_found: dict[str, bool] = {item: False for item in optional_items}
         all_bot_text: list[str] = []
 
         try:
@@ -48,9 +51,9 @@ class WelcomePattern(PatternExecutor):
             all_bot_text.append(bot_response)
 
             # WELCOME dialogs sometimes need a second turn before showing the menu.
-            # Send one follow-up (select the menu / "what can you help me with?")
-            # only if the menu items are not yet visible.
-            if required_items and not self._check_items(bot_response, required_items):
+            # Send one follow-up only if required items are not yet visible.
+            all_expected = required_items + optional_items
+            if all_expected and not self._check_items(bot_response, all_expected):
                 intent = await self.driver.classify_bot_intent(bot_response)
                 if intent in ("entity_request", "information"):
                     follow_up = "What can you help me with today?"
@@ -59,21 +62,25 @@ class WelcomePattern(PatternExecutor):
                     self._record_turn(result, "bot", bot_response2)
                     all_bot_text.append(bot_response2)
 
-            # --- Evaluate combined bot text ---
-            combined = " ".join(all_bot_text)
-
-            # 1. Greeting check
-            if required_greeting:
-                greeting_found = required_greeting.lower() in combined.lower()
-            else:
-                greeting_found = True  # no requirement — consider passed
-
-            # 2. Menu items check (substring, case-insensitive)
-            for item in required_items:
-                items_found[item] = item.lower() in combined.lower()
-
         except Exception as e:
             result.error = str(e)
+
+        # --- Evaluate combined bot text ---
+        combined = " ".join(all_bot_text)
+
+        # 1. Greeting check
+        if required_greeting:
+            greeting_found = required_greeting.lower() in combined.lower()
+        else:
+            greeting_found = True
+
+        # 2. Required menu items (FAIL + score 0.0 if missing)
+        for item in required_items:
+            required_found[item] = item.lower() in combined.lower()
+
+        # 3. Optional menu items (WARNING + score 1.0 if missing — no penalty)
+        for item in optional_items:
+            optional_found[item] = item.lower() in combined.lower()
 
         # --- Build CheckResults ---
         result.checks.append(CheckResult(
@@ -90,7 +97,7 @@ class WelcomePattern(PatternExecutor):
             score=1.0 if greeting_found else 0.0,
         ))
 
-        for item, found in items_found.items():
+        for item, found in required_found.items():
             result.checks.append(CheckResult(
                 check_id=f"webhook.{self.task.task_id}.menu.{_slug(item)}",
                 task_id=self.task.task_id,
@@ -105,25 +112,51 @@ class WelcomePattern(PatternExecutor):
                 score=1.0 if found else 0.0,
             ))
 
-        all_items_present = all(items_found.values()) if items_found else True
-        result.success = greeting_found and all_items_present
+        for item, found in optional_found.items():
+            result.checks.append(CheckResult(
+                check_id=f"webhook.{self.task.task_id}.menu.optional.{_slug(item)}",
+                task_id=self.task.task_id,
+                pipeline="webhook",
+                label=f"Optional menu item present: '{item}'",
+                status=CheckStatus.PASS if found else CheckStatus.WARNING,
+                details=(
+                    f"Optional menu item '{item}' found in bot response."
+                    if found
+                    else f"Optional menu item '{item}' not found — not required, no score penalty."
+                ),
+                # Always score 1.0 — optional items never reduce the score
+                score=1.0,
+            ))
+
+        all_required_present = all(required_found.values()) if required_found else True
+        result.success = greeting_found and all_required_present
 
         # --- Evidence card ---
-        missing = [k for k, v in items_found.items() if not v]
-        status_line = (
-            "All checks passed."
-            if result.success
-            else f"Missing: {', '.join(missing) if missing else ''}"
-            + (" | Greeting not found." if not greeting_found else "")
-        )
+        missing_required = [k for k, v in required_found.items() if not v]
+        missing_optional = [k for k, v in optional_found.items() if not v]
+
+        if result.success:
+            status_line = "All required checks passed."
+            if missing_optional:
+                status_line += f" Optional items not shown: {', '.join(missing_optional)}."
+        else:
+            parts = []
+            if missing_required:
+                parts.append(f"Missing required: {', '.join(missing_required)}")
+            if not greeting_found:
+                parts.append("Greeting not found")
+            status_line = " | ".join(parts)
+
         result.evidence_cards.append(EvidenceCard(
             card_id=f"webhook.{self.task.task_id}.welcome",
             task_id=self.task.task_id,
             title=f"Welcome Check — {self.task.task_name}",
             content=(
                 f"**Greeting found:** {'Yes' if greeting_found else 'No'}\n"
-                f"**Menu items checked:** {len(items_found)}\n"
-                f"**Items found:** {sum(items_found.values())}/{len(items_found)}\n"
+                f"**Required items checked:** {len(required_found)}\n"
+                f"**Required items found:** {sum(required_found.values())}/{len(required_found)}\n"
+                f"**Optional items checked:** {len(optional_found)}\n"
+                f"**Optional items found:** {sum(optional_found.values())}/{len(optional_found)}\n"
                 f"**Status:** {status_line}"
             ),
             color=EvidenceCardColor.GREEN if result.success else EvidenceCardColor.AMBER,
