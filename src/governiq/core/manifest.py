@@ -18,13 +18,14 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class EnginePattern(str, Enum):
-    """The six patterns the engine knows. Every task maps to exactly one."""
+    """The seven patterns the engine knows. Every task maps to exactly one."""
     CREATE = "CREATE"
     CREATE_WITH_AMENDMENT = "CREATE_WITH_AMENDMENT"
     RETRIEVE = "RETRIEVE"
     MODIFY = "MODIFY"
     DELETE = "DELETE"
     EDGE_CASE = "EDGE_CASE"
+    WELCOME = "WELCOME"
 
 
 class DialogNamePolicy(str, Enum):
@@ -48,9 +49,14 @@ class EntityDefinition(BaseModel):
     """A single entity the bot must collect during a task."""
     entity_key: str = Field(..., description="Must match the bot's entity name exactly")
     semantic_hint: str = Field(..., description="Natural language description for LLM driver")
-    value_pool: list[str] = Field(
+    value_pool: list[str] | dict[str, Any] = Field(
         default_factory=list,
-        description="Realistic test values the driver can inject. Empty for cross-task ref tasks."
+        description=(
+            "Realistic test values the driver can inject. "
+            "Either a list of strings or a dynamic strategy dict "
+            "(e.g. {'strategy': 'relative_days_from_today', 'offsets': [90,120], 'format': 'DD-MM-YYYY'}). "
+            "Empty list means values come from cross-task references."
+        ),
     )
     validation_required: bool = Field(default=False)
     validation_description: str | None = Field(default=None)
@@ -246,7 +252,8 @@ class TaskDefinition(BaseModel):
 
     # Modifiable fields for MODIFY pattern
     modifiable_fields: list[str] = Field(default_factory=list)
-    modified_value_pool: dict[str, list[str]] = Field(default_factory=dict)
+    # Values: either list[str] or a dynamic strategy dict (same as EntityDefinition.value_pool)
+    modified_value_pool: dict[str, list[str] | dict[str, Any]] = Field(default_factory=dict)
 
     # Scoring weight override for this task
     weight: float = Field(default=1.0)

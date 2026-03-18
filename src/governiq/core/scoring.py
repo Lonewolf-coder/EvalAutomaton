@@ -147,6 +147,9 @@ class Scorecard:
     # Per-task analytics data from analytics pipeline
     analytics_by_task: dict[str, Any] = field(default_factory=dict)
 
+    # Tasks that completed successfully — used by resume_evaluation to skip re-running them
+    completed_tasks: list[str] = field(default_factory=list)
+
     # Deferred analytics — persisted so refresh can be triggered any time after evaluation
     # task_sessions: { task_id -> [kore_session_id, from_id] }
     task_sessions: dict[str, list[str]] = field(default_factory=dict)
@@ -285,6 +288,7 @@ class Scorecard:
             "faq_score": round(self.faq_score, 4),
             "kore_api_insights": self.kore_api_insights,
             "analytics_by_task": self.analytics_by_task,
+            "completed_tasks": self.completed_tasks,
             "task_sessions": self.task_sessions,
             "eval_window": self.eval_window,
             "analytics_status": self.analytics_status,

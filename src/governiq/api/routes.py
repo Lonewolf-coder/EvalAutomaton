@@ -53,6 +53,14 @@ class EvaluationResponse(BaseModel):
     scorecard: dict[str, Any]
 
 
+class ResumeResponse(BaseModel):
+    session_id: str
+    overall_score: float
+    has_critical_failures: bool
+    completed_tasks: list[str]
+    scorecard: dict[str, Any]
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -192,8 +200,97 @@ async def list_results():
                 "overall_score": data.get("overall_score"),
                 "analytics_status": data.get("analytics_status", "pending"),
                 "analytics_last_checked_at": data.get("analytics_last_checked_at"),
+                "completed_tasks": data.get("completed_tasks", []),
             })
     return {"results": results}
+
+
+@router.post("/evaluations/{session_id}/resume", response_model=ResumeResponse)
+async def resume_evaluation(
+    session_id: str,
+    webhook_url: str = "",
+    llm_api_key: str = "",
+):
+    """Resume an interrupted evaluation from its last checkpoint.
+
+    Re-runs only the webhook tasks that had not yet completed when the
+    original evaluation was interrupted (network failure, process kill, bot crash).
+    CBM and compliance results from the original run are preserved unchanged.
+    Cross-task entity values are restored from the saved RuntimeContext.
+
+    The manifest originally used must be passed via query params or body.
+    For now, the endpoint re-loads the manifest from the saved scorecard metadata.
+
+    Args:
+        session_id: Session ID of the interrupted run (from the original response).
+        webhook_url: Optional webhook URL override (uses saved value if not provided).
+        llm_api_key: Optional LLM API key for the conversation driver.
+    """
+    import json as _json
+    results_dir = Path("./data/results")
+    scorecard_path = results_dir / f"scorecard_{session_id}.json"
+    if not scorecard_path.exists():
+        raise HTTPException(status_code=404, detail=f"Scorecard '{session_id}' not found.")
+
+    with scorecard_path.open("r") as f:
+        saved_data = _json.load(f)
+
+    completed = saved_data.get("completed_tasks", [])
+    total_tasks = len(saved_data.get("task_scores", []))
+    if len(completed) >= total_tasks and total_tasks > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Evaluation '{session_id}' already has all {total_tasks} tasks completed. "
+                "Nothing to resume."
+            ),
+        )
+
+    # We need the original manifest to reconstruct the engine.
+    # The manifest_id is stored; look for a manifest file matching it.
+    manifest_id = saved_data.get("manifest_id", "")
+    manifest_obj = None
+    manifests_dir = Path("./manifests")
+    for mf in manifests_dir.glob("*.json"):
+        try:
+            with mf.open("r") as f:
+                mdata = _json.load(f)
+            if mdata.get("manifest_id") == manifest_id:
+                from ..core.manifest import Manifest
+                manifest_obj = Manifest(**mdata)
+                break
+        except Exception:
+            continue
+
+    if manifest_obj is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Could not locate manifest '{manifest_id}' in ./manifests/. "
+                "Provide the original manifest file to use resume."
+            ),
+        )
+
+    if webhook_url:
+        manifest_obj = manifest_obj.model_copy(update={"webhook_url": webhook_url})
+
+    engine = EvaluationEngine(manifest=manifest_obj, llm_api_key=llm_api_key)
+
+    try:
+        scorecard = await engine.resume_evaluation(session_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.exception("Resume failed for session '%s'", session_id)
+        raise HTTPException(status_code=500, detail=f"Resume error: {e}")
+
+    return ResumeResponse(
+        session_id=scorecard.session_id,
+        overall_score=scorecard.overall_score,
+        has_critical_failures=scorecard.has_critical_failures,
+        completed_tasks=scorecard.completed_tasks,
+        scorecard=scorecard.to_dict(),
+    )
 
 
 @router.post("/evaluations/{session_id}/refresh-analytics", response_model=AnalyticsRefreshResponse)

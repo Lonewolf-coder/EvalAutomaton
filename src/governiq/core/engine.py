@@ -361,17 +361,130 @@ class EvaluationEngine:
             "analytics_by_task": scorecard.analytics_by_task,
         }
 
+    async def resume_evaluation(self, session_id: str) -> Scorecard:
+        """Resume a partially-completed evaluation from its last checkpoint.
+
+        Loads the saved RuntimeContext and Scorecard from disk, then re-runs
+        only the webhook tasks that have not yet completed (i.e. not present in
+        ``scorecard.completed_tasks``).  CBM and compliance results are kept as-is.
+
+        Safe to call after any kind of mid-run failure (network drop, bot crash,
+        process kill). Entity values from completed CREATE tasks are preserved in
+        RuntimeContext, so downstream RETRIEVE/MODIFY/DELETE tasks still have the
+        correct cross-task identifiers.
+
+        Args:
+            session_id: The session_id of the interrupted evaluation run.
+
+        Returns:
+            Updated Scorecard with the newly-completed tasks merged in.
+
+        Raises:
+            FileNotFoundError: If no saved scorecard or RuntimeContext can be found.
+        """
+        # --- Load saved artefacts ---
+        results_dir = self.persist_dir / "results"
+        scorecard_path = results_dir / f"scorecard_{session_id}.json"
+        if not scorecard_path.exists():
+            raise FileNotFoundError(f"Scorecard not found for session '{session_id}'.")
+
+        context_dir = self.persist_dir / "runtime_contexts"
+        context_path = context_dir / f"context_{session_id}.json"
+        if not context_path.exists():
+            raise FileNotFoundError(f"RuntimeContext not found for session '{session_id}'.")
+
+        with scorecard_path.open("r", encoding="utf-8") as f:
+            saved_data = json.load(f)
+
+        context = RuntimeContext.load(context_path)
+        already_done: set[str] = set(saved_data.get("completed_tasks", []))
+
+        logger.info(
+            "Resuming evaluation '%s' — %d/%d tasks already completed: %s",
+            session_id,
+            len(already_done),
+            len(self.manifest.tasks),
+            sorted(already_done),
+        )
+
+        # Re-build a lightweight Scorecard that carries the completed results
+        scorecard = Scorecard(
+            session_id=session_id,
+            candidate_id=saved_data.get("candidate_id", ""),
+            manifest_id=saved_data.get("manifest_id", ""),
+            assessment_name=saved_data.get("assessment_name", ""),
+            completed_tasks=list(already_done),
+            task_sessions={k: list(v) for k, v in saved_data.get("task_sessions", {}).items()},
+            eval_window=saved_data.get("eval_window", {}),
+            analytics_status=saved_data.get("analytics_status", "pending"),
+            analytics_last_checked_at=saved_data.get("analytics_last_checked_at"),
+            kore_api_insights=saved_data.get("kore_api_insights", {}),
+            analytics_by_task=saved_data.get("analytics_by_task", {}),
+            state_seeded=saved_data.get("state_seeded", False),
+            state_seed_tasks=saved_data.get("state_seed_tasks", []),
+            faq_score=saved_data.get("faq_score", 0.0),
+        )
+        # Restore task scores so we can extend them
+        for ts_data in saved_data.get("task_scores", []):
+            scorecard.task_scores.append(
+                TaskScore(task_id=ts_data["task_id"], task_name=ts_data["task_name"])
+            )
+
+        # --- Run only incomplete tasks ---
+        eval_start_time = datetime.utcnow()
+        if self.manifest.webhook_url or self.kore_bearer_token:
+            new_sessions = await self._run_webhook_pipeline(
+                context, scorecard, skip_task_ids=already_done
+            )
+        else:
+            new_sessions = {}
+        eval_end_time = datetime.utcnow()
+
+        # Merge new session IDs (keep old ones for already-done tasks)
+        for tid, v in new_sessions.items():
+            scorecard.task_sessions[tid] = list(v)
+        if not scorecard.eval_window:
+            scorecard.eval_window = {
+                "from": eval_start_time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "to": eval_end_time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            }
+
+        context.save(self.persist_dir / "runtime_contexts")
+        self._save_scorecard(scorecard)
+
+        logger.info(
+            "Resume complete for session '%s' — %d tasks now completed.",
+            session_id, len(scorecard.completed_tasks),
+        )
+        return scorecard
+
     async def _run_webhook_pipeline(
-        self, context: RuntimeContext, scorecard: Scorecard
+        self,
+        context: RuntimeContext,
+        scorecard: Scorecard,
+        skip_task_ids: set[str] | None = None,
     ) -> dict[str, tuple[str, str]]:
         """Execute the stateful webhook journey across all tasks.
+
+        Args:
+            context: RuntimeContext for this session.
+            scorecard: Scorecard to append results to.
+            skip_task_ids: Task IDs to skip (already completed in a previous run).
 
         Returns a mapping of task_id -> (kore_session_id, from_id) for
         use in the analytics pipeline.
         """
         task_sessions: dict[str, tuple[str, str]] = {}
+        _skip: set[str] = skip_task_ids or set()
 
         for task in self.manifest.tasks:
+            # Skip tasks that were completed in a previous (interrupted) run
+            if task.task_id in _skip:
+                logger.info(
+                    "Webhook: skipping already-completed task '%s'", task.task_id
+                )
+                continue
+
             logger.info("Webhook: executing task '%s' (pattern: %s)",
                         task.task_id, task.pattern.value)
 
@@ -392,6 +505,12 @@ class EvaluationEngine:
                 from_id = getattr(self.webhook_client, "_from_id", "")
                 if kore_sid:
                     task_sessions[task.task_id] = (kore_sid, from_id)
+                # Record as completed so resume_evaluation can skip it on retry
+                if pattern_result.success and task.task_id not in scorecard.completed_tasks:
+                    scorecard.completed_tasks.append(task.task_id)
+                    # Checkpoint: save partial context so a crash on the next task
+                    # doesn't lose this task's records
+                    context.save(self.persist_dir / "runtime_contexts")
             except Exception as e:
                 logger.error("Pattern execution failed for task '%s': %s", task.task_id, e)
                 # Create a synthetic failure result instead of silently skipping
