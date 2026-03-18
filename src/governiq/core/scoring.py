@@ -103,11 +103,15 @@ class TaskScore:
 
     @property
     def all_passed(self) -> bool:
-        """A task passes only if webhook tests pass. CBM alone cannot qualify."""
+        """A task passes only if webhook tests pass. CBM alone cannot qualify.
+
+        WARNING is treated as non-blocking (used for optional items that are
+        desirable but not required — their absence does not constitute failure).
+        """
         if not self.webhook_checks:
             return False  # Cannot pass without webhook testing
         return all(
-            c.status in (CheckStatus.PASS, CheckStatus.INFO, CheckStatus.UNTESTABLE)
+            c.status in (CheckStatus.PASS, CheckStatus.WARNING, CheckStatus.INFO, CheckStatus.UNTESTABLE)
             for c in self.webhook_checks
         )
 
@@ -143,6 +147,25 @@ class Scorecard:
 
     # Kore.ai public API insights (bot details, analytics, intent stats)
     kore_api_insights: dict[str, Any] = field(default_factory=dict)
+
+    # Per-task analytics data from analytics pipeline
+    analytics_by_task: dict[str, Any] = field(default_factory=dict)
+
+    # Manifest tooltips — copied at evaluation time so the report can render the CBM Map legend
+    tooltips: list[dict[str, str]] = field(default_factory=list)
+
+    # Tasks that completed successfully — used by resume_evaluation to skip re-running them
+    completed_tasks: list[str] = field(default_factory=list)
+
+    # Deferred analytics — persisted so refresh can be triggered any time after evaluation
+    # task_sessions: { task_id -> [kore_session_id, from_id] }
+    task_sessions: dict[str, list[str]] = field(default_factory=dict)
+    # eval_window: { "from": ISO-str, "to": ISO-str }
+    eval_window: dict[str, str] = field(default_factory=dict)
+    # analytics_status: "pending" | "partial" | "available"
+    analytics_status: str = "pending"
+    # ISO timestamp of last refresh attempt (None = never refreshed)
+    analytics_last_checked_at: str | None = None
 
     @property
     def overall_score(self) -> float:
@@ -271,4 +294,11 @@ class Scorecard:
             ],
             "faq_score": round(self.faq_score, 4),
             "kore_api_insights": self.kore_api_insights,
+            "analytics_by_task": self.analytics_by_task,
+            "tooltips": self.tooltips,
+            "completed_tasks": self.completed_tasks,
+            "task_sessions": self.task_sessions,
+            "eval_window": self.eval_window,
+            "analytics_status": self.analytics_status,
+            "analytics_last_checked_at": self.analytics_last_checked_at,
         }

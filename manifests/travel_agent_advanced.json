@@ -1,0 +1,979 @@
+{
+  "manifest_id": "travel-agent-advanced-v1",
+  "manifest_version": "1.0",
+  "assessment_name": "Travel Agent \u2014 Advanced",
+  "assessment_type": "travel_advanced",
+  "description": "Advanced-level evaluation of a travel agent bot built on Kore.ai XO Platform. Eight advanced tasks covering: contextual interruption handling, entity amendment via sub-intents, Spanish language enablement, custom real-time dashboard, lost baggage digital form, PII redaction in analytics, NPS feedback survey, and channel publishing.",
+  "webhook_url": "",
+  "mock_api_base_url": "",
+  "conversation_starter": "Hi",
+  "evaluation_engine_requirements": {
+    "llm_as_user": {
+      "required": true,
+      "status": "PENDING_ARCHITECTURE_REVIEW",
+      "description": "Agentic evaluation mode requires an LLM runtime (e.g. Claude API) to conduct conversations dynamically per turn. This is a new dependency \u2014 not part of the original EvalAutomaton webhook-only architecture. Must be scoped and approved before this manifest can be used in production.",
+      "fallback": "If LLM-as-user is unavailable, evaluation degrades to state-assertion-only mode: POST/GET/PUT/DELETE calls are confirmed via API logs and state endpoints. Conversational sub-scores (confirmation ordering, amendment handling) are held pending and flagged for manual evaluator review."
+    }
+  },
+  "conversation_evaluation_defaults": {
+    "mode": "agentic",
+    "entity_provision_strategy": "semantic_match_to_agent_prompt",
+    "max_turns": 25,
+    "event_handling": {
+      "on_restart_event": {
+        "strategy": "retry_once_with_penalty",
+        "penalty_points": 2,
+        "penalty_label": "Task required a restart during evaluation run",
+        "rationale": "DialogGPT and LLM behaviour is outside the candidate's direct control. One retry is granted. A second restart within the same task scores the task as incomplete.",
+        "max_retries": 1
+      },
+      "on_end_event_mid_task": "score_partial_based_on_state",
+      "on_max_turns_exceeded": "score_partial_based_on_state",
+      "on_api_timeout": "score_zero_log_timeout"
+    }
+  },
+  "tasks": [
+    {
+      "task_id": "task1",
+      "task_name": "Welcome Message",
+      "pattern": "WELCOME",
+      "dialog_name": "Welcome",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [
+        {
+          "node_type": "message",
+          "label": "Welcome greeting message displayed to user",
+          "required": true
+        },
+        {
+          "node_type": "entity",
+          "entity_type": "list",
+          "label": "List Entity presenting available services",
+          "required": true
+        }
+      ],
+      "required_greeting_text": "Welcome",
+      "required_menu_items": [
+        "Book Flight",
+        "Fetch Booking",
+        "Modify Booking"
+      ],
+      "optional_menu_items": ["FAQ"],
+      "menu_matching_strategy": "semantic",
+      "semantic_similarity_threshold": 0.8,
+      "conversation_starter": "Hi",
+      "candidate_instructions": "Configure a Welcome Chat Flow that triggers when a user starts a conversation. Display a greeting message to the user. Present the available services using a List Entity. Based on the user's selection, automatically trigger the appropriate dialog task. The menu must cover: booking a flight, fetching a booking, modifying a booking, and FAQs.",
+      "weight": 5,
+      "sub_scores": [
+        {
+          "id": "greeting_displayed",
+          "label": "Greeting message is displayed to the user",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "list_entity_triggers_dialog",
+          "label": "List Entity correctly triggers the appropriate dialog task on selection",
+          "points": 3,
+          "method": "webhook"
+        }
+      ]
+    },
+    {
+      "task_id": "task2_interruptions",
+      "task_name": "Contextual Handling \u2014 Global Interruptions",
+      "pattern": "INTERRUPTION",
+      "dialog_name": "Book a Flight",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [],
+      "interruption_config": {
+        "base_dialog": "Book a Flight",
+        "inject_after_entity": "boardingCity",
+        "resume_phrase": "Resuming your previous task: Book a Flight.",
+        "resume_phrase_match": "contains",
+        "scenarios": [
+          {
+            "scenario_id": "weather_query",
+            "trigger_utterance": "What's the weather in Delhi?",
+            "expected_behavior": "api_call",
+            "expected_api_method": "GET",
+            "expected_api_hint": "weather",
+            "bot_response_pattern": "weather|temperature|degrees|sunny|cloudy|rain",
+            "resume_required": true,
+            "candidate_hint": "Configure a global interruption handler that detects a weather intent. On detection, call a mock weather API and respond with the weather result. After responding, prompt the user to resume the booking task."
+          },
+          {
+            "scenario_id": "faq_query",
+            "trigger_utterance": "Can I book a trip for someone else?",
+            "expected_behavior": "faq_answer",
+            "bot_response_pattern": "yes|on behalf|another person|someone else|passenger",
+            "resume_required": true,
+            "candidate_hint": "Configure a global interruption handler that detects the FAQ intent 'booking for someone else'. Respond with the relevant FAQ answer. After responding, prompt the user to resume the booking task."
+          }
+        ]
+      },
+      "candidate_instructions": "Enable global interruption handling across all dialog tasks. When the user asks 'What\u2019s the weather in Delhi?' mid-booking, the bot must call a mock weather API and respond with the weather result. When the user asks 'Can I book a trip for someone else?' mid-booking, the bot must respond with the relevant FAQ answer. After handling either interruption, the bot must say: \u201cResuming your previous task: Book a Flight.\u201d",
+      "weight": 12,
+      "sub_scores": [
+        {
+          "id": "global_interruption_configured",
+          "label": "Global interruption rule is enabled in the bot configuration",
+          "points": 2,
+          "method": "cbm"
+        },
+        {
+          "id": "weather_interrupt_handled",
+          "label": "Bot handles weather query mid-booking and calls the mock weather API",
+          "points": 3,
+          "method": "webhook"
+        },
+        {
+          "id": "weather_resume_message",
+          "label": "Bot says the required resume phrase after the weather interruption",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "faq_interrupt_handled",
+          "label": "Bot handles FAQ query mid-booking with a correct answer",
+          "points": 3,
+          "method": "webhook"
+        },
+        {
+          "id": "faq_resume_message",
+          "label": "Bot says the required resume phrase after the FAQ interruption",
+          "points": 2,
+          "method": "webhook"
+        }
+      ]
+    },
+    {
+      "task_id": "task3_amendment",
+      "task_name": "Entity Amendment \u2014 Sub-Intent Date Change",
+      "pattern": "CREATE_WITH_AMENDMENT",
+      "dialog_name": "Book a Flight",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "passengerName",
+          "semantic_hint": "passenger's full name",
+          "value_pool": ["Emma Wilson", "Raj Patel", "Liu Chen"]
+        },
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "contact phone number including country code",
+          "value_pool": ["+917890123456", "+447123456789", "+12125559876"]
+        },
+        {
+          "entity_key": "boardingCity",
+          "semantic_hint": "boarding or departure city",
+          "value_pool": ["Delhi", "Manchester", "Chicago"]
+        },
+        {
+          "entity_key": "destinationCity",
+          "semantic_hint": "destination city",
+          "value_pool": ["Bangalore", "Edinburgh", "Boston"]
+        },
+        {
+          "entity_key": "travelDate",
+          "semantic_hint": "date of travel in DD-MM-YYYY format",
+          "value_pool": {
+            "strategy": "relative_days_from_today",
+            "offsets": [90, 120, 150],
+            "format": "DD-MM-YYYY"
+          },
+          "validation_required": true,
+          "validation_description": "Format DD-MM-YYYY only"
+        },
+        {
+          "entity_key": "emailAddress",
+          "semantic_hint": "passenger email address",
+          "value_pool": ["emma@example.com", "raj@example.com", "liu@example.com"]
+        },
+        {
+          "entity_key": "seatPreference",
+          "semantic_hint": "preferred seat type",
+          "value_pool": ["Window", "Aisle", "Middle"]
+        }
+      ],
+      "amendment_config": {
+        "target_entity": "travelDate",
+        "amendment_utterance_template": "Change my date of travel {original_value} to {amended_value}",
+        "amended_value_pool": ["26-07-2025", "15-08-2025", "10-09-2025"],
+        "original_value_strategy": "use_first_provided",
+        "inject_after": "all_entities_collected",
+        "detect_collection_complete_by": "bot_shows_summary_or_asks_to_confirm",
+        "detection_pattern": "confirm|summary|details are|you have provided|is this correct|shall i proceed",
+        "no_reprompt_expected": true,
+        "note": "The amendment utterance specifies both the old and new value as a sub-intent. The bot must process this directly \u2014 no re-prompting and no separate confirmation step for the amendment itself."
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {
+          "travelDate": "travelDate"
+        }
+      },
+      "candidate_instructions": "This task evaluates sub-intent entity amendment. After the evaluator has provided all 7 booking entities, they will say 'Change my date of travel [original date] to [new date]'. The bot must process this change immediately \u2014 no re-prompting for the date, no confirmation step for the amendment itself. Incomplete inputs must prompt for only the missing detail. Ensure the Agent Node is configured to handle direct sub-intent amendments without restarting the entity collection flow.",
+      "weight": 10,
+      "sub_scores": [
+        {
+          "id": "sub_intent_recognised",
+          "label": "Bot recognises 'Change my date of travel X to Y' as a direct amendment (no re-prompt)",
+          "points": 4,
+          "method": "webhook"
+        },
+        {
+          "id": "no_reprompt_for_amendment",
+          "label": "Bot does not add a separate confirmation step for the amendment itself",
+          "points": 3,
+          "method": "webhook"
+        },
+        {
+          "id": "amended_date_in_state",
+          "label": "Amended travel date (not original) saved in backend state after submission",
+          "points": 3,
+          "method": "webhook"
+        }
+      ]
+    },
+    {
+      "task_id": "task4_language",
+      "task_name": "Language Enablement \u2014 Spanish",
+      "pattern": "LANGUAGE",
+      "dialog_name": "All Dialogs",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [],
+      "language_config": {
+        "target_language": "es",
+        "target_language_name": "Spanish",
+        "switch_utterance": "Hola, necesito ayuda.",
+        "expected_response_language": "es",
+        "english_utterance": "Hi, I need help.",
+        "seamless_switch_test": {
+          "start_in": "en",
+          "switch_to": "es",
+          "switch_utterance": "Puedo cambiar al espa\u00f1ol?",
+          "verify_subsequent_response_in": "es"
+        },
+        "coverage_requirement": "All dialogs, FAQs, and response flows must be available in Spanish with consistent tone and formatting."
+      },
+      "candidate_instructions": "Enable Spanish as a supported language. All dialogs, FAQs, and response flows must be translated into Spanish with consistent tone and formatting. Users must be able to switch between English and Spanish seamlessly during the conversation \u2014 when the user writes in Spanish the bot must respond in Spanish, and vice versa.",
+      "weight": 8,
+      "sub_scores": [
+        {
+          "id": "spanish_configured_in_cbm",
+          "label": "Spanish (es) configured as a supported language in bot settings",
+          "points": 2,
+          "method": "cbm"
+        },
+        {
+          "id": "bot_responds_in_spanish",
+          "label": "Bot responds in Spanish when user sends a Spanish utterance",
+          "points": 3,
+          "method": "webhook"
+        },
+        {
+          "id": "language_switch_seamless",
+          "label": "Bot follows mid-conversation language switch without re-prompt or error",
+          "points": 3,
+          "method": "webhook"
+        }
+      ]
+    },
+    {
+      "task_id": "task5_dashboard",
+      "task_name": "Custom Dashboard Widget",
+      "pattern": "CBM_ONLY",
+      "dialog_name": "Analytics Dashboard",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [],
+      "dashboard_config": {
+        "required_metrics": [
+          {
+            "metric_id": "message_count_by_language",
+            "label": "Count of incoming and outgoing messages per language (English, Spanish)",
+            "data_split": ["incoming", "outgoing"],
+            "dimensions": ["language"]
+          },
+          {
+            "metric_id": "dialog_tasks_by_date",
+            "label": "Number of dialog tasks handled, categorised by date",
+            "dimensions": ["date"]
+          },
+          {
+            "metric_id": "faqs_by_date",
+            "label": "Number of FAQs handled, categorised by date",
+            "dimensions": ["date"]
+          }
+        ],
+        "real_time_refresh_required": true,
+        "visualisation_format": "unrestricted",
+        "note": "Data visualisation format is not restricted to charts or tables. The dashboard must refresh in real time."
+      },
+      "candidate_instructions": "Create a dashboard widget that shows: (1) count of incoming and outgoing messages per language (English, Spanish); (2) number of dialog tasks handled categorised by date; (3) number of FAQs handled categorised by date. Data visualisation format is not restricted. The dashboard must refresh in real time.",
+      "weight": 5,
+      "sub_scores": [
+        {
+          "id": "widget_present",
+          "label": "Dashboard widget present and accessible in analytics",
+          "points": 1,
+          "method": "cbm"
+        },
+        {
+          "id": "message_count_by_language",
+          "label": "Widget shows incoming and outgoing message counts split by language",
+          "points": 2,
+          "method": "cbm"
+        },
+        {
+          "id": "dialog_tasks_by_date",
+          "label": "Widget shows dialog task count categorised by date",
+          "points": 1,
+          "method": "cbm"
+        },
+        {
+          "id": "faqs_by_date",
+          "label": "Widget shows FAQ count categorised by date",
+          "points": 1,
+          "method": "cbm"
+        }
+      ]
+    },
+    {
+      "task_id": "task6_baggage_form",
+      "task_name": "Lost Baggage Form \u2014 Issue Report",
+      "pattern": "FORM",
+      "dialog_name": "Lost Baggage",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [],
+      "form_config": {
+        "form_title": "Issue Report Form",
+        "trigger_intent": "lost baggage",
+        "trigger_utterance_pool": [
+          "I lost my baggage",
+          "My bag is missing",
+          "Lost luggage"
+        ],
+        "fields": [
+          {
+            "field_id": "fullName",
+            "label": "Full Name",
+            "type": "text",
+            "tooltip": "As per the flight booking",
+            "validation": "required, non-empty",
+            "required": true
+          },
+          {
+            "field_id": "contactNumber",
+            "label": "Contact Number",
+            "type": "text",
+            "tooltip": "Phone number used while booking",
+            "validation": "required, non-empty",
+            "required": true
+          },
+          {
+            "field_id": "emailAddress",
+            "label": "Email Address",
+            "type": "text",
+            "tooltip": "For status updates on the complaint",
+            "validation": "valid email format",
+            "required": true
+          },
+          {
+            "field_id": "flightNumber",
+            "label": "Flight Number",
+            "type": "text",
+            "tooltip": "E.g., AI202 or 6E309",
+            "validation": "required, non-empty",
+            "required": true
+          },
+          {
+            "field_id": "dateOfTravel",
+            "label": "Date of Travel",
+            "type": "date_picker",
+            "tooltip": "The date your flight landed",
+            "validation": "required, valid date",
+            "required": true
+          },
+          {
+            "field_id": "arrivalAirport",
+            "label": "Arrival Airport",
+            "type": "dropdown_or_text",
+            "tooltip": "Airport where you arrived",
+            "validation": "required, non-empty",
+            "required": true
+          },
+          {
+            "field_id": "baggageTagNumber",
+            "label": "Baggage Tag Number (if known)",
+            "type": "text",
+            "tooltip": "Found on the printed baggage receipt",
+            "validation": "optional",
+            "required": false,
+            "conditional_visibility": {
+              "hide_when": "user selects 'I don\u2019t know my Baggage Tag Number'",
+              "condition_field": "baggageTagNumber",
+              "condition_value": "unknown"
+            }
+          },
+          {
+            "field_id": "descriptionOfBag",
+            "label": "Description of Bag",
+            "type": "textarea",
+            "tooltip": "Color, size, brand, and any identifier",
+            "validation": "required, non-empty",
+            "required": true
+          }
+        ],
+        "api_submission": {
+          "method": "POST",
+          "endpoint_hint": "mock API — grievance / lost baggage endpoint",
+          "on_success": "Display a success confirmation message",
+          "on_failure": "Display a failure message with retry option"
+        },
+        "post_submission": {
+          "action": "agent_handoff",
+          "description": "Connect the user to the AI Agent after form submission"
+        }
+      },
+      "candidate_instructions": "Upon detecting the lost baggage intent, trigger a digital form titled 'Issue Report Form' with the 8 specified fields. Apply a conditional visibility rule: if the user indicates they do not know their Baggage Tag Number, hide that field. Implement field-level validation. After submission, POST the data to the mock API and show a success or failure confirmation message. After form completion, initiate an agent handoff. Candidates are encouraged to enhance the form beyond the reference fields \u2014 the assessment rewards meaningful form design with validation, conditional visibility, and API-driven submission.",
+      "weight": 12,
+      "sub_scores": [
+        {
+          "id": "form_triggered_on_intent",
+          "label": "Issue Report Form triggered when lost baggage intent is detected",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "all_required_fields_present",
+          "label": "All 8 required form fields present with correct types and tooltips",
+          "points": 2,
+          "method": "cbm"
+        },
+        {
+          "id": "conditional_visibility_applied",
+          "label": "Baggage Tag Number field hidden when user selects 'I don\u2019t know'",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "field_validation_enforced",
+          "label": "Invalid field inputs rejected with appropriate re-prompt",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "api_post_and_confirmation",
+          "label": "POST API called on submission and success/failure confirmation shown",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "agent_handoff_initiated",
+          "label": "Agent handoff initiated after form completion",
+          "points": 2,
+          "method": "webhook"
+        }
+      ]
+    },
+    {
+      "task_id": "task7_pii",
+      "task_name": "PII Redaction \u2014 Phone & Credit Card",
+      "pattern": "CBM_ONLY",
+      "dialog_name": "PII Settings",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [],
+      "pii_config": {
+        "redact_in": ["chat_history", "analytics"],
+        "active_conversation_unmasked": true,
+        "redaction_rules": [
+          {
+            "type": "phone_number",
+            "mask_format": "***{last_3}",
+            "example_input": "+919876543210",
+            "example_masked": "***210",
+            "description": "Last 3 digits visible, all preceding digits masked"
+          },
+          {
+            "type": "credit_card",
+            "mask_format": "****{last_4}",
+            "example_input": "4111111111115678",
+            "example_masked": "****5678",
+            "description": "Last 4 digits visible, all preceding digits masked"
+          }
+        ]
+      },
+      "candidate_instructions": "Redact phone numbers and credit card details in chat history and analytics. The actual values must remain visible in the active conversation \u2014 redaction applies only to stored history and analytics views. Masking format: phone number \u2014 ***123 (last 3 digits visible); credit card \u2014 ****5678 (last 4 digits visible).",
+      "weight": 8,
+      "sub_scores": [
+        {
+          "id": "pii_redaction_enabled",
+          "label": "PII Redaction is enabled at the bot level",
+          "points": 2,
+          "method": "cbm"
+        },
+        {
+          "id": "phone_redaction_format",
+          "label": "Phone number masked as ***XXX (last 3 digits visible) in stored history",
+          "points": 2,
+          "method": "cbm"
+        },
+        {
+          "id": "card_redaction_format",
+          "label": "Credit card masked as ****XXXX (last 4 digits visible) in stored history",
+          "points": 2,
+          "method": "cbm"
+        },
+        {
+          "id": "active_conversation_unmasked",
+          "label": "Active conversation shows unmasked values \u2014 redaction applies only to stored data",
+          "points": 2,
+          "method": "webhook"
+        }
+      ]
+    },
+    {
+      "task_id": "task8_nps",
+      "task_name": "Feedback Survey \u2014 NPS",
+      "pattern": "SURVEY",
+      "dialog_name": "Feedback Survey",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [],
+      "survey_config": {
+        "survey_type": "NPS",
+        "trigger_dialogs": [
+          "Booking Confirmation",
+          "Cancellation Completed",
+          "Grievance Resolution"
+        ],
+        "trigger_timing": "at_dialog_end",
+        "survey_flow": [
+          {
+            "step": 1,
+            "type": "scale",
+            "question": "On a scale of 0 to 10, how likely are you to recommend WanderPal to a friend or colleague?",
+            "scale_min": 0,
+            "scale_max": 10,
+            "required": true
+          },
+          {
+            "step": 2,
+            "type": "text",
+            "question": "Please share any feedback or suggestions you may have.",
+            "required": false
+          },
+          {
+            "step": 3,
+            "type": "message",
+            "content": "Thank you! Your feedback helps us improve.",
+            "required": true
+          }
+        ],
+        "feedback_dashboard": {
+          "enabled": true,
+          "location": "Analytics \u2014 Feedback Dashboard",
+          "downloadable_report": true
+        }
+      },
+      "candidate_instructions": "Define a feedback survey using the Net Promoter Score (NPS) model. Configure it to trigger automatically at the end of these specific dialog tasks: Booking Confirmation, Cancellation Completed, Grievance Resolution. Survey flow: (1) Bot asks 'On a scale of 0 to 10, how likely are you to recommend WanderPal to a friend or colleague?'; (2) Optional follow-up text field: 'Please share any feedback or suggestions you may have.'; (3) Bot closes with: 'Thank you! Your feedback helps us improve.' Collected feedback must appear in the Feedback Dashboard under Analytics and must be downloadable as a report.",
+      "weight": 10,
+      "sub_scores": [
+        {
+          "id": "survey_triggers_on_booking_confirmation",
+          "label": "NPS survey triggers automatically at the end of Booking Confirmation dialog",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "scale_question_asked",
+          "label": "Bot asks the correct NPS scale question (0\u201310)",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "optional_text_offered",
+          "label": "Optional feedback text field offered after scale response",
+          "points": 1,
+          "method": "webhook"
+        },
+        {
+          "id": "closing_message_correct",
+          "label": "Closing thank-you message matches required text exactly",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "feedback_in_dashboard",
+          "label": "Collected feedback appears in Feedback Dashboard under Analytics",
+          "points": 2,
+          "method": "cbm"
+        },
+        {
+          "id": "feedback_downloadable",
+          "label": "Feedback report is downloadable from the dashboard",
+          "points": 1,
+          "method": "cbm"
+        }
+      ]
+    },
+    {
+      "task_id": "task9_publishing",
+      "task_name": "Channel Publishing \u2014 Telegram or Webhook",
+      "pattern": "CBM_ONLY",
+      "dialog_name": "Channel Configuration",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [],
+      "publishing_config": {
+        "accepted_channels": ["telegram", "webhook"],
+        "feature_consistency_required": true,
+        "note": "Feature behaviour must be consistent across channels \u2014 no channel-specific customisation allowed. Candidates may publish on Telegram OR via a webhook endpoint."
+      },
+      "candidate_instructions": "Publish the bot on Telegram or via a webhook. Feature behaviour must be consistent across channels \u2014 no channel-specific customisation is allowed. Ensure the bot responds correctly on the published channel with the same behaviour as the development channel.",
+      "weight": 5,
+      "sub_scores": [
+        {
+          "id": "channel_published",
+          "label": "At least one accepted channel (Telegram or webhook) is published and configured",
+          "points": 3,
+          "method": "cbm"
+        },
+        {
+          "id": "feature_consistency",
+          "label": "Bot responds correctly on the published channel \u2014 no channel-specific deviations",
+          "points": 2,
+          "method": "webhook"
+        }
+      ]
+    }
+  ],
+  "faq_config": {
+    "required_faqs": [
+      {
+        "faq_id": "faq1",
+        "primary_question": "What is an e-ticket?",
+        "ground_truth_answer": "An e-ticket is a digital airline ticket stored electronically in the airline's reservation system. It replaces a traditional paper ticket and can be retrieved using your booking reference number.",
+        "required_keywords": [
+          "digital",
+          "electronic",
+          "reservation",
+          "booking reference"
+        ],
+        "alternate_questions": [
+          "What does e-ticket mean?",
+          "Can you explain what an electronic ticket is?"
+        ]
+      },
+      {
+        "faq_id": "faq2",
+        "primary_question": "How do I know my reservation was booked?",
+        "ground_truth_answer": "Once your booking is confirmed, you will receive a booking reference number. You can verify your reservation at any time by providing your registered contact number to the travel agent.",
+        "required_keywords": [
+          "booking reference",
+          "confirmed",
+          "contact number"
+        ],
+        "alternate_questions": [
+          "How will I get confirmation of my booking?",
+          "What happens after I complete my booking?"
+        ]
+      },
+      {
+        "faq_id": "faq3",
+        "primary_question": "How do I get my e-ticket details?",
+        "ground_truth_answer": "You can access your e-ticket details by selecting 'Fetch Booking' and providing your registered mobile number. Your complete booking information will be displayed.",
+        "required_keywords": [
+          "mobile number",
+          "Fetch Booking",
+          "booking information"
+        ],
+        "alternate_questions": [
+          "Where can I find my e-ticket?",
+          "How do I access my ticket information?"
+        ]
+      },
+      {
+        "faq_id": "faq4",
+        "primary_question": "How do I print my ticket?",
+        "ground_truth_answer": "To print your ticket, retrieve your booking details using your mobile number, then select the print option. You can also visit the airline's website and enter your booking reference to download and print your e-ticket.",
+        "required_keywords": [
+          "mobile number",
+          "booking reference",
+          "print"
+        ],
+        "alternate_questions": [
+          "Can I get a printed copy of my ticket?",
+          "How do I get a physical copy of my boarding pass?"
+        ]
+      },
+      {
+        "faq_id": "faq5",
+        "primary_question": "What is the latest time I can cancel my flight?",
+        "ground_truth_answer": "You can cancel your flight up to 24 hours before the scheduled departure time. Cancellations made within 24 hours of departure may be subject to airline cancellation fees.",
+        "required_keywords": [
+          "24 hours",
+          "cancel",
+          "departure"
+        ],
+        "alternate_questions": [
+          "How late can I cancel my booking?",
+          "Is there a deadline for flight cancellation?"
+        ]
+      }
+    ],
+    "min_alternate_questions": 2,
+    "semantic_similarity_threshold": 0.8,
+    "functional_verification": {
+      "enabled": true,
+      "min_faqs_to_verify_via_webhook": 2,
+      "verify_faq_ids": [
+        "faq1",
+        "faq5"
+      ],
+      "note": "faq1 and faq5 selected for live verification \u2014 one informational, one policy-based, representing the spread of FAQ types."
+    }
+  },
+  "compliance_checks": [
+    {
+      "check_id": "compliance_dialoggpt",
+      "label": "DialogGPT is enabled",
+      "cbm_field": "dialogGPTSettings[0].dialogGPTLLMConfig.enable",
+      "required_state": "enabled",
+      "critical": true,
+      "challengeable": false,
+      "tooltip": "DialogGPT must be enabled for the Agent Node to function correctly. Critical \u2014 a bot with DialogGPT disabled cannot pass the Advanced assessment."
+    },
+    {
+      "check_id": "compliance_pii",
+      "label": "PII Redaction is enabled",
+      "cbm_field": "piiEnabled",
+      "required_state": "enabled",
+      "critical": true,
+      "challengeable": false,
+      "tooltip": "PII Redaction must be enabled at the bot level. Advanced assessment requires candidates to demonstrate awareness of data privacy \u2014 personal data collected during conversations must be redacted in logs."
+    },
+    {
+      "check_id": "compliance_language_spanish",
+      "label": "Spanish language configured",
+      "cbm_field": "supportedLanguages",
+      "required_state": "present",
+      "required_value": "es",
+      "critical": false,
+      "challengeable": true,
+      "tooltip": "The bot must have Spanish (es) configured as a supported language. Multi-language support is a requirement of the Advanced assessment. Non-critical \u2014 reduces score but does not automatically fail."
+    },
+    {
+      "check_id": "compliance_channel_published",
+      "label": "At least one channel published",
+      "cbm_field": "channelsConfigured",
+      "required_state": "present",
+      "critical": false,
+      "challengeable": true,
+      "tooltip": "The bot must have at least one channel published (e.g. Web, MS Teams, WhatsApp). Channel publishing demonstrates the candidate has moved beyond development mode. Non-critical \u2014 reduces score but does not automatically fail."
+    }
+  ],
+  "scoring_config": {
+    "total_points": 100,
+    "pass_threshold": 75,
+    "evaluator_overrides_allowed": true,
+    "override_requires_reason": true,
+    "cbm_used_for": [
+      "faq_structural",
+      "compliance",
+      "cbm_only_tasks",
+      "form_field_config",
+      "dashboard_config"
+    ],
+    "webhook_used_for": [
+      "task_functional",
+      "faq_functional"
+    ],
+    "note": "Tasks sum to 75 pts. FAQ (structural 10 + functional 5) = 15 pts. Compliance = 10 pts. Total = 100 pts. Advanced tasks that are currently UNTESTABLE (INTERRUPTION, LANGUAGE, FORM, SURVEY patterns) will score via evaluator override until the agentic runtime is available.",
+    "task_scores": [
+      {
+        "task_id": "task1",
+        "label": "Welcome Message",
+        "max_points": 5
+      },
+      {
+        "task_id": "task2_interruptions",
+        "label": "Contextual Handling \u2014 Global Interruptions",
+        "max_points": 12
+      },
+      {
+        "task_id": "task3_amendment",
+        "label": "Entity Amendment \u2014 Sub-Intent Date Change",
+        "max_points": 10
+      },
+      {
+        "task_id": "task4_language",
+        "label": "Language Enablement \u2014 Spanish",
+        "max_points": 8
+      },
+      {
+        "task_id": "task5_dashboard",
+        "label": "Custom Dashboard Widget",
+        "max_points": 5
+      },
+      {
+        "task_id": "task6_baggage_form",
+        "label": "Lost Baggage Form \u2014 Issue Report",
+        "max_points": 12
+      },
+      {
+        "task_id": "task7_pii",
+        "label": "PII Redaction \u2014 Phone & Credit Card",
+        "max_points": 8
+      },
+      {
+        "task_id": "task8_nps",
+        "label": "Feedback Survey \u2014 NPS",
+        "max_points": 10
+      },
+      {
+        "task_id": "task9_publishing",
+        "label": "Channel Publishing \u2014 Telegram or Webhook",
+        "max_points": 5
+      },
+      {
+        "task_id": "faq_structural",
+        "label": "FAQ Structural Check (CBM)",
+        "max_points": 10
+      },
+      {
+        "task_id": "faq_functional",
+        "label": "FAQ Functional Check (Webhook)",
+        "max_points": 5
+      },
+      {
+        "task_id": "compliance",
+        "label": "Compliance \u2014 DialogGPT + PII + Language + Channel",
+        "max_points": 10
+      }
+    ],
+    "faq_scoring": {
+      "structural_points": 10,
+      "structural_method": "cbm",
+      "structural_checks": [
+        {
+          "check": "all_5_faqs_configured",
+          "points": 5
+        },
+        {
+          "check": "all_alternates_present_min_2_each",
+          "points": 5
+        }
+      ],
+      "functional_points": 5,
+      "functional_method": "webhook",
+      "functional_checks": [
+        {
+          "faq_id": "faq1",
+          "points": 3
+        },
+        {
+          "faq_id": "faq5",
+          "points": 2
+        }
+      ]
+    },
+    "compliance_scoring": {
+      "total_points": 10,
+      "breakdown": [
+        {
+          "check_id": "compliance_dialoggpt",
+          "points": 4,
+          "critical": true
+        },
+        {
+          "check_id": "compliance_pii",
+          "points": 3,
+          "critical": true
+        },
+        {
+          "check_id": "compliance_language_spanish",
+          "points": 2,
+          "critical": false
+        },
+        {
+          "check_id": "compliance_channel_published",
+          "points": 1,
+          "critical": false
+        }
+      ]
+    }
+  },
+  "grievance_config": {
+    "enabled": true,
+    "challenge_window_hours": 48,
+    "evaluator_response_sla_hours": 72,
+    "escalation_enabled": true,
+    "evidence_retention_days": 90,
+    "challengeable_methods": [
+      "webhook",
+      "cbm"
+    ],
+    "non_challengeable": [
+      "compliance"
+    ],
+    "evidence_captured_per_run": [
+      "full_conversation_transcript_json",
+      "full_conversation_transcript_human_readable",
+      "cbm_field_extraction_report",
+      "per_sub_score_pass_fail_with_check_detail",
+      "semantic_similarity_scores_with_matched_strings",
+      "api_call_log_with_method_url_request_response",
+      "turn_timestamps"
+    ],
+    "evaluator_override_fields": {
+      "override_score": "number",
+      "override_reason": "string (required)",
+      "supporting_evidence": "string (optional \u2014 paste transcript excerpt or note manual observation)"
+    }
+  },
+  "state_seeding_config": {
+    "enabled": true,
+    "schema_validation": true,
+    "seed_endpoint": "",
+    "teardown_endpoint": "",
+    "note": "Pre-test seed and post-test teardown endpoints must be configured to prevent state bleed between evaluation runs."
+  },
+  "tooltips": [
+    {
+      "node_type": "aiassist",
+      "text": "Agent Node \u2014 uses LLM to collect entities conversationally. Supports co-referencing (multiple entities in one message) and amendment (correcting a value mid-conversation). Validation rules and booking instructions should be configured here."
+    },
+    {
+      "node_type": "service",
+      "text": "Service Node \u2014 makes API calls to external systems (GET, POST, PUT, DELETE). Add a bookmark explaining the purpose of each Service Node."
+    },
+    {
+      "node_type": "entity",
+      "text": "Entity Node \u2014 collects a specific piece of information from the user. For menu navigation, use a List Entity type."
+    },
+    {
+      "node_type": "message",
+      "text": "Message Node \u2014 displays information to the user. Used for confirmations, summaries, and error messages."
+    },
+    {
+      "node_type": "confirmation",
+      "text": "Confirmation Node \u2014 asks the user to confirm a value or action before proceeding."
+    },
+    {
+      "node_type": "prompt",
+      "text": "Prompt Node \u2014 displays captured details and asks the user to confirm before the dialog proceeds to an API call."
+    }
+  ],
+  "created_by": "GovernIQ Admin",
+  "notes": "Travel Agent Advanced assessment \u2014 v2.0. Completely redesigned from Basic \u2014 evaluates 8 advanced capabilities beyond the booking flow: global interruption handling, sub-intent entity amendment, Spanish language enablement, custom real-time dashboard, digital lost baggage form (with conditional visibility and agent handoff), PII redaction, NPS feedback survey, and channel publishing. Tasks sum to 75 pts; FAQ 15 pts; compliance 10 pts = 100 pts total. Pass threshold: 75. INTERRUPTION, LANGUAGE, FORM, and SURVEY pattern executors are currently UNTESTABLE pending agentic runtime approval \u2014 evaluator override is enabled for those tasks."
+}

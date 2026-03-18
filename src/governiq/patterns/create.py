@@ -193,6 +193,10 @@ class CreatePattern(PatternExecutor):
                     details={"turn_count": len(result.transcript_turns)},
                 ))
 
+            if self.kore_api and getattr(self.webhook, "_kore_session_id", None):
+                debug = await self.kore_api.get_debug_logs(self.webhook._kore_session_id)
+                self._analyse_debug_logs(result, debug)
+
         except Exception as e:
             result.error = str(e)
             result.checks.append(CheckResult(

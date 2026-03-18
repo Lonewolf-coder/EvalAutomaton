@@ -7,6 +7,7 @@ Can be re-run at any time against the same export and will produce identical out
 from __future__ import annotations
 
 import re
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
@@ -164,6 +165,101 @@ def _check_required_entities(
 
 
 # ---------------------------------------------------------------------------
+# UX Template detection and enforcement
+# ---------------------------------------------------------------------------
+
+def _detect_template_kind(js: str) -> str:
+    """Detect what UX template kind is used in a JS snippet."""
+    js_lower = js.lower()
+    if "quickreply" in js_lower or "quick_reply" in js_lower:
+        return "quick_reply"
+    if "carousel" in js_lower:
+        return "carousel"
+    if "button" in js_lower:
+        return "button"
+    if "list" in js_lower:
+        return "list"
+    return "custom"
+
+
+def _check_ux_templates(
+    dialog: CBMDialog, task: TaskDefinition
+) -> list[CheckResult]:
+    """Enforce and passively scan UX template usage in dialog nodes.
+
+    Pass 1 — Enforcement: For each required_node that declares ux_template_type,
+    verify at least one matching node uses that template. PASS/FAIL.
+
+    Pass 2 — Passive scan: Report all uxmap template kinds found across the dialog
+    as a single INFO result (not scored).
+    """
+    results: list[CheckResult] = []
+
+    # Pass 1 — Enforcement
+    for rn in task.required_nodes:
+        if rn.ux_template_type is None:
+            continue
+        target_type = rn.ux_template_type
+        node_type = rn.node_type
+        found = False
+        for node in dialog.get_nodes_by_type(node_type):
+            try:
+                locale_data = node.raw["message"][0]["localeData"]["en"]
+                if locale_data.get("type") == "uxmap":
+                    text = locale_data.get("text", "")
+                    decoded = urllib.parse.unquote(text)
+                    if _detect_template_kind(decoded) == target_type:
+                        found = True
+                        break
+            except (KeyError, IndexError, TypeError):
+                continue
+
+        results.append(CheckResult(
+            check_id=f"cbm.{task.task_id}.ux_template.{node_type}.{target_type}",
+            task_id=task.task_id,
+            pipeline="cbm",
+            label=f"UX template '{target_type}' in {node_type} node",
+            status=CheckStatus.PASS if found else CheckStatus.FAIL,
+            details=(
+                f"Found a '{target_type}' UX template in a '{node_type}' node."
+                if found
+                else f"Required UX template '{target_type}' not found in any '{node_type}' node."
+            ),
+            score=1.0 if found else 0.0,
+        ))
+
+    # Pass 2 — Passive scan across all message and dialogAct nodes
+    found_kinds: set[str] = set()
+    for node_type in ("message", "dialogAct"):
+        for node in dialog.get_nodes_by_type(node_type):
+            try:
+                locale_data = node.raw["message"][0]["localeData"]["en"]
+                if locale_data.get("type") == "uxmap":
+                    text = locale_data.get("text", "")
+                    decoded = urllib.parse.unquote(text)
+                    found_kinds.add(_detect_template_kind(decoded))
+            except (KeyError, IndexError, TypeError):
+                continue
+
+    results.append(CheckResult(
+        check_id=f"cbm.{task.task_id}.ux_templates",
+        task_id=task.task_id,
+        pipeline="cbm",
+        label="UX templates detected (informational)",
+        status=CheckStatus.INFO,
+        details=(
+            f"UX template kinds found: {', '.join(sorted(found_kinds))}."
+            if found_kinds
+            else "No uxmap templates detected in message/dialogAct nodes."
+        ),
+        score=0.0,
+        weight=0.0,
+    ))
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Per-task CBM evaluation
 # ---------------------------------------------------------------------------
 
@@ -214,6 +310,9 @@ def evaluate_task_cbm(
 
     # Step 2: Required node checks
     task_score.cbm_checks.extend(_check_required_nodes(dialog, task))
+
+    # Step 2b: UX template enforcement
+    task_score.cbm_checks.extend(_check_ux_templates(dialog, task))
 
     # Step 3: Required entity checks
     task_score.cbm_checks.extend(_check_required_entities(dialog, task))

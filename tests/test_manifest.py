@@ -13,14 +13,8 @@ MANIFEST_DIR = Path(__file__).parent.parent / "manifests"
 
 
 class TestManifestSchema:
-    """Test manifest loading and validation.
+    """Test manifest loading and validation."""
 
-    Note: tests that load specific manifest files are skipped while manifests
-    are being rebuilt via the form builder (Phase 3 co-authoring session).
-    They will be re-enabled once the new manifests are co-authored.
-    """
-
-    @pytest.mark.skip(reason="Co-authoring session pending — manifests not yet finalised")
     def test_load_medical_manifest(self):
         path = MANIFEST_DIR / "medical_appointment_basic.json"
         with path.open("r") as f:
@@ -29,7 +23,6 @@ class TestManifestSchema:
         assert manifest.assessment_type == "medical"
         assert len(manifest.tasks) >= 5
 
-    @pytest.mark.skip(reason="Co-authoring session pending — manifests not yet finalised")
     def test_load_travel_manifest(self):
         path = MANIFEST_DIR / "travel_assistant_basic.json"
         with path.open("r") as f:
@@ -37,7 +30,6 @@ class TestManifestSchema:
         manifest = Manifest(**data)
         assert manifest.assessment_type in ("travel", "travel_basic")
 
-    @pytest.mark.skip(reason="Co-authoring session pending — manifests not yet finalised")
     def test_get_task_by_id(self):
         path = MANIFEST_DIR / "medical_appointment_basic.json"
         with path.open("r") as f:
@@ -47,7 +39,6 @@ class TestManifestSchema:
         assert task is not None
         assert task.pattern == EnginePattern.CREATE
 
-    @pytest.mark.skip(reason="Co-authoring session pending — manifests not yet finalised")
     def test_get_tasks_by_pattern(self):
         path = MANIFEST_DIR / "medical_appointment_basic.json"
         with path.open("r") as f:
@@ -60,7 +51,6 @@ class TestManifestSchema:
 class TestManifestDefectDetection:
     """Test MD-01 through MD-12 rules."""
 
-    @pytest.mark.skip(reason="Co-authoring session pending — manifests not yet finalised")
     def test_valid_manifest_passes(self):
         path = MANIFEST_DIR / "medical_appointment_basic.json"
         with path.open("r") as f:

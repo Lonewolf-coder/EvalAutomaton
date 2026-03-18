@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://governiq.io/schemas/manifest/v1.0",
   "title": "GovernIQ Assessment Manifest",
-  "description": "Complete schema for defining an assessment evaluation manifest. The manifest tells the GovernIQ engine what to check — it never executes logic itself. Every task maps to exactly one of six engine patterns: CREATE, CREATE_WITH_AMENDMENT, RETRIEVE, MODIFY, DELETE, EDGE_CASE.",
+  "description": "Complete schema for defining an assessment evaluation manifest. The manifest tells the GovernIQ engine what to check — it never executes logic itself. Every task maps to exactly one of twelve engine patterns: CREATE, CREATE_WITH_AMENDMENT, RETRIEVE, MODIFY, DELETE, EDGE_CASE, WELCOME, INTERRUPTION, LANGUAGE, FORM, SURVEY, CBM_ONLY.",
   "type": "object",
   "required": ["manifest_id", "assessment_name", "assessment_type", "tasks"],
   "properties": {
@@ -95,8 +95,21 @@
   "$defs": {
     "EnginePattern": {
       "type": "string",
-      "enum": ["CREATE", "CREATE_WITH_AMENDMENT", "RETRIEVE", "MODIFY", "DELETE", "EDGE_CASE"],
-      "description": "The six evaluation patterns. CREATE: collect entities + POST. CREATE_WITH_AMENDMENT: same but change one entity mid-conversation. RETRIEVE: look up by identifier. MODIFY: retrieve then update. DELETE: cancel/remove. EDGE_CASE: inject invalid input."
+      "enum": [
+        "CREATE",
+        "CREATE_WITH_AMENDMENT",
+        "RETRIEVE",
+        "MODIFY",
+        "DELETE",
+        "EDGE_CASE",
+        "WELCOME",
+        "INTERRUPTION",
+        "LANGUAGE",
+        "FORM",
+        "SURVEY",
+        "CBM_ONLY"
+      ],
+      "description": "Engine pattern the task uses. Core: CREATE (collect entities + POST), CREATE_WITH_AMENDMENT (entity amendment mid-conversation), RETRIEVE (look up by identifier), MODIFY (retrieve then update), DELETE (cancel/remove), EDGE_CASE (invalid input), WELCOME (greeting + menu). Advanced: INTERRUPTION (global interruption handling + resume), LANGUAGE (multi-language + language-switch), FORM (digital form with fields, validation, conditional visibility), SURVEY (NPS/feedback survey at dialog end), CBM_ONLY (structural inspection only — no live conversation)."
     },
     "DialogNamePolicy": {
       "type": "string",

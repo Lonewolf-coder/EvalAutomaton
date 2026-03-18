@@ -1,0 +1,744 @@
+{
+  "manifest_id": "medical-appointment-basic-v1",
+  "manifest_version": "1.0",
+  "assessment_name": "Medical Appointment Bot — Basic",
+  "assessment_type": "medical",
+  "description": "Evaluates a candidate's medical appointment booking bot built on Kore.ai XO Platform. Tests appointment booking (happy path and amendment), retrieval, rescheduling, cancellation, and FAQ capabilities. Uses agentic evaluation mode — an LLM-as-user conducts conversations dynamically and goals are assessed post-conversation.",
+  "webhook_url": "",
+  "mock_api_base_url": "",
+  "conversation_starter": "Hi",
+
+  "evaluation_engine_requirements": {
+    "llm_as_user": {
+      "required": true,
+      "status": "PENDING_ARCHITECTURE_REVIEW",
+      "description": "Agentic evaluation mode requires an LLM runtime to conduct conversations dynamically per turn.",
+      "fallback": "If LLM-as-user is unavailable, evaluation degrades to state-assertion-only mode."
+    }
+  },
+
+  "conversation_evaluation_defaults": {
+    "mode": "agentic",
+    "entity_provision_strategy": "semantic_match_to_agent_prompt",
+    "max_turns": 25,
+    "event_handling": {
+      "on_restart_event": {
+        "strategy": "retry_once_with_penalty",
+        "penalty_points": 2,
+        "penalty_label": "Task required a restart during evaluation run",
+        "max_retries": 1
+      },
+      "on_end_event_mid_task": "score_partial_based_on_state",
+      "on_max_turns_exceeded": "score_partial_based_on_state",
+      "on_api_timeout": "score_zero_log_timeout"
+    }
+  },
+
+  "tasks": [
+    {
+      "task_id": "task1",
+      "task_name": "Welcome Message",
+      "pattern": "WELCOME",
+      "dialog_name": "Welcome",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [
+        {
+          "node_type": "message",
+          "label": "Welcome greeting message displayed to user",
+          "required": true
+        },
+        {
+          "node_type": "entity",
+          "entity_type": "list",
+          "label": "List Entity presenting available services",
+          "required": true
+        }
+      ],
+      "required_greeting_text": "Welcome",
+      "required_menu_items": ["Book Appointment", "Fetch Appointment", "Reschedule Appointment"],
+      "optional_menu_items": ["FAQ"],
+      "menu_matching_strategy": "semantic",
+      "semantic_similarity_threshold": 0.80,
+      "conversation_starter": "Hi",
+      "candidate_instructions": "Configure a Welcome Chat Flow that triggers when a user starts a conversation. Display a greeting message to the user. Present the available services using a List Entity. Based on the user's selection, automatically trigger the appropriate dialog task. The menu must cover: booking an appointment, fetching appointment details, rescheduling, and FAQs.",
+      "weight": 5,
+      "sub_scores": [
+        {
+          "id": "greeting_displayed",
+          "label": "Greeting message is displayed to the user",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "list_entity_triggers_dialog",
+          "label": "List Entity correctly triggers the appropriate dialog task on selection",
+          "points": 3,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task2_booking1",
+      "task_name": "Book Appointment — Happy Path",
+      "pattern": "CREATE",
+      "dialog_name": "Book Appointment",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "patientName",
+          "semantic_hint": "patient's full name",
+          "value_pool": ["Priya Sharma", "Rahul Mehta", "Sarah Johnson"],
+          "validation_required": true,
+          "validation_description": "Must contain both first name and last name"
+        },
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "contact phone number including country code",
+          "value_pool": ["+919876543210", "+447654321098", "+15559876543"],
+          "validation_required": true,
+          "validation_description": "Must include country code followed by 10 digits (e.g. +91XXXXXXXXXX)"
+        },
+        {
+          "entity_key": "doctorType",
+          "semantic_hint": "type or specialty of doctor required (e.g. Cardiologist, Dentist, General Practitioner)",
+          "value_pool": ["Cardiologist", "Dentist", "General Practitioner"],
+          "validation_required": false,
+          "validation_description": "Must be a valid medical specialty"
+        },
+        {
+          "entity_key": "preferredDate",
+          "semantic_hint": "preferred date of appointment in DD-MM-YYYY format",
+          "value_pool": {
+            "strategy": "relative_days_from_today",
+            "offsets": [7, 14, 21],
+            "format": "DD-MM-YYYY"
+          },
+          "validation_required": true,
+          "validation_description": "Must follow DD-MM-YYYY format and be a future date"
+        },
+        {
+          "entity_key": "preferredTime",
+          "semantic_hint": "preferred time for the appointment (e.g. 10:00 AM, 2:30 PM)",
+          "value_pool": ["10:00 AM", "2:30 PM", "4:00 PM"],
+          "validation_required": true,
+          "validation_description": "Must be within clinic hours (8:00 AM to 6:00 PM)"
+        },
+        {
+          "entity_key": "reasonForVisit",
+          "semantic_hint": "reason or purpose of the medical visit",
+          "value_pool": ["Routine check-up", "Chest pain follow-up", "Toothache"],
+          "validation_required": false,
+          "validation_description": "Brief description of the medical concern"
+        }
+      ],
+      "agent_node_rules": [
+        "patientName must contain both a first name and last name — re-prompt if only one name is provided",
+        "contactNumber must include a country code followed by exactly 10 digits (e.g. +91XXXXXXXXXX)",
+        "preferredDate must follow DD-MM-YYYY format and be a future date",
+        "preferredTime must be within clinic hours (8:00 AM to 6:00 PM)",
+        "Agent Node bookmark must clearly explain the node's purpose for other developers on the project"
+      ],
+      "required_nodes": [
+        {
+          "node_type": "aiassist",
+          "label": "Agent Node for entity collection with validation rules",
+          "required": true,
+          "bookmark_required": true,
+          "bookmark_hint": "Captures all 6 appointment entities using LLM. Supports co-referencing (multiple entities in one message) and amendment (user corrects a value mid-conversation). Enforces: full patient name, contact number with country code, DD-MM-YYYY date format, and clinic hours validation."
+        },
+        {
+          "node_type": "service",
+          "label": "POST service node — create appointment in backend",
+          "service_method": "POST",
+          "required": true,
+          "bookmark_required": true,
+          "bookmark_hint": "Sends all collected appointment data to the backend via POST API. Handles error response — if the API call fails, the agent displays a polite error message informing the user the appointment was not booked."
+        },
+        {
+          "node_type": "prompt",
+          "label": "Appointment summary prompt — display captured details and ask user to confirm before proceeding",
+          "required": true
+        },
+        {
+          "node_type": "message",
+          "label": "Appointment confirmation message — inform user booking is confirmed",
+          "required": true
+        }
+      ],
+      "conversation_evaluation": {
+        "evaluator_persona": "patient seeking to book a medical appointment",
+        "goal_checks": [
+          {
+            "check_id": "all_entities_in_state",
+            "label": "All 6 entities collected and present in backend state",
+            "type": "state_assertion",
+            "timing": "post_conversation",
+            "required": true
+          },
+          {
+            "check_id": "confirmation_before_post",
+            "label": "Confirmation prompt fires before POST API call",
+            "type": "transcript_ordering",
+            "pattern_a": "confirm|is this correct|please confirm|correct\\?|details are|shall i proceed|want to proceed",
+            "pattern_b": "api_call:POST",
+            "a_must_precede_b": true
+          },
+          {
+            "check_id": "appointment_in_backend",
+            "label": "Appointment record confirmed in backend after POST",
+            "type": "state_assertion",
+            "timing": "post_conversation"
+          }
+        ]
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {
+          "patientName": "patientName",
+          "contactNumber": "contactNumber",
+          "doctorType": "doctorType",
+          "preferredDate": "preferredDate",
+          "preferredTime": "preferredTime",
+          "reasonForVisit": "reasonForVisit"
+        }
+      },
+      "record_alias": "Appointment1",
+      "candidate_instructions": "Design a dialog task that captures all 6 appointment details from the patient. Use an Agent Node to collect entities — do not use separate entity nodes for this task. Add a bookmark to the Agent Node explaining its purpose. Configure the following validation rules within the Agent Node: (1) full name required, (2) contact number must include country code + 10 digits, (3) preferred date must be in DD-MM-YYYY format and be a future date, (4) preferred time must be within clinic hours (8:00 AM to 6:00 PM). Display a summary of the collected details using a Prompt Node and ask the user to confirm before submitting. Send the appointment via a POST API request. If the API fails, display a clear and polite error message. Add a bookmark to the Service Node explaining its purpose.",
+      "weight": 20,
+      "sub_scores": [
+        {
+          "id": "agent_node_present_bookmarked",
+          "label": "Agent Node present with required bookmark explaining its purpose",
+          "points": 4,
+          "method": "cbm"
+        },
+        {
+          "id": "validation_rules_in_agent_node",
+          "label": "All 4 validation rules present in Agent Node instructions (name, contact, date format, clinic hours)",
+          "points": 4,
+          "method": "cbm"
+        },
+        {
+          "id": "confirmation_before_post",
+          "label": "Confirmation prompt fires before POST API call — verified via transcript ordering",
+          "points": 4,
+          "method": "webhook"
+        },
+        {
+          "id": "post_api_and_state",
+          "label": "POST API called successfully and appointment confirmed in backend state",
+          "points": 8,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task2_booking2",
+      "task_name": "Book Appointment — Amendment",
+      "pattern": "CREATE_WITH_AMENDMENT",
+      "dialog_name": "Book Appointment",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "patientName",
+          "semantic_hint": "patient's full name",
+          "value_pool": ["David Chen", "Aisha Patel", "Carlos Rivera"]
+        },
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "contact phone number including country code",
+          "value_pool": ["+916543210987", "+445432109876", "+14321098765"]
+        },
+        {
+          "entity_key": "doctorType",
+          "semantic_hint": "type or specialty of doctor",
+          "value_pool": ["Neurologist", "Dermatologist", "Orthopaedic"]
+        },
+        {
+          "entity_key": "preferredDate",
+          "semantic_hint": "preferred date of appointment in DD-MM-YYYY format",
+          "value_pool": {
+            "strategy": "relative_days_from_today",
+            "offsets": [10, 17, 24],
+            "format": "DD-MM-YYYY"
+          }
+        },
+        {
+          "entity_key": "preferredTime",
+          "semantic_hint": "preferred time for the appointment",
+          "value_pool": ["11:00 AM", "3:00 PM", "5:00 PM"]
+        },
+        {
+          "entity_key": "reasonForVisit",
+          "semantic_hint": "reason or purpose of the medical visit",
+          "value_pool": ["Skin rash", "Back pain", "Persistent headache"]
+        }
+      ],
+      "required_nodes": [
+        {
+          "node_type": "aiassist",
+          "label": "Agent Node — must support mid-conversation entity amendment",
+          "required": true,
+          "bookmark_required": true,
+          "bookmark_hint": "Handles entity amendment — allows patients to correct previously provided information mid-conversation before the appointment is confirmed."
+        }
+      ],
+      "amendment_config": {
+        "target_entity": "contactNumber",
+        "amendment_utterance_template": "Actually, change my contact number to {amended_value}",
+        "amended_value_pool": ["+911111111111", "+912222222222", "+913333333333"]
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {
+          "patientName": "patientName",
+          "contactNumber": "contactNumber"
+        }
+      },
+      "record_alias": "Appointment2",
+      "co_reference_test": true,
+      "candidate_instructions": "This task tests the Agent Node's ability to handle entity amendment mid-conversation. The evaluator will provide all 6 entities, then correct the contact number after the summary is shown but before confirmation. Ensure the Agent Node supports this correction and that the amended value is saved correctly when the appointment is submitted.",
+      "weight": 10,
+      "sub_scores": [
+        {
+          "id": "amendment_handled",
+          "label": "Agent Node handles mid-conversation amendment to contactNumber correctly",
+          "points": 5,
+          "method": "webhook"
+        },
+        {
+          "id": "amended_value_in_state",
+          "label": "Amended contact number (not original) is saved in backend state",
+          "points": 5,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task3_retrieve",
+      "task_name": "Fetch Appointment Details",
+      "pattern": "RETRIEVE",
+      "dialog_name": "Fetch Appointment",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "registered mobile number for appointment lookup",
+          "value_pool": [],
+          "confirmation_required": true
+        }
+      ],
+      "required_nodes": [
+        {
+          "node_type": "entity",
+          "label": "Contact number entity node",
+          "required": true
+        },
+        {
+          "node_type": "confirmation",
+          "label": "Confirm mobile number with user before making GET call",
+          "required": true
+        },
+        {
+          "node_type": "service",
+          "label": "GET service node — retrieve appointment details",
+          "service_method": "GET",
+          "required": true
+        }
+      ],
+      "confirmation_check": {
+        "method": "webhook_transcript_ordering",
+        "expected_bot_pattern": "confirm|correct|is this your number|please confirm|right number|is that correct",
+        "api_must_fire_after": "confirmation_turn",
+        "description": "The GET API call must appear in the API log only after the user has confirmed their mobile number."
+      },
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking1",
+          "source_record_alias": "Appointment1",
+          "source_field": "contactNumber"
+        }
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {
+          "contactNumber": "contactNumber"
+        }
+      },
+      "candidate_instructions": "Ask the patient for their mobile number. Capture it using an entity node. Before calling the API, ask the patient to confirm the entered number — the GET request must only be triggered after the patient confirms. Retrieve and display the appointment details. If no appointment is found, display an appropriate message.",
+      "weight": 10,
+      "sub_scores": [
+        {
+          "id": "confirmation_before_get",
+          "label": "Confirmation prompt fires before GET API call — verified via transcript ordering",
+          "points": 4,
+          "method": "webhook"
+        },
+        {
+          "id": "get_returns_appointment",
+          "label": "GET API returns correct appointment data for the provided contact number",
+          "points": 6,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task3_edge",
+      "task_name": "Fetch Appointment — Invalid Contact Number",
+      "pattern": "EDGE_CASE",
+      "dialog_name": "Fetch Appointment",
+      "dialog_name_policy": "contains",
+      "required_entities": [],
+      "required_nodes": [],
+      "negative_tests": [
+        {
+          "invalid_value_pool": ["0000000000", "abcdefghij", "123"],
+          "expected_error_pattern": "not found|no appointment|invalid|does not exist|no record",
+          "requires_re_entry_prompt": true
+        }
+      ],
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking1",
+          "source_record_alias": "Appointment1",
+          "source_field": "contactNumber"
+        }
+      },
+      "candidate_instructions": "If no appointment is found for the provided mobile number, display an appropriate error message informing the patient no appointment exists. Allow the patient to re-enter a different mobile number and try again.",
+      "weight": 5,
+      "sub_scores": [
+        {
+          "id": "error_message_shown",
+          "label": "Clear error message displayed when no appointment found for invalid contact number",
+          "points": 3,
+          "method": "webhook"
+        },
+        {
+          "id": "re_entry_prompt",
+          "label": "Patient is offered the opportunity to re-enter their mobile number",
+          "points": 2,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task4_modify",
+      "task_name": "Reschedule Appointment",
+      "pattern": "MODIFY",
+      "dialog_name": "Reschedule Appointment",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "registered mobile number for appointment lookup",
+          "value_pool": []
+        },
+        {
+          "entity_key": "newPreferredDate",
+          "semantic_hint": "new preferred date for the appointment in DD-MM-YYYY format",
+          "value_pool": {
+            "strategy": "relative_days_from_today",
+            "offsets": [28, 35, 42],
+            "format": "DD-MM-YYYY"
+          }
+        },
+        {
+          "entity_key": "newPreferredTime",
+          "semantic_hint": "new preferred time for the appointment",
+          "value_pool": ["9:00 AM", "1:00 PM", "5:30 PM"]
+        }
+      ],
+      "required_nodes": [
+        {
+          "node_type": "service",
+          "label": "GET service node — retrieve existing appointment before rescheduling",
+          "service_method": "GET",
+          "required": true
+        },
+        {
+          "node_type": "entity",
+          "label": "New preferred date entity node",
+          "required": true
+        },
+        {
+          "node_type": "entity",
+          "label": "New preferred time entity node",
+          "required": true
+        },
+        {
+          "node_type": "service",
+          "label": "PUT service node — update appointment date and time in backend",
+          "service_method": "PUT",
+          "required": true
+        }
+      ],
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking1",
+          "source_record_alias": "Appointment1",
+          "source_field": "contactNumber"
+        }
+      },
+      "modifiable_fields": ["preferredDate", "preferredTime"],
+      "modified_value_pool": {
+        "preferredDate": {
+          "strategy": "relative_days_from_today",
+          "offsets": [28, 35, 42],
+          "format": "DD-MM-YYYY"
+        },
+        "preferredTime": ["9:00 AM", "1:00 PM", "5:30 PM"]
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {
+          "contactNumber": "contactNumber",
+          "preferredDate": "preferredDate",
+          "preferredTime": "preferredTime"
+        }
+      },
+      "candidate_instructions": "Ask the patient for their mobile number. Retrieve the existing appointment using a GET API and display the details. Ask for a new preferred date and time. Send a PUT API request to update the appointment. Important: when configuring date validation, use format-only rules (DD-MM-YYYY) — do not hardcode specific future dates.",
+      "weight": 10,
+      "sub_scores": [
+        {
+          "id": "get_before_modify",
+          "label": "GET API fires before rescheduling — existing appointment retrieved and displayed",
+          "points": 2,
+          "method": "webhook"
+        },
+        {
+          "id": "new_date_time_captured",
+          "label": "New preferred date and time captured from patient input",
+          "points": 4,
+          "method": "webhook"
+        },
+        {
+          "id": "put_updates_backend",
+          "label": "PUT API called and updated date/time confirmed in backend state",
+          "points": 4,
+          "method": "webhook"
+        }
+      ]
+    },
+
+    {
+      "task_id": "task4_cancel",
+      "task_name": "Cancel Appointment 2",
+      "pattern": "DELETE",
+      "dialog_name": "Cancel Appointment",
+      "dialog_name_policy": "contains",
+      "required_entities": [
+        {
+          "entity_key": "contactNumber",
+          "semantic_hint": "registered mobile number for appointment lookup",
+          "value_pool": []
+        }
+      ],
+      "required_nodes": [
+        {
+          "node_type": "service",
+          "label": "DELETE service node — remove appointment from backend",
+          "service_method": "DELETE",
+          "required": true
+        }
+      ],
+      "cross_task_refs": {
+        "lookup": {
+          "source_task_id": "task2_booking2",
+          "source_record_alias": "Appointment2",
+          "source_field": "contactNumber"
+        }
+      },
+      "state_assertion": {
+        "enabled": true,
+        "verify_endpoint": "",
+        "filter_field": "contactNumber",
+        "field_assertions": {},
+        "expect_deletion": true
+      },
+      "candidate_instructions": "Ask the patient for their mobile number. Retrieve the existing appointment using a GET API. Ask the patient to confirm cancellation. Send a DELETE API request to remove the appointment. After deletion, confirm to the patient that their appointment has been successfully cancelled.",
+      "weight": 10,
+      "sub_scores": [
+        {
+          "id": "delete_api_called",
+          "label": "DELETE API called using Appointment2 contact number",
+          "points": 6,
+          "method": "webhook"
+        },
+        {
+          "id": "appointment_absent_post_deletion",
+          "label": "Appointment2 is no longer retrievable in backend state after deletion",
+          "points": 4,
+          "method": "webhook"
+        }
+      ]
+    }
+  ],
+
+  "faq_config": {
+    "required_faqs": [
+      {
+        "faq_id": "faq1",
+        "primary_question": "How do I prepare for my doctor's appointment?",
+        "ground_truth_answer": "Before your appointment, gather any relevant medical records, write down your symptoms and questions for the doctor, bring a list of any current medications, and arrive 10 minutes early to complete any required paperwork.",
+        "required_keywords": ["medical records", "symptoms", "medications"],
+        "alternate_questions": [
+          "What should I bring to my doctor's appointment?",
+          "How should I get ready before seeing the doctor?"
+        ]
+      },
+      {
+        "faq_id": "faq2",
+        "primary_question": "How will I know my appointment is confirmed?",
+        "ground_truth_answer": "Once your appointment is confirmed, the system will display your booking reference. You can verify your appointment at any time by providing your registered contact number to the medical bot.",
+        "required_keywords": ["booking reference", "confirmed", "contact number"],
+        "alternate_questions": [
+          "How do I get confirmation of my appointment?",
+          "What happens after I book an appointment?"
+        ]
+      },
+      {
+        "faq_id": "faq3",
+        "primary_question": "Can I reschedule my appointment?",
+        "ground_truth_answer": "Yes, you can reschedule your appointment by selecting 'Reschedule Appointment' and providing your registered contact number. You will then be asked for a new preferred date and time.",
+        "required_keywords": ["Reschedule Appointment", "contact number", "new preferred date"],
+        "alternate_questions": [
+          "How do I change my appointment time?",
+          "Is it possible to move my appointment to a different date?"
+        ]
+      },
+      {
+        "faq_id": "faq4",
+        "primary_question": "What types of doctors can I book through this system?",
+        "ground_truth_answer": "You can book appointments with a range of medical specialists including General Practitioners, Cardiologists, Dentists, Neurologists, Dermatologists, and Orthopaedic specialists, depending on availability.",
+        "required_keywords": ["General Practitioners", "Cardiologists", "specialists"],
+        "alternate_questions": [
+          "Which specialties are available for booking?",
+          "Can I book an appointment with a specialist?"
+        ]
+      },
+      {
+        "faq_id": "faq5",
+        "primary_question": "What is the cancellation policy for appointments?",
+        "ground_truth_answer": "You can cancel your appointment at any time before the scheduled visit. To cancel, select 'Cancel Appointment' and provide your registered contact number. Please note that repeated cancellations may affect future booking priority.",
+        "required_keywords": ["cancel", "contact number", "scheduled"],
+        "alternate_questions": [
+          "How do I cancel my appointment?",
+          "Is there a fee for cancelling a medical appointment?"
+        ]
+      }
+    ],
+    "min_alternate_questions": 2,
+    "semantic_similarity_threshold": 0.80,
+    "functional_verification": {
+      "enabled": true,
+      "min_faqs_to_verify_via_webhook": 2,
+      "verify_faq_ids": ["faq1", "faq5"],
+      "note": "faq1 (preparation guidance) and faq5 (cancellation policy) selected for live verification."
+    }
+  },
+
+  "compliance_checks": [
+    {
+      "check_id": "compliance_dialoggpt",
+      "label": "DialogGPT is enabled",
+      "cbm_field": "dialogGPTSettings[0].dialogGPTLLMConfig.enable",
+      "required_state": "enabled",
+      "critical": true,
+      "challengeable": false,
+      "tooltip": "DialogGPT must be enabled for the Agent Node to function correctly. This is a binary check — either the flag is set or it is not. This sub-score is not open to grievance challenge."
+    }
+  ],
+
+  "scoring_config": {
+    "total_points": 100,
+    "pass_threshold": 70,
+    "evaluator_overrides_allowed": true,
+    "override_requires_reason": true,
+    "cbm_used_for": ["faq_structural", "compliance", "agent_node_bookmarks"],
+    "webhook_used_for": ["task_functional", "faq_functional"],
+    "task_scores": [
+      { "task_id": "task1",           "label": "Welcome Message",                      "max_points": 5  },
+      { "task_id": "task2_booking1",  "label": "Book Appointment — Happy Path",         "max_points": 20 },
+      { "task_id": "task2_booking2",  "label": "Book Appointment — Amendment",          "max_points": 10 },
+      { "task_id": "task3_retrieve",  "label": "Fetch Appointment Details",             "max_points": 10 },
+      { "task_id": "task3_edge",      "label": "Fetch Appointment — Invalid Contact",   "max_points": 5  },
+      { "task_id": "task4_modify",    "label": "Reschedule Appointment",                "max_points": 10 },
+      { "task_id": "task4_cancel",    "label": "Cancel Appointment 2",                  "max_points": 10 },
+      { "task_id": "faq_structural",  "label": "FAQ Structural Check (CBM)",            "max_points": 10 },
+      { "task_id": "faq_functional",  "label": "FAQ Functional Check (Webhook)",        "max_points": 10 },
+      { "task_id": "compliance",      "label": "Compliance — DialogGPT Enabled",        "max_points": 10 }
+    ],
+    "faq_scoring": {
+      "structural_points": 10,
+      "structural_method": "cbm",
+      "structural_checks": [
+        { "check": "all_5_faqs_configured", "points": 5 },
+        { "check": "all_alternates_present_min_2_each", "points": 5 }
+      ],
+      "functional_points": 10,
+      "functional_method": "webhook",
+      "functional_checks": [
+        { "faq_id": "faq1", "points": 5 },
+        { "faq_id": "faq5", "points": 5 }
+      ]
+    }
+  },
+
+  "grievance_config": {
+    "enabled": true,
+    "challenge_window_hours": 48,
+    "evaluator_response_sla_hours": 72,
+    "escalation_enabled": true,
+    "evidence_retention_days": 90,
+    "challengeable_methods": ["webhook", "cbm"],
+    "non_challengeable": ["compliance"],
+    "evidence_captured_per_run": [
+      "full_conversation_transcript_json",
+      "full_conversation_transcript_human_readable",
+      "cbm_field_extraction_report",
+      "per_sub_score_pass_fail_with_check_detail",
+      "semantic_similarity_scores_with_matched_strings",
+      "api_call_log_with_method_url_request_response",
+      "turn_timestamps"
+    ],
+    "evaluator_override_fields": {
+      "override_score": "number",
+      "override_reason": "string (required)",
+      "supporting_evidence": "string (optional)"
+    }
+  },
+
+  "state_seeding_config": {
+    "enabled": true,
+    "schema_validation": true,
+    "seed_endpoint": "",
+    "teardown_endpoint": "",
+    "note": "Pre-test seed and post-test teardown endpoints must be configured to prevent state bleed between evaluation runs."
+  },
+
+  "tooltips": [
+    { "node_type": "aiassist",     "text": "Agent Node — uses LLM to collect entities conversationally. Supports co-referencing (multiple entities in one message) and amendment (correcting a value mid-conversation). Validation rules and appointment instructions should be configured here." },
+    { "node_type": "service",      "text": "Service Node — makes API calls to external systems (GET, POST, PUT, DELETE). Add a bookmark explaining the purpose of each Service Node." },
+    { "node_type": "entity",       "text": "Entity Node — collects a specific piece of information from the patient. For menu navigation, use a List Entity type." },
+    { "node_type": "message",      "text": "Message Node — displays information to the patient. Used for confirmations, summaries, and error messages." },
+    { "node_type": "confirmation", "text": "Confirmation Node — asks the patient to confirm a value or action before proceeding." },
+    { "node_type": "prompt",       "text": "Prompt Node — displays captured details and asks the patient to confirm before the dialog proceeds to an API call." }
+  ],
+
+  "created_by": "GovernIQ Admin",
+  "notes": "Medical Appointment Bot basic assessment — v1.0. Domain-agnostic design: same six engine patterns as Travel, different entities and FAQs. Entities: patientName, contactNumber, doctorType, preferredDate, preferredTime, reasonForVisit. Amendment target: contactNumber. Retrieve/Modify/Delete all use contactNumber as the cross-task identifier."
+}

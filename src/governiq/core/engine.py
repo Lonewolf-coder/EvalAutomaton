@@ -13,9 +13,11 @@ The engine is the central orchestrator. It:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -134,6 +136,10 @@ class EvaluationEngine:
             candidate_id=candidate_id,
             manifest_id=self.manifest.manifest_id,
             assessment_name=self.manifest.assessment_name,
+            # Copy tooltips so the report can render the CBM Map legend without
+            # needing to re-load the manifest file at report-render time.
+            tooltips=[{"node_type": t.node_type, "text": t.text}
+                      for t in self.manifest.tooltips],
         )
 
         logger.info("=== Pipeline A: CBM Structural Evaluation ===")
@@ -159,12 +165,28 @@ class EvaluationEngine:
                 total_w = sum(c.weight for c in scored)
                 scorecard.faq_score = sum(c.score * c.weight for c in scored) / total_w if total_w else 0.0
 
+        # Step 5B: NLP pre-flight checks (gated internally on kore_api_client)
+        await self._run_nlp_preflight(cbm, scorecard)
+
         # Step 6: Run Webhook Pipeline (Pipeline B) — all tasks
         logger.info("=== Pipeline B: Webhook Journey ===")
+        eval_start_time = datetime.utcnow()
         if self.manifest.webhook_url or self.kore_bearer_token:
-            await self._run_webhook_pipeline(context, scorecard)
+            task_sessions = await self._run_webhook_pipeline(context, scorecard)
         else:
             logger.info("No webhook URL or Kore credentials — skipping webhook pipeline.")
+            task_sessions = {}
+        eval_end_time = datetime.utcnow()
+
+        # Step 7A: Persist session IDs + eval window for deferred analytics refresh.
+        # Analytics are NOT fetched now — Kore.ai can take up to 10 hours to process data.
+        # Use POST /api/v1/evaluations/{session_id}/refresh-analytics to fetch when ready.
+        scorecard.task_sessions = {tid: list(v) for tid, v in task_sessions.items()}
+        scorecard.eval_window = {
+            "from": eval_start_time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            "to": eval_end_time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        }
+        scorecard.analytics_status = "pending"
 
         # Step 7: Fetch Kore.ai public API insights
         if self.kore_api_client:
@@ -235,11 +257,238 @@ class EvaluationEngine:
         self._save_scorecard(scorecard)
         return scorecard
 
+    async def run_analytics_refresh(self, session_id: str) -> dict[str, Any]:
+        """Fetch analytics for a completed evaluation session on demand.
+
+        Safe to call multiple times at any interval. Each call overwrites the
+        previous analytics_by_task data with the latest results from Kore.ai.
+
+        Returns a summary dict indicating current analytics_status and
+        analytics_last_checked_at so callers can decide whether to retry.
+        """
+        results_dir = self.persist_dir / "results"
+        path = results_dir / f"scorecard_{session_id}.json"
+        if not path.exists():
+            raise FileNotFoundError(f"Scorecard not found: {session_id}")
+
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        task_sessions_raw: dict[str, list[str]] = data.get("task_sessions", {})
+        eval_window: dict[str, str] = data.get("eval_window", {})
+
+        if not task_sessions_raw or not eval_window:
+            return {
+                "session_id": session_id,
+                "analytics_status": "pending",
+                "analytics_last_checked_at": None,
+                "message": "No session data stored — was this evaluation run without webhook?",
+            }
+
+        if not self.kore_api_client:
+            return {
+                "session_id": session_id,
+                "analytics_status": data.get("analytics_status", "pending"),
+                "analytics_last_checked_at": data.get("analytics_last_checked_at"),
+                "message": "No Kore.ai credentials configured — cannot fetch analytics.",
+            }
+
+        from_dt = datetime.strptime(eval_window["from"], "%Y-%m-%dT%H:%M:%S.000Z")
+        to_dt = datetime.strptime(eval_window["to"], "%Y-%m-%dT%H:%M:%S.000Z")
+
+        # Reconstruct task_sessions as dict[task_id -> (kore_sid, from_id)]
+        task_sessions: dict[str, tuple[str, str]] = {
+            tid: (v[0], v[1]) for tid, v in task_sessions_raw.items() if len(v) >= 2
+        }
+
+        # Rebuild a minimal scorecard shell to pass to the analytics pipeline
+        scorecard = Scorecard(
+            session_id=data["session_id"],
+            candidate_id=data.get("candidate_id", ""),
+            manifest_id=data.get("manifest_id", ""),
+            assessment_name=data.get("assessment_name", ""),
+            analytics_by_task=data.get("analytics_by_task", {}),
+            task_sessions=task_sessions_raw,
+            eval_window=eval_window,
+        )
+        # Restore existing task_scores so analytics CheckResults attach correctly
+        for ts_data in data.get("task_scores", []):
+            scorecard.task_scores.append(
+                TaskScore(task_id=ts_data["task_id"], task_name=ts_data["task_name"])
+            )
+
+        await self._run_analytics_pipeline(task_sessions, from_dt, to_dt, scorecard)
+
+        # Determine status from results
+        total_tasks = len(task_sessions)
+        tasks_with_data = sum(
+            1
+            for td in scorecard.analytics_by_task.values()
+            if isinstance(td.get("analytics"), dict)
+            and "error" not in td["analytics"]
+            and any(
+                (td["analytics"].get(t) or {}).get("logs")
+                for t in ["successintent", "failintent", "unhandledutterance",
+                          "tasksuccess", "taskfailure"]
+            )
+        )
+
+        if tasks_with_data == 0:
+            status = "pending"
+        elif tasks_with_data < total_tasks:
+            status = "partial"
+        else:
+            status = "available"
+
+        now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        scorecard.analytics_status = status
+        scorecard.analytics_last_checked_at = now_iso
+
+        # Merge analytics results back into the full saved scorecard and re-save
+        data["analytics_by_task"] = scorecard.analytics_by_task
+        data["analytics_status"] = status
+        data["analytics_last_checked_at"] = now_iso
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+        logger.info(
+            "Analytics refresh complete for session '%s': status=%s, tasks_with_data=%d/%d",
+            session_id, status, tasks_with_data, total_tasks,
+        )
+
+        return {
+            "session_id": session_id,
+            "analytics_status": status,
+            "analytics_last_checked_at": now_iso,
+            "tasks_with_data": tasks_with_data,
+            "total_tasks": total_tasks,
+            "analytics_by_task": scorecard.analytics_by_task,
+        }
+
+    async def resume_evaluation(self, session_id: str) -> Scorecard:
+        """Resume a partially-completed evaluation from its last checkpoint.
+
+        Loads the saved RuntimeContext and Scorecard from disk, then re-runs
+        only the webhook tasks that have not yet completed (i.e. not present in
+        ``scorecard.completed_tasks``).  CBM and compliance results are kept as-is.
+
+        Safe to call after any kind of mid-run failure (network drop, bot crash,
+        process kill). Entity values from completed CREATE tasks are preserved in
+        RuntimeContext, so downstream RETRIEVE/MODIFY/DELETE tasks still have the
+        correct cross-task identifiers.
+
+        Args:
+            session_id: The session_id of the interrupted evaluation run.
+
+        Returns:
+            Updated Scorecard with the newly-completed tasks merged in.
+
+        Raises:
+            FileNotFoundError: If no saved scorecard or RuntimeContext can be found.
+        """
+        # --- Load saved artefacts ---
+        results_dir = self.persist_dir / "results"
+        scorecard_path = results_dir / f"scorecard_{session_id}.json"
+        if not scorecard_path.exists():
+            raise FileNotFoundError(f"Scorecard not found for session '{session_id}'.")
+
+        context_dir = self.persist_dir / "runtime_contexts"
+        context_path = context_dir / f"context_{session_id}.json"
+        if not context_path.exists():
+            raise FileNotFoundError(f"RuntimeContext not found for session '{session_id}'.")
+
+        with scorecard_path.open("r", encoding="utf-8") as f:
+            saved_data = json.load(f)
+
+        context = RuntimeContext.load(context_path)
+        already_done: set[str] = set(saved_data.get("completed_tasks", []))
+
+        logger.info(
+            "Resuming evaluation '%s' — %d/%d tasks already completed: %s",
+            session_id,
+            len(already_done),
+            len(self.manifest.tasks),
+            sorted(already_done),
+        )
+
+        # Re-build a lightweight Scorecard that carries the completed results
+        scorecard = Scorecard(
+            session_id=session_id,
+            candidate_id=saved_data.get("candidate_id", ""),
+            manifest_id=saved_data.get("manifest_id", ""),
+            assessment_name=saved_data.get("assessment_name", ""),
+            completed_tasks=list(already_done),
+            task_sessions={k: list(v) for k, v in saved_data.get("task_sessions", {}).items()},
+            eval_window=saved_data.get("eval_window", {}),
+            analytics_status=saved_data.get("analytics_status", "pending"),
+            analytics_last_checked_at=saved_data.get("analytics_last_checked_at"),
+            kore_api_insights=saved_data.get("kore_api_insights", {}),
+            analytics_by_task=saved_data.get("analytics_by_task", {}),
+            state_seeded=saved_data.get("state_seeded", False),
+            state_seed_tasks=saved_data.get("state_seed_tasks", []),
+            faq_score=saved_data.get("faq_score", 0.0),
+        )
+        # Restore task scores so we can extend them
+        for ts_data in saved_data.get("task_scores", []):
+            scorecard.task_scores.append(
+                TaskScore(task_id=ts_data["task_id"], task_name=ts_data["task_name"])
+            )
+
+        # --- Run only incomplete tasks ---
+        eval_start_time = datetime.utcnow()
+        if self.manifest.webhook_url or self.kore_bearer_token:
+            new_sessions = await self._run_webhook_pipeline(
+                context, scorecard, skip_task_ids=already_done
+            )
+        else:
+            new_sessions = {}
+        eval_end_time = datetime.utcnow()
+
+        # Merge new session IDs (keep old ones for already-done tasks)
+        for tid, v in new_sessions.items():
+            scorecard.task_sessions[tid] = list(v)
+        if not scorecard.eval_window:
+            scorecard.eval_window = {
+                "from": eval_start_time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                "to": eval_end_time.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+            }
+
+        context.save(self.persist_dir / "runtime_contexts")
+        self._save_scorecard(scorecard)
+
+        logger.info(
+            "Resume complete for session '%s' — %d tasks now completed.",
+            session_id, len(scorecard.completed_tasks),
+        )
+        return scorecard
+
     async def _run_webhook_pipeline(
-        self, context: RuntimeContext, scorecard: Scorecard
-    ) -> None:
-        """Execute the stateful webhook journey across all tasks."""
+        self,
+        context: RuntimeContext,
+        scorecard: Scorecard,
+        skip_task_ids: set[str] | None = None,
+    ) -> dict[str, tuple[str, str]]:
+        """Execute the stateful webhook journey across all tasks.
+
+        Args:
+            context: RuntimeContext for this session.
+            scorecard: Scorecard to append results to.
+            skip_task_ids: Task IDs to skip (already completed in a previous run).
+
+        Returns a mapping of task_id -> (kore_session_id, from_id) for
+        use in the analytics pipeline.
+        """
+        task_sessions: dict[str, tuple[str, str]] = {}
+        _skip: set[str] = skip_task_ids or set()
+
         for task in self.manifest.tasks:
+            # Skip tasks that were completed in a previous (interrupted) run
+            if task.task_id in _skip:
+                logger.info(
+                    "Webhook: skipping already-completed task '%s'", task.task_id
+                )
+                continue
+
             logger.info("Webhook: executing task '%s' (pattern: %s)",
                         task.task_id, task.pattern.value)
 
@@ -250,11 +499,22 @@ class EvaluationEngine:
                 context=context,
                 webhook=self.webhook_client,
                 driver=self.driver,
+                kore_api=self.kore_api_client,
             )
 
             # Execute the pattern
             try:
                 pattern_result = await executor.execute()
+                kore_sid = getattr(self.webhook_client, "_kore_session_id", None)
+                from_id = getattr(self.webhook_client, "_from_id", "")
+                if kore_sid:
+                    task_sessions[task.task_id] = (kore_sid, from_id)
+                # Record as completed so resume_evaluation can skip it on retry
+                if pattern_result.success and task.task_id not in scorecard.completed_tasks:
+                    scorecard.completed_tasks.append(task.task_id)
+                    # Checkpoint: save partial context so a crash on the next task
+                    # doesn't lose this task's records
+                    context.save(self.persist_dir / "runtime_contexts")
             except Exception as e:
                 logger.error("Pattern execution failed for task '%s': %s", task.task_id, e)
                 # Create a synthetic failure result instead of silently skipping
@@ -315,6 +575,145 @@ class EvaluationEngine:
                     await self._attempt_state_seeding(task, context, scorecard)
 
         context.save(self.persist_dir / "runtime_contexts")
+        return task_sessions
+
+    async def _run_nlp_preflight(
+        self, cbm: Any, scorecard: Scorecard
+    ) -> None:
+        """Run NLP intent pre-flight check via find_intent for each task.
+
+        Non-fatal — never raises. Appends PASS/WARNING CheckResults to each
+        task's cbm_checks with pipeline="cbm".
+        """
+        if not self.kore_api_client:
+            return
+        try:
+            bot_name = getattr(cbm, "bot_name", "") or ""
+            for task in self.manifest.tasks:
+                utterance = task.conversation_starter or f"I want to {task.task_name.lower()}"
+                try:
+                    response = await self.kore_api_client.find_intent(utterance, bot_name)
+                    if "error" in response:
+                        logger.debug("NLP preflight find_intent error for task '%s': %s",
+                                     task.task_id, response["error"])
+                        continue
+                    result_type = response.get("result", "")
+                    matched_intent = (response.get("intent") or {}).get("name", "")
+                    dialog_lower = task.dialog_name.lower()
+                    intent_match = dialog_lower in matched_intent.lower()
+                    task_score = next(
+                        (ts for ts in scorecard.task_scores if ts.task_id == task.task_id),
+                        None,
+                    )
+                    if not task_score:
+                        continue
+                    task_score.cbm_checks.append(CheckResult(
+                        check_id=f"cbm.{task.task_id}.nlp_preflight",
+                        task_id=task.task_id,
+                        pipeline="cbm",
+                        label="NLP pre-flight: intent detection",
+                        status=(
+                            CheckStatus.PASS
+                            if result_type == "successintent" and intent_match
+                            else CheckStatus.WARNING
+                        ),
+                        details=(
+                            f"Utterance '{utterance}' matched intent '{matched_intent}' "
+                            f"(result: {result_type})."
+                        ),
+                        score=1.0 if (result_type == "successintent" and intent_match) else 0.0,
+                        weight=0.0,
+                    ))
+                except Exception as task_e:
+                    logger.debug("NLP preflight error for task '%s': %s", task.task_id, task_e)
+        except Exception as e:
+            logger.warning("NLP preflight pipeline failed: %s", e)
+
+    async def _run_analytics_pipeline(
+        self,
+        task_sessions: dict[str, tuple[str, str]],
+        from_dt: datetime,
+        to_dt: datetime,
+        scorecard: Scorecard,
+    ) -> None:
+        """Fetch per-task analytics and messages concurrently, store in scorecard.
+
+        Non-fatal — never raises. Appends INFO CheckResults to each task's
+        webhook_checks with pipeline="analytics".
+        """
+        if not self.kore_api_client or not task_sessions:
+            return
+        try:
+            # Launch all analytics and messages calls concurrently across all tasks
+            analytics_coros = [
+                self.kore_api_client.get_all_analytics_for_session(kore_sid, from_dt, to_dt)
+                for _, (kore_sid, _) in task_sessions.items()
+            ]
+            messages_coros = [
+                self.kore_api_client.get_messages_for_session(kore_sid, from_id)
+                for _, (kore_sid, from_id) in task_sessions.items()
+            ]
+            task_ids = list(task_sessions.keys())
+            all_results = await asyncio.gather(
+                *analytics_coros, *messages_coros, return_exceptions=True
+            )
+            n = len(task_ids)
+            analytics_results = all_results[:n]
+            messages_results = all_results[n:]
+
+            for i, task_id in enumerate(task_ids):
+                analytics = (
+                    {"error": str(analytics_results[i])}
+                    if isinstance(analytics_results[i], Exception)
+                    else analytics_results[i]
+                )
+                messages = (
+                    {"error": str(messages_results[i])}
+                    if isinstance(messages_results[i], Exception)
+                    else messages_results[i]
+                )
+                scorecard.analytics_by_task[task_id] = {
+                    "analytics": analytics,
+                    "messages": messages,
+                }
+
+                task_score = next(
+                    (ts for ts in scorecard.task_scores if ts.task_id == task_id),
+                    None,
+                )
+                if not task_score:
+                    continue
+
+                # Summarise into a CheckResult
+                success_count = 0
+                fail_count = 0
+                unhandled_count = 0
+                if isinstance(analytics, dict) and "error" not in analytics:
+                    success_count = len(
+                        (analytics.get("successintent") or {}).get("logs", [])
+                    )
+                    fail_count = len(
+                        (analytics.get("failintent") or {}).get("logs", [])
+                    )
+                    unhandled_count = len(
+                        (analytics.get("unhandledutterance") or {}).get("logs", [])
+                    )
+
+                task_score.webhook_checks.append(CheckResult(
+                    check_id=f"analytics.{task_id}.summary",
+                    task_id=task_id,
+                    pipeline="analytics",
+                    label="Analytics pipeline summary",
+                    status=CheckStatus.INFO,
+                    details=(
+                        f"success={success_count}, fail={fail_count}, "
+                        f"unhandled={unhandled_count}"
+                    ),
+                    score=0.0,
+                    weight=0.0,
+                ))
+        except Exception as e:
+            logger.warning("Analytics pipeline failed: %s", e)
 
     async def _attempt_state_seeding(
         self, task, context: RuntimeContext, scorecard: Scorecard
