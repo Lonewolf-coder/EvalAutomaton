@@ -147,6 +147,9 @@ class Scorecard:
     # Per-task analytics data from analytics pipeline
     analytics_by_task: dict[str, Any] = field(default_factory=dict)
 
+    # Manifest tooltips — copied at evaluation time so the report can render the CBM Map legend
+    tooltips: list[dict[str, str]] = field(default_factory=list)
+
     # Tasks that completed successfully — used by resume_evaluation to skip re-running them
     completed_tasks: list[str] = field(default_factory=list)
 
@@ -288,6 +291,7 @@ class Scorecard:
             "faq_score": round(self.faq_score, 4),
             "kore_api_insights": self.kore_api_insights,
             "analytics_by_task": self.analytics_by_task,
+            "tooltips": self.tooltips,
             "completed_tasks": self.completed_tasks,
             "task_sessions": self.task_sessions,
             "eval_window": self.eval_window,

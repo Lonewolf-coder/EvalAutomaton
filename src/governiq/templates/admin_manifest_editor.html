@@ -446,7 +446,7 @@ function addValidationRow(containerId, data = {}) {
 // ===================================================================
 // TASKS
 // ===================================================================
-const PATTERNS = ['CREATE','CREATE_WITH_AMENDMENT','RETRIEVE','MODIFY','DELETE','EDGE_CASE'];
+const PATTERNS = ['WELCOME','CREATE','CREATE_WITH_AMENDMENT','RETRIEVE','MODIFY','DELETE','EDGE_CASE'];
 const NODE_TYPES = ['aiassist','service','entity','message','form','script','logic','generativeai','searchai','agentTransfer','dialogAct','intent','dynamicIntent'];
 
 function addTask(data = {}) {
@@ -692,15 +692,14 @@ function togglePanel(panelId) {
 
 function onPatternChange(idx, pattern, openPanel = true) {
     const show = (id, visible) => { const el = document.getElementById(id); if (el) el.style.display = visible ? '' : 'none'; };
-    show(`sec_entities_${idx}`, true);
-    show(`sec_amend_${idx}`, pattern === 'CREATE_WITH_AMENDMENT');
-    show(`sec_xref_${idx}`, ['RETRIEVE','MODIFY','DELETE'].includes(pattern));
-    show(`sec_modify_${idx}`, pattern === 'MODIFY');
-    show(`sec_edge_${idx}`, pattern === 'EDGE_CASE');
-    // Welcome hint: show greeting/menu fields if it's likely a welcome task
-    const nameEl = document.getElementById(`t${idx}_name`);
-    const isWelcome = nameEl && nameEl.value.toLowerCase().includes('welcome');
-    show(`sec_welcome_${idx}`, isWelcome || pattern === 'CREATE');
+    const isWelcome = pattern === 'WELCOME';
+    // WELCOME: show only greeting/menu section — hide everything else
+    show(`sec_welcome_${idx}`,  isWelcome);
+    show(`sec_entities_${idx}`, !isWelcome);
+    show(`sec_amend_${idx}`,    pattern === 'CREATE_WITH_AMENDMENT');
+    show(`sec_xref_${idx}`,     ['RETRIEVE','MODIFY','DELETE'].includes(pattern));
+    show(`sec_modify_${idx}`,   pattern === 'MODIFY');
+    show(`sec_edge_${idx}`,     pattern === 'EDGE_CASE');
     if (openPanel) {
         const body = document.getElementById(`task_body_${idx}`);
         if (body && !body.classList.contains('open')) togglePanel(`task_panel_${idx}`);

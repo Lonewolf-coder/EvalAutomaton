@@ -136,6 +136,10 @@ class EvaluationEngine:
             candidate_id=candidate_id,
             manifest_id=self.manifest.manifest_id,
             assessment_name=self.manifest.assessment_name,
+            # Copy tooltips so the report can render the CBM Map legend without
+            # needing to re-load the manifest file at report-render time.
+            tooltips=[{"node_type": t.node_type, "text": t.text}
+                      for t in self.manifest.tooltips],
         )
 
         logger.info("=== Pipeline A: CBM Structural Evaluation ===")

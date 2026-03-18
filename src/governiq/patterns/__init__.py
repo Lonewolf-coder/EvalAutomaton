@@ -1,4 +1,4 @@
-"""Engine Patterns — The six patterns the engine knows.
+"""Engine Patterns — The seven patterns the engine knows.
 
 Every task in every manifest is assigned one pattern. The manifest configures
 how the pattern runs for that specific task. The pattern logic itself never changes.
@@ -11,6 +11,7 @@ from .retrieve import RetrievePattern
 from .modify import ModifyPattern
 from .delete import DeletePattern
 from .edge_case import EdgeCasePattern
+from .welcome import WelcomePattern
 from ..core.manifest import EnginePattern
 
 
@@ -21,9 +22,15 @@ PATTERN_REGISTRY: dict[EnginePattern, type[PatternExecutor]] = {
     EnginePattern.MODIFY: ModifyPattern,
     EnginePattern.DELETE: DeletePattern,
     EnginePattern.EDGE_CASE: EdgeCasePattern,
+    EnginePattern.WELCOME: WelcomePattern,
 }
 
 
 def get_pattern_executor(pattern: EnginePattern) -> type[PatternExecutor]:
     """Get the executor class for a given engine pattern."""
+    if pattern not in PATTERN_REGISTRY:
+        raise KeyError(
+            f"No executor registered for pattern '{pattern}'. "
+            f"Registered patterns: {sorted(p.value for p in PATTERN_REGISTRY)}"
+        )
     return PATTERN_REGISTRY[pattern]
