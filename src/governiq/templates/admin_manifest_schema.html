@@ -5,7 +5,8 @@
 <div class="container-wide">
     <div class="flex-between spacer">
         <div>
-            <h1><i data-lucide="book-open" class="icon icon-lg" style="margin-right:.4rem;"></i> Manifest Schema Reference</h1>
+            <!-- Page heading — card-title provides flex + icon alignment -->
+            <h1 class="card-title"><i data-lucide="book-open" class="icon icon-lg"></i> Manifest Schema Reference</h1>
             <p class="text-muted">Complete documentation for creating assessment manifests.</p>
         </div>
         <div class="flex gap-2">
@@ -17,7 +18,8 @@
 
     <!-- Quick Start -->
     <div class="card spacer">
-        <div class="card-header"><h3><i data-lucide="rocket" class="icon" style="margin-right:.4rem;"></i> Quick Start</h3></div>
+        <!-- card-title on h3 aligns rocket icon with heading text -->
+        <div class="card-header"><h3 class="card-title"><i data-lucide="rocket" class="icon"></i> Quick Start</h3></div>
         <div class="card-body">
             <p class="spacer">A manifest defines <strong>what to evaluate</strong> in a chatbot submission. The engine is domain-agnostic — the manifest provides all domain-specific configuration.</p>
             <div class="grid-3">
@@ -41,7 +43,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="braces" class="icon" style="margin-right:.4rem;"></i> Top-Level Properties</h3>
+                <!-- card-title on h3 aligns braces icon with heading text -->
+                <h3 class="card-title"><i data-lucide="braces" class="icon"></i> Top-Level Properties</h3>
                 <span class="badge badge-info"><i data-lucide="file-json" class="icon icon-sm"></i> Root Object</span>
             </div>
         </div>
@@ -71,7 +74,8 @@
     <div class="card spacer" id="def-{{ def_name }}">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="box" class="icon" style="margin-right:.4rem;"></i> {{ def_name }}</h3>
+                <!-- card-title on h3 aligns box icon with the definition name -->
+                <h3 class="card-title"><i data-lucide="box" class="icon"></i> {{ def_name }}</h3>
                 <span class="badge badge-info">{{ def_schema.get('type', 'object') }}</span>
             </div>
             {% if def_schema.get('description') %}
@@ -119,11 +123,13 @@
 
     <!-- Engine Patterns Reference -->
     <div class="card spacer">
-        <div class="card-header"><h3><i data-lucide="blocks" class="icon" style="margin-right:.4rem;"></i> Engine Patterns Reference</h3></div>
+        <!-- card-title on h3 aligns blocks icon with heading text -->
+        <div class="card-header"><h3 class="card-title"><i data-lucide="blocks" class="icon"></i> Engine Patterns Reference</h3></div>
         <div class="card-body">
             <div class="grid-2">
                 <div>
-                    <h4 style="margin-bottom:.75rem;"><i data-lucide="workflow" class="icon icon-sm"></i> Task Patterns</h4>
+                    <!-- h4 subsection heading — card-title aligns workflow icon -->
+                    <h4 class="card-title" style="margin-bottom:.75rem;"><i data-lucide="workflow" class="icon icon-sm"></i> Task Patterns</h4>
                     <div class="method-card"><div class="method-num" style="background:#dcfce7; color:var(--pass);"><i data-lucide="plus-circle" class="icon icon-sm"></i></div><div><div class="method-title">CREATE</div><div class="method-desc">Tests entity collection, service call, confirmation flow. Bot should create a new record.</div></div></div>
                     <div class="method-card"><div class="method-num" style="background:#dbeafe; color:var(--info);"><i data-lucide="edit-3" class="icon icon-sm"></i></div><div><div class="method-title">CREATE_WITH_AMENDMENT</div><div class="method-desc">CREATE + amendment: bot creates, user requests change, bot amends via agent node.</div></div></div>
                     <div class="method-card"><div class="method-num" style="background:#f0fdf4; color:#166534;"><i data-lucide="search" class="icon icon-sm"></i></div><div><div class="method-title">RETRIEVE</div><div class="method-desc">Tests lookup/search. Bot should retrieve and display existing records.</div></div></div>
@@ -142,7 +148,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="code-2" class="icon" style="margin-right:.4rem;"></i> Raw JSON Schema</h3>
+                <!-- card-title on h3 aligns code-2 icon with heading text -->
+                <h3 class="card-title"><i data-lucide="code-2" class="icon"></i> Raw JSON Schema</h3>
                 <button class="btn btn-outline btn-sm" onclick="copySchema()"><i data-lucide="copy" class="icon icon-sm"></i> Copy to Clipboard</button>
             </div>
         </div>

@@ -5,7 +5,8 @@
 <div class="container-wide">
     <div class="flex-between spacer">
         <div>
-            <h1><i data-lucide="git-compare" class="icon icon-lg" style="margin-right:.4rem;"></i> Evaluation Comparison</h1>
+            <!-- Page heading — card-title provides flex + icon alignment -->
+            <h1 class="card-title"><i data-lucide="git-compare" class="icon icon-lg"></i> Evaluation Comparison</h1>
             <p class="text-muted">Compare submissions and detect duplicate/repeated work.</p>
         </div>
         <div class="flex gap-2">
@@ -19,7 +20,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="copy" class="icon" style="margin-right:.4rem;"></i> Duplicate / Repeated Submissions</h3>
+                <!-- Section heading — card-title aligns icon with text -->
+                <h3 class="card-title"><i data-lucide="copy" class="icon"></i> Duplicate / Repeated Submissions</h3>
                 <span class="badge badge-warn"><i data-lucide="alert-triangle" class="icon icon-sm"></i> {{ similarity_groups | length }} group(s)</span>
             </div>
         </div>
@@ -76,7 +78,10 @@
 
     <!-- Side-by-Side Comparison Selector -->
     <div class="card spacer">
-        <div class="card-header"><h3><i data-lucide="columns" class="icon" style="margin-right:.4rem;"></i> Side-by-Side Comparison</h3></div>
+        <div class="card-header">
+            <!-- card-title on h3 provides the flex alignment for the icon -->
+            <h3 class="card-title"><i data-lucide="columns" class="icon"></i> Side-by-Side Comparison</h3>
+        </div>
         <div class="card-body">
             <p class="text-small text-muted spacer">Select two evaluations to compare their results task-by-task.</p>
             <form action="/admin/compare" method="get" class="grid-2" style="gap:1rem; align-items:end;">
@@ -111,14 +116,16 @@
     {% if left and right %}
     <div class="card spacer">
         <div class="card-header">
-            <h3><i data-lucide="bar-chart-3" class="icon" style="margin-right:.4rem;"></i> Comparison Results</h3>
+            <!-- card-title on h3 aligns bar-chart icon with heading text -->
+            <h3 class="card-title"><i data-lucide="bar-chart-3" class="icon"></i> Comparison Results</h3>
         </div>
         <div class="card-body">
             <!-- Overview -->
             <div class="grid-2 spacer">
                 <div class="card" style="border-left: 3px solid var(--primary);">
                     <div class="card-body" style="text-align:center;">
-                        <h4><i data-lucide="arrow-left-circle" class="icon icon-sm"></i> Left: {{ left.candidate_id or 'N/A' }}</h4>
+                        <!-- h4 inside score card — card-title centres icon with candidate label -->
+                        <h4 class="card-title" style="justify-content:center;"><i data-lucide="arrow-left-circle" class="icon icon-sm"></i> Left: {{ left.candidate_id or 'N/A' }}</h4>
                         <p class="text-small text-muted">{{ left.assessment_name }}</p>
                         <div class="score-ring score-ring--lg {% if left.overall_score >= 0.7 %}score-ring--pass{% elif left.overall_score >= 0.5 %}score-ring--warn{% else %}score-ring--fail{% endif %}" style="margin:1rem auto;">
                             {{ (left.overall_score * 100) | round(1) }}%
@@ -128,7 +135,8 @@
                 </div>
                 <div class="card" style="border-left: 3px solid #7c3aed;">
                     <div class="card-body" style="text-align:center;">
-                        <h4><i data-lucide="arrow-right-circle" class="icon icon-sm"></i> Right: {{ right.candidate_id or 'N/A' }}</h4>
+                        <!-- h4 inside score card — card-title centres icon with candidate label -->
+                        <h4 class="card-title" style="justify-content:center;"><i data-lucide="arrow-right-circle" class="icon icon-sm"></i> Right: {{ right.candidate_id or 'N/A' }}</h4>
                         <p class="text-small text-muted">{{ right.assessment_name }}</p>
                         <div class="score-ring score-ring--lg {% if right.overall_score >= 0.7 %}score-ring--pass{% elif right.overall_score >= 0.5 %}score-ring--warn{% else %}score-ring--fail{% endif %}" style="margin:1rem auto;">
                             {{ (right.overall_score * 100) | round(1) }}%
@@ -178,7 +186,8 @@
             </table>
 
             <!-- Task-by-Task Comparison -->
-            <h4 style="margin-bottom:1rem;"><i data-lucide="list-checks" class="icon icon-sm"></i> Task-by-Task Comparison</h4>
+            <!-- h4 for subsection heading — card-title aligns list-checks icon -->
+            <h4 class="card-title" style="margin-bottom:1rem;"><i data-lucide="list-checks" class="icon icon-sm"></i> Task-by-Task Comparison</h4>
             {% set left_tasks = {} %}
             {% for t in left.get('task_scores', []) %}
                 {% set _ = left_tasks.update({t.task_id: t}) %}

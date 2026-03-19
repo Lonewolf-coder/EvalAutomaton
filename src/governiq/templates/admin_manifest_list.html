@@ -5,7 +5,8 @@
 <div class="container-wide">
     <div class="flex-between spacer">
         <div>
-            <h1><i data-lucide="file-cog" class="icon icon-lg" style="margin-right:.4rem;"></i> Manage Assessment Manifests</h1>
+            <!-- Page heading — card-title provides flex + icon alignment -->
+            <h1 class="card-title"><i data-lucide="file-cog" class="icon icon-lg"></i> Manage Assessment Manifests</h1>
             <p class="text-muted">Create, edit, and archive assessment configurations.</p>
         </div>
         <div class="flex gap-2">
@@ -23,7 +24,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="folder-open" class="icon" style="margin-right:.4rem;"></i> Active Manifests</h3>
+                <!-- Section heading — card-title aligns folder icon with text -->
+                <h3 class="card-title"><i data-lucide="folder-open" class="icon"></i> Active Manifests</h3>
                 <span class="badge badge-pass"><i data-lucide="check-circle-2" class="icon icon-sm"></i> {{ manifests | length }} active</span>
             </div>
         </div>
@@ -76,7 +78,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="archive" class="icon" style="margin-right:.4rem;"></i> Archived Manifests</h3>
+                <!-- Section heading — card-title aligns archive icon with text -->
+                <h3 class="card-title"><i data-lucide="archive" class="icon"></i> Archived Manifests</h3>
                 <span class="badge badge-grey">{{ archived | length }} archived</span>
             </div>
         </div>

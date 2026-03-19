@@ -5,7 +5,8 @@
 <div class="container-wide">
     <div class="flex-between spacer">
         <div>
-            <h1><i data-lucide="{% if manifest_data %}pencil{% else %}plus-circle{% endif %}" class="icon icon-lg" style="margin-right:.4rem;"></i> {{ 'Edit Manifest' if manifest_data else 'Create New Manifest' }}</h1>
+            <!-- Page heading — card-title provides flex + icon alignment -->
+            <h1 class="card-title"><i data-lucide="{% if manifest_data %}pencil{% else %}plus-circle{% endif %}" class="icon icon-lg"></i> {{ 'Edit Manifest' if manifest_data else 'Create New Manifest' }}</h1>
             <p class="text-muted">{% if manifest_data %}Editing: <code>{{ manifest_data.manifest_id }}</code>{% else %}Build a new assessment evaluation manifest.{% endif %}</p>
         </div>
         <div class="flex gap-2">
@@ -50,7 +51,8 @@
 
         <!-- ── 1. Basic Information ── -->
         <div class="card spacer">
-            <div class="card-header"><h3><i data-lucide="info" class="icon" style="margin-right:.4rem;"></i> Basic Information</h3></div>
+            <!-- card-title on h3 aligns info icon with section heading -->
+            <div class="card-header"><h3 class="card-title"><i data-lucide="info" class="icon"></i> Basic Information</h3></div>
             <div class="card-body">
                 <div class="grid-2">
                     <div class="form-group">
@@ -98,7 +100,8 @@
         <!-- ── 2. Assignment Brief ── -->
         <div class="card spacer">
             <div class="card-header">
-                <h3><i data-lucide="clipboard" class="icon" style="margin-right:.4rem;"></i> Assignment Brief <span class="badge badge-info" style="margin-left:.5rem;font-size:.7rem;">Candidate-facing</span></h3>
+                <!-- card-title on h3 aligns clipboard icon; badge sits outside the card-title span -->
+                <h3 class="card-title"><i data-lucide="clipboard" class="icon"></i> Assignment Brief <span class="badge badge-info" style="margin-left:.5rem;font-size:.7rem;">Candidate-facing</span></h3>
                 <p class="text-muted text-small" style="margin-top:.25rem;">Visible to candidates — describes what to build, entities, APIs, and submission instructions.</p>
             </div>
             <div class="card-body">
@@ -155,7 +158,8 @@
 
         <!-- ── 3. Submission Config ── -->
         <div class="card spacer">
-            <div class="card-header"><h3><i data-lucide="settings-2" class="icon" style="margin-right:.4rem;"></i> Submission Configuration</h3></div>
+            <!-- card-title on h3 aligns settings-2 icon with section heading -->
+            <div class="card-header"><h3 class="card-title"><i data-lucide="settings-2" class="icon"></i> Submission Configuration</h3></div>
             <div class="card-body">
                 <div class="grid-3" style="grid-template-columns: repeat(4, 1fr);">
                     <div class="form-group">
@@ -184,7 +188,8 @@
 
         <!-- ── 4. Scoring Config ── -->
         <div class="card spacer">
-            <div class="card-header"><h3><i data-lucide="calculator" class="icon" style="margin-right:.4rem;"></i> Scoring Configuration</h3></div>
+            <!-- card-title on h3 aligns calculator icon with section heading -->
+            <div class="card-header"><h3 class="card-title"><i data-lucide="calculator" class="icon"></i> Scoring Configuration</h3></div>
             <div class="card-body">
                 <div class="grid-3" style="grid-template-columns: repeat(5, 1fr);">
                     <div class="form-group">
@@ -216,7 +221,8 @@
         <!-- ── 5. Tasks ── -->
         <div class="card spacer">
             <div class="card-header flex-between">
-                <h3><i data-lucide="list-checks" class="icon" style="margin-right:.4rem;"></i> Tasks</h3>
+                <!-- card-title on h3 aligns list-checks icon with section heading -->
+                <h3 class="card-title"><i data-lucide="list-checks" class="icon"></i> Tasks</h3>
                 <button type="button" class="btn btn-primary btn-sm" onclick="addTask()"><i data-lucide="plus" class="icon icon-sm"></i> Add Task</button>
             </div>
             <div class="card-body" style="padding:.5rem;">
@@ -228,7 +234,8 @@
         <!-- ── 6. FAQs ── -->
         <div class="card spacer">
             <div class="card-header flex-between">
-                <h3><i data-lucide="help-circle" class="icon" style="margin-right:.4rem;"></i> FAQs</h3>
+                <!-- card-title on h3 aligns help-circle icon with section heading -->
+                <h3 class="card-title"><i data-lucide="help-circle" class="icon"></i> FAQs</h3>
                 <button type="button" class="btn btn-primary btn-sm" onclick="addFaq()"><i data-lucide="plus" class="icon icon-sm"></i> Add FAQ</button>
             </div>
             <div class="card-body" style="padding:.5rem;">
@@ -250,7 +257,8 @@
         <!-- ── 7. Compliance Checks ── -->
         <div class="card spacer">
             <div class="card-header flex-between">
-                <h3><i data-lucide="shield-check" class="icon" style="margin-right:.4rem;"></i> Compliance Checks</h3>
+                <!-- card-title on h3 aligns shield-check icon with section heading -->
+                <h3 class="card-title"><i data-lucide="shield-check" class="icon"></i> Compliance Checks</h3>
                 <button type="button" class="btn btn-primary btn-sm" onclick="addCompliance()"><i data-lucide="plus" class="icon icon-sm"></i> Add Check</button>
             </div>
             <div class="card-body" style="padding:.5rem;">
@@ -262,7 +270,8 @@
         <!-- ── 8. Tooltips ── -->
         <div class="card spacer">
             <div class="card-header flex-between">
-                <h3><i data-lucide="message-square" class="icon" style="margin-right:.4rem;"></i> Tooltips</h3>
+                <!-- card-title on h3 aligns message-square icon with section heading -->
+                <h3 class="card-title"><i data-lucide="message-square" class="icon"></i> Tooltips</h3>
                 <button type="button" class="btn btn-outline btn-sm" onclick="addTooltip()"><i data-lucide="plus" class="icon icon-sm"></i> Add Tooltip</button>
             </div>
             <div class="card-body" style="padding:.5rem;">
@@ -289,7 +298,8 @@
     <!-- ==================== JSON MODE ==================== -->
     <div class="jsonMode hidden">
         <div class="card spacer">
-            <div class="card-header"><h3><i data-lucide="braces" class="icon" style="margin-right:.4rem;"></i> Full Manifest JSON</h3></div>
+            <!-- card-title on h3 aligns braces icon with JSON editor heading -->
+            <div class="card-header"><h3 class="card-title"><i data-lucide="braces" class="icon"></i> Full Manifest JSON</h3></div>
             <div class="card-body">
                 <textarea id="fullJsonEditor" class="form-textarea" rows="50" style="font-family:'SF Mono','Fira Code',monospace; font-size:.8rem;">{{ full_json | safe }}</textarea>
             </div>
