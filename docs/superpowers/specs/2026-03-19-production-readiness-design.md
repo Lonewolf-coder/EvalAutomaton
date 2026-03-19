@@ -27,14 +27,23 @@ Make GovernIQ fully functional and testable for non-technical users (admins, eva
 ### No backend changes to core evaluation engine
 All 12 patterns, scoring, CBM parser, RuntimeContext, and manifest system remain unchanged. This spec touches: routes, templates, a new health endpoint, settings persistence, and plagiarism wiring.
 
-### New endpoint: `/api/v1/health`
-Returns live status of all four subsystems as JSON. Called by `base.html` on every page load (or via 30s polling). Result drives the health bar rendering.
+### Endpoint strategy: `/health` vs `/api/v1/health`
+`main.py` already registers a simple `GET /health` that returns `{"status": "ok"}`. This endpoint is retained as a process liveness check (used by load balancers / ops tooling). The new `GET /api/v1/health` endpoint is separate — it performs live subsystem checks (AI model reachability, storage writability, manifest presence) and returns structured JSON consumed by the health bar. The two endpoints coexist and serve different purposes.
 
 ### Config persistence: `data/llm_config.json`
 LLM provider selection and API keys stored locally per machine. Written by the Settings page POST handler. Never committed to git. Loaded at startup and on every health check.
 
 ### Data directory auto-init
-`main.py` startup creates `data/`, `data/results/`, `data/runtime_contexts/` if they don't exist. App never crashes on first run.
+`main.py` startup (via FastAPI lifespan context manager) creates `data/`, `data/results/`, `data/runtime_contexts/` if they don't exist. App never crashes on first run.
+
+### Async submission pipeline (Component 6a)
+The candidate submit handler is synchronous today. To support a progress indicator without blocking, the POST handler must:
+1. Create a results file with `{"status": "running", "session_id": "..."}` immediately
+2. Return the `session_id` to the frontend
+3. Launch evaluation via FastAPI `BackgroundTasks`
+4. Frontend polls `GET /api/v1/results/{session_id}` every 3 seconds until `status != "running"`
+5. Background task writes final scorecard to the results file on completion
+This is implemented inside `candidate/routes.py` — no new files needed.
 
 ---
 
@@ -70,7 +79,7 @@ Grid of 4 subsystem cards. Each card:
 
 | Subsystem | Check | Failure message | Fix action |
 |---|---|---|---|
-| AI Model | HTTP GET to configured provider URL | "LM Studio is not running. Start LM Studio and load a model." | Link to Settings |
+| AI Model | HTTP GET to configured provider URL | "LM Studio is not running. Start LM Studio and load a model." | Link to `/admin/settings` |
 | Storage | `data/results/` directory writable | "Results cannot be saved. Check disk space." | Link to docs |
 | Manifests | At least 1 active manifest in `manifests/` | "No assessment is configured. Load a manifest." | Link to `/admin/manifests` |
 | App | Always passes if page renders | "GovernIQ is running correctly." | None |
@@ -81,7 +90,9 @@ Grid of 4 subsystem cards. Each card:
 - No Python exception names
 - Always says what happened AND what to do
 
-### API endpoint
+### API endpoint: `GET /api/v1/health`
+This is a **new** endpoint added to `src/governiq/api/routes.py`. It does not replace the existing `GET /health` in `main.py`.
+
 ```
 GET /api/v1/health
 Response: {
@@ -96,22 +107,48 @@ Response: {
 }
 ```
 
+### API endpoint: `POST /api/v1/health/test-ai`
+This is a **new** endpoint added to `src/governiq/api/routes.py`. Accepts a provider config payload and tests the connection without saving it. Returns the same subsystem schema as above for `ai_model` only.
+
+```
+POST /api/v1/health/test-ai
+Body: { "provider": "lmstudio"|"anthropic"|"openai"|"azure"|"ollama"|"gemini", "url": "...", "api_key": "..." }
+Response: { "status": "ok"|"failing", "message": "..." }
+```
+
 ---
 
 ## Component 2 — Critical Fixes
 
 ### 2a — Data directory auto-init
 **File:** `src/governiq/main.py`
-On app startup (lifespan event), create if missing:
-- `data/`
-- `data/results/`
-- `data/runtime_contexts/`
-- `data/manifests/`
 
-No error if already exists (`exist_ok=True`).
+Use FastAPI's lifespan context manager pattern. `main.py` has no existing `@app.on_event("startup")` decorator — none needs to be removed. The existing `FastAPI(...)` constructor takes `title`, `description`, and `version` only; add `lifespan=lifespan` to it.
+
+The server **must be started from the project root directory** (the directory containing `src/`) because the rest of the codebase uses relative paths like `./data/`. The lifespan code uses the same convention:
+
+```python
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: ensure data directories exist (relative to CWD = project root)
+    for d in ["data", "data/results", "data/runtime_contexts", "data/manifests", "data/fingerprints"]:
+        Path(d).mkdir(parents=True, exist_ok=True)
+    yield
+    # Shutdown: nothing needed
+
+app = FastAPI(title=..., description=..., version=..., lifespan=lifespan)
+```
+
+Add to `.env.example` and startup docs: "Run uvicorn from the project root directory."
 
 ### 2b — Remove dead scoring code
 **File:** `src/governiq/core/scoring.py`
+
+**Authorisation note:** CLAUDE.md states dead code "should be flagged but not deleted without explicit instruction." This spec is that explicit instruction. The `compute_weighted_score()` method uses hardcoded 40/40 weights that contradict the correct 80/10/10 formula and would mislead any implementer who runs it.
+
 Delete `compute_weighted_score()` method entirely (lines ~193–213). Add comment above `overall_score` property:
 ```python
 # Scoring formula: Webhook 80% + FAQ 10% + Compliance 10%
@@ -152,9 +189,9 @@ PORT=8000            # Port to run GovernIQ on (default: 8000)
 ## Component 3 — Multi-Provider AI Settings Page
 
 ### Location
-`/admin/settings` (new route, or extend existing `/admin/llm-config`)
+`/admin/settings` — **new** GET + POST route added to `src/governiq/admin/routes.py`. The existing `/admin/llm-config` route (if present) is kept for backward compatibility but redirects to `/admin/settings`.
 
-### Template: `admin_settings.html`
+### Template: `admin_settings.html` (new file)
 Non-technical redesign of the LLM config page.
 
 ### Provider selection
@@ -178,7 +215,7 @@ Six provider cards displayed in a 2×3 grid. Each card shows:
 ### Interaction flow
 1. User clicks a provider card → form fields slide open below
 2. User fills in required fields
-3. "Test Connection" button → calls `/api/v1/health/test-ai` with the new config
+3. "Test Connection" button → calls `POST /api/v1/health/test-ai` with the new config
 4. Success: green banner "Connected — [Provider] is working correctly"
 5. Failure: red banner with plain-English message and specific fix instructions
 6. "Save" button persists to `data/llm_config.json`
@@ -203,66 +240,112 @@ Six provider cards displayed in a 2×3 grid. Each card shows:
 ### Current state
 `PlagiarismDetector` and `FingerprintEngine` fully implemented in `src/governiq/plagiarism/`. Not called anywhere in submission flow.
 
+### Scorecard schema change (required)
+**File:** `src/governiq/core/scoring.py` — `Scorecard` dataclass
+
+Add two fields to the `Scorecard` dataclass in the `# Flags` section:
+```python
+plagiarism_flag: bool = False
+plagiarism_message: str = ""
+```
+
+Also add both fields to the `to_dict()` method in `Scorecard` so they are serialised to JSON (alongside the existing flag fields).
+
+`PlagiarismReport.message` (a `str`) is the field to copy into `scorecard.plagiarism_message`. `PlagiarismReport` does not have a `.detail` attribute — do not use `.detail`.
+
 ### Integration point
 `src/governiq/candidate/routes.py` — POST `/candidate/submit` handler, after CBM parse, before webhook evaluation.
 
 ### Behaviour
-- Run `PlagiarismDetector.check(submission)`
-- If `result.is_duplicate`: set `scorecard.plagiarism_flag = True`, `scorecard.plagiarism_detail = result.detail`
+Import: `from governiq.plagiarism.detector import detect, PlagiarismRisk`
+
+Call: `result = detect(export_data, manifest.assessment_type, session_id)`
+
+- `export_data` is the parsed `appDefinition.json` dict from the bot ZIP
+- `assessment_type` comes from the loaded manifest (e.g., `"travel"`)
+- `session_id` is the newly created session identifier
+
+If `result.risk_level != PlagiarismRisk.NONE`: set `scorecard.plagiarism_flag = True`, `scorecard.plagiarism_message = result.message`
+
+- `result.message` is a human-readable string containing the risk level and matching submission IDs (e.g., `"HIGH — Bot structure identical to: sub_abc, sub_def"`). It is intended for **admin display only** — it contains internal session IDs.
 - Evaluation **still runs and scores** — plagiarism flag is advisory, not a blocker
 - Admin decides action
 
 ### UI changes
 
 **`candidate_report.html`:** If `scorecard.plagiarism_flag`:
-- Amber warning banner below page header: "This submission has been flagged for similarity to a previous submission. Your evaluator has been notified."
-- Uses existing `.alert .alert-warning` component
+- Amber warning banner below page header using the **hardcoded generic string** (do NOT render `scorecard.plagiarism_message` — it contains internal session IDs): "This submission has been flagged for similarity to a previous submission. Your evaluator has been notified."
+- Uses existing `.alert.alert-warning` CSS class from `base.html`
 
 **`admin_review.html`:** If `scorecard.plagiarism_flag`:
-- Red warning banner: "Flagged: Possible duplicate submission — [detail]"
-- Uses `.alert .alert-danger` component
+- Red warning banner rendering the admin-safe detail: "Flagged: Possible duplicate submission — {{ scorecard.plagiarism_message }}"
+- Uses existing `.alert.alert-danger` CSS class from `base.html`
 
 **`admin_dashboard.html`:** Submissions table row:
 - Add `badge-warn` "Flagged" badge in the status column when `plagiarism_flag = True`
+- The `.alert.alert-warning` and `.alert.alert-danger` classes are already defined in `base.html` — no new CSS needed.
 
 ---
 
 ## Component 5 — Admin Compare Diff Logic
 
 ### Current state
-`/admin/compare` renders `admin_compare.html` but performs no comparison.
+`/admin/compare` route exists in `src/governiq/admin/routes.py`. It already:
+- Groups all submissions by candidate + assessment and detects duplicate submission sets
+- Computes `similarity_groups` (with `score_range` min/max per group)
+- Reads `left` and `right` query params and loads the two selected scorecards as `left_sc` / `right_sc`
+- Passes `similarity_groups`, `left`, `right`, `left_id`, `right_id` to the template
+
+What it does **not** yet do:
+- Align tasks between the two scorecards by `task_id`
+- Compute per-task score deltas
+- Flag tasks where the delta exceeds 20%
+
+The template currently shows raw JSON for the two scorecards. The similarity group sidebar works.
 
 ### Implementation
-Route accepts two `session_id` query params: `/admin/compare?a={id}&b={id}`
+Route already uses `?left={id}&right={id}` — keep these param names throughout. Do not change to `a`/`b`.
 
-Diff logic (in route handler, no new files):
-1. Load both scorecards from `data/results/`
-2. Align tasks by `task_id`
-3. For each task: compute score delta, flag if delta > 20%
-4. Return context with aligned task list + overall comparison
+Extend the existing route handler (no new files). Do not remove the existing `similarity_groups` logic:
+1. Scorecards are already loaded as `left_sc` / `right_sc` — no change needed there
+2. Add task alignment: zip tasks from both scorecards by `task_id`
+3. For each aligned task: compute score delta, flag if `abs(delta) > 0.20`
+4. Add `task_diff` list and `overall_diff` to template context alongside existing variables
 
 ### Template changes (`admin_compare.html`)
-- Side-by-side score table: Candidate A vs Candidate B per task
-- Colour-coded deltas: green (A higher), red (B higher), grey (similar)
+- Side-by-side score table: Left candidate vs Right candidate per task
+- Colour-coded deltas: green (left higher), red (right higher), grey (similar)
 - "Significant difference" badge on tasks with >20% gap
 - Overall scores compared at top with score rings
 - No raw JSON exposed — clean table only
 
 ### Dashboard integration
-"Compare" button on admin dashboard submissions table — selects two rows and opens `/admin/compare?a=...&b=...`
+"Compare" button on admin dashboard submissions table — selects two rows and opens `/admin/compare?left=...&right=...`
 
 ---
 
 ## Component 6 — Non-Technical UX Polish
 
 ### 6a — Candidate submission progress indicator
-**File:** `candidate_submit.html`
-After form submit, show an inline progress panel replacing the submit button:
-- Step 1: "Checking your bot file..." (CBM parse)
-- Step 2: "Testing your bot..." (webhook evaluation, longest step)
-- Step 3: "Calculating your score..." (scoring)
-- Redirect to report page on completion
-Implemented with a polling call to `/api/v1/results/{session_id}` every 3 seconds.
+**File:** `candidate_submit.html` + `src/governiq/candidate/routes.py`
+
+The submit POST handler runs evaluation synchronously today. To show a progress indicator:
+
+**Backend change (routes.py):**
+1. On POST, validate input and parse CBM synchronously (fast, < 1s)
+2. Create a stub results entry immediately: `{"session_id": "...", "status": "running"}`
+3. Launch full evaluation as a FastAPI `BackgroundTasks` task
+4. Return a JSON response `{"session_id": "..."}` immediately (no redirect)
+
+**Frontend change (candidate_submit.html):**
+After form submit:
+- Replace submit button area with an inline progress panel showing:
+  - Step 1: "Checking your bot file..." (CBM parse — completes synchronously)
+  - Step 2: "Testing your bot..." (webhook evaluation, longest step)
+  - Step 3: "Calculating your score..." (scoring)
+- Poll `GET /api/v1/results/{session_id}` every 3 seconds — this endpoint **already exists** in `src/governiq/api/routes.py` (reads `data/results/scorecard_{session_id}.json`)
+- The stub file written by the BackgroundTask must use the same filename convention: `scorecard_{session_id}.json`, so the existing endpoint can serve it immediately during polling
+- When the response `status` field is not `"running"`, redirect to the report page
 
 ### 6b — Branded error pages
 **File:** New `error.html` template
@@ -299,18 +382,18 @@ All in plain English, shown inline below the field.
 
 | File | Change type | Component |
 |---|---|---|
-| `src/governiq/main.py` | Modify | 2a (data dir init), lifespan hook |
-| `src/governiq/core/scoring.py` | Modify | 2b (delete dead code) |
+| `src/governiq/main.py` | Modify | 2a (data dir init via lifespan) |
+| `src/governiq/core/scoring.py` | Modify | 2b (delete dead code) + 4 (add plagiarism fields to Scorecard) |
 | `src/governiq/templates/how_it_works.html` | Modify | 2c (scoring percentages) |
 | `src/governiq/core/engine.py` | Modify | 2d (datetime fix) |
 | `src/governiq/core/runtime_context.py` | Modify | 2d (datetime fix) |
 | `.env.example` | Create | 2e |
-| `src/governiq/api/routes.py` | Modify | Health endpoint (Component 1) |
+| `src/governiq/api/routes.py` | Modify | New `/api/v1/health` + `/api/v1/health/test-ai` endpoints (Component 1, 3) |
 | `src/governiq/templates/base.html` | Modify | Health bar HTML + JS polling (Component 1) |
-| `src/governiq/admin/routes.py` | Modify | Settings route, compare route (Components 3, 5) |
+| `src/governiq/admin/routes.py` | Modify | New `/admin/settings` GET+POST route, extend compare route (Components 3, 5) |
 | `src/governiq/templates/admin_settings.html` | Create | Multi-provider settings (Component 3) |
 | `src/governiq/templates/admin_compare.html` | Modify | Diff logic rendering (Component 5) |
-| `src/governiq/candidate/routes.py` | Modify | Plagiarism wiring, progress polling (Components 4, 6a) |
+| `src/governiq/candidate/routes.py` | Modify | Plagiarism wiring, BackgroundTasks, progress polling (Components 4, 6a) |
 | `src/governiq/templates/candidate_submit.html` | Modify | Progress indicator, form validation (Component 6a, 6d) |
 | `src/governiq/templates/candidate_report.html` | Modify | Plagiarism banner (Component 4) |
 | `src/governiq/templates/admin_review.html` | Modify | Plagiarism banner (Component 4) |
@@ -338,9 +421,9 @@ All in plain English, shown inline below the field.
 1. App starts cleanly on a fresh machine with no `data/` directory
 2. Health bar shows red on first run, guides admin to configure AI model in < 2 minutes
 3. Admin can switch AI providers from any machine without touching a file or terminal
-4. Candidate submits a bot export and sees a live progress indicator
+4. Candidate submits a bot export and sees a live progress indicator powered by BackgroundTasks + polling
 5. Plagiarism flag appears on admin review when a duplicate is detected
-6. Admin compare shows a clear score table for two submissions
+6. Admin compare shows a clear score table for two submissions using `?left=&right=` params
 7. `pytest tests/ -v` passes with 0 failures
 8. Zero emojis anywhere in the UI — Lucide icons only
 9. No technical jargon in any user-facing message
