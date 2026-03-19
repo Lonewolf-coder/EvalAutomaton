@@ -739,6 +739,42 @@ async def manifest_schema_reference(request: Request):
 # Evaluation Comparison Routes
 # ---------------------------------------------------------------------------
 
+
+def _compute_task_diff(left_sc: dict | None, right_sc: dict | None) -> list[dict]:
+    """Align tasks from two scorecards by task_id and compute score deltas."""
+    if not left_sc or not right_sc:
+        return []
+    left_tasks = {t["task_id"]: t for t in left_sc.get("task_scores", [])}
+    right_tasks = {t["task_id"]: t for t in right_sc.get("task_scores", [])}
+    seen = set()
+    ordered_ids = []
+    for tid in list(left_tasks.keys()) + list(right_tasks.keys()):
+        if tid not in seen:
+            seen.add(tid)
+            ordered_ids.append(tid)
+    diff = []
+    for tid in ordered_ids:
+        lt = left_tasks.get(tid)
+        rt = right_tasks.get(tid)
+        left_score = lt["combined_score"] if lt else None
+        right_score = rt["combined_score"] if rt else None
+        if left_score is not None and right_score is not None:
+            delta = left_score - right_score
+        elif left_score is not None:
+            delta = left_score
+        else:
+            delta = -(right_score or 0)
+        diff.append({
+            "task_id": tid,
+            "task_name": (lt or rt or {}).get("task_name", tid),
+            "left_score": left_score,
+            "right_score": right_score,
+            "delta": round(delta, 4),
+            "significant": abs(delta) > 0.20,
+        })
+    return diff
+
+
 @router.get("/compare", response_class=HTMLResponse)
 async def compare_evaluations(request: Request):
     """Compare evaluations — detect duplicates and compare submissions."""
@@ -783,6 +819,8 @@ async def compare_evaluations(request: Request):
             if ev.get("session_id") == right_id:
                 right_sc = ev
 
+    task_diff = _compute_task_diff(left_sc, right_sc)
+
     return templates.TemplateResponse("admin_compare.html", {
         "request": request,
         "portal": "admin",
@@ -792,4 +830,5 @@ async def compare_evaluations(request: Request):
         "right": right_sc,
         "left_id": left_id,
         "right_id": right_id,
+        "task_diff": task_diff,
     })

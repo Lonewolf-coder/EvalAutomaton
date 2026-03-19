@@ -10,6 +10,15 @@
         </div>
     </div>
 
+    <div id="compareBar" style="display:none; background:rgba(139,92,246,.1); padding:.6rem 1.25rem; border-radius:8px; margin-bottom:1rem; align-items:center; gap:.75rem; flex-wrap:wrap;">
+      <i data-lucide="git-compare" class="icon icon-sm"></i>
+      <span id="compareStatus" style="font-size:.82rem; flex:1;">Select two submissions to compare</span>
+      <button onclick="openCompare()" class="btn btn-primary btn-sm" id="compareBtn" disabled>
+        Compare Selected
+      </button>
+      <button onclick="clearCompare()" class="btn btn-ghost btn-sm">Clear</button>
+    </div>
+
     <!-- Stats Row — stagger enables scroll-triggered animation delay per child -->
     <div class="grid-4 spacer stagger">
         <div class="card animate-in">
@@ -163,6 +172,7 @@
         <table class="table">
             <thead>
                 <tr>
+                    <th style="width:40px;"></th>
                     <th>Session</th>
                     <th>Candidate</th>
                     <th>Assessment</th>
@@ -176,6 +186,7 @@
             <tbody>
                 {% for ev in evaluations %}
                 <tr>
+                    <td><input type="checkbox" class="compare-check" data-session="{{ ev.session_id }}" onchange="updateCompareBar()"></td>
                     <td class="text-small" style="font-family:monospace;">{{ ev.session_id }}</td>
                     <td><i data-lucide="user" class="icon icon-sm" style="margin-right:.2rem;"></i> {{ ev.candidate_id or 'N/A' }}</td>
                     <td>{{ ev.assessment_name }}</td>
@@ -253,6 +264,39 @@ function updateProviderDefaults() {
             document.getElementById('llmApiKey').placeholder = 'Enter API key';
         }
     }
+}
+
+let compareIds = [];
+function updateCompareBar() {
+  const checks = document.querySelectorAll(".compare-check:checked");
+  compareIds = Array.from(checks).map(c => c.dataset.session);
+  const bar = document.getElementById("compareBar");
+  const btn = document.getElementById("compareBtn");
+  const status = document.getElementById("compareStatus");
+  bar.style.display = "flex";
+  if (compareIds.length === 0) {
+    status.textContent = "Select two submissions to compare";
+    btn.disabled = true;
+  } else if (compareIds.length === 1) {
+    status.textContent = "Select one more submission";
+    btn.disabled = true;
+  } else if (compareIds.length === 2) {
+    status.textContent = `Comparing ${compareIds[0].slice(0,8)}... vs ${compareIds[1].slice(0,8)}...`;
+    btn.disabled = false;
+  } else {
+    checks[checks.length - 1].checked = false;
+    updateCompareBar();
+  }
+}
+function openCompare() {
+  if (compareIds.length === 2) {
+    window.location.href = `/admin/compare?left=${compareIds[0]}&right=${compareIds[1]}`;
+  }
+}
+function clearCompare() {
+  document.querySelectorAll(".compare-check").forEach(c => c.checked = false);
+  compareIds = [];
+  document.getElementById("compareBar").style.display = "none";
 }
 </script>
 {% endblock %}
