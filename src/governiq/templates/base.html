@@ -178,10 +178,6 @@
         .topnav-links a.active { color: var(--nav-active); background: rgba(255,255,255,0.1); }
         .topnav-divider { width: 1px; height: 20px; background: rgba(255,255,255,0.1); margin: 0 .25rem; }
 
-        .portal-badge { font-size: .6rem; padding: 2px 8px; border-radius: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; margin-left: .5rem; }
-        .portal-badge--admin     { background: var(--accent); color: #fff; }
-        .portal-badge--candidate { background: var(--primary); color: #fff; }
-
         /* ---- Theme Toggle ---- */
         .theme-toggle {
             background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
@@ -503,11 +499,6 @@
         <div class="topnav-brand">
             <div class="brand-icon"><i data-lucide="shield-check" style="width:16px;height:16px;"></i></div>
             GovernIQ
-            {% if portal == 'candidate' %}
-            <span class="portal-badge portal-badge--candidate" style="margin-left:.5rem;">Candidate</span>
-            {% elif portal == 'admin' %}
-            <span class="portal-badge portal-badge--admin" style="margin-left:.5rem;">Admin</span>
-            {% endif %}
         </div>
         <div class="topnav-links">
 
