@@ -3,6 +3,12 @@
 
 {% block content %}
 <div class="container-wide">
+    {% if sc.get('plagiarism_flag') %}
+    <div class="alert alert-danger" style="margin-bottom:1.25rem;">
+      <i data-lucide="shield-alert" class="icon icon-sm"></i>
+      <strong>Flagged: Possible duplicate submission</strong> — {{ sc.get('plagiarism_message', '') }}
+    </div>
+    {% endif %}
     <div class="flex-between spacer no-print">
         <div>
             <!-- Bug 3 fix: card-title class aligns icon + text; inline margin-right removed -->

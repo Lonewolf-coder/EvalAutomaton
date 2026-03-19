@@ -206,6 +206,11 @@
                     </td>
                     <td>
                         {% if ev.state_seeded %}<span class="badge badge-warn"><i data-lucide="database" class="icon icon-sm"></i> seeded</span>{% endif %}
+                        {% if ev.get('plagiarism_flag') %}
+                        <span class="badge badge-warn">
+                          <i data-lucide="flag" style="width:10px;height:10px;"></i> Flagged
+                        </span>
+                        {% endif %}
                     </td>
                     <td>
                         <a href="/admin/review/{{ ev.session_id }}" class="btn btn-outline btn-sm">

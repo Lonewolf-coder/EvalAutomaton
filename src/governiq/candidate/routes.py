@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import uuid as _uuid_mod
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 
 from ..core.engine import EvaluationEngine
 from ..core.manifest import Manifest
+from ..plagiarism.detector import detect as detect_plagiarism, PlagiarismRisk
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/candidate", tags=["candidate"])
@@ -305,6 +307,18 @@ async def candidate_submit(
         except Exception as e:
             logger.warning("Admin JWT grant failed: %s — public API insights unavailable", e)
 
+    # Run plagiarism check on bot export before evaluation
+    _plag_report = None
+    _plag_session_id = str(_uuid_mod.uuid4())
+    try:
+        _plag_report = detect_plagiarism(
+            bot_export_data,
+            manifest.assessment_type,
+            _plag_session_id,
+        )
+    except Exception:
+        _plag_report = None
+
     # Load LLM config from admin settings
     llm_config = load_llm_config()
 
@@ -345,6 +359,11 @@ async def candidate_submit(
             "available_manifests": available,
             "error": f"Unexpected evaluation error: {e}",
         })
+
+    # Apply plagiarism flag from pre-check
+    if _plag_report and _plag_report.risk_level != PlagiarismRisk.NONE:
+        scorecard.plagiarism_flag = True
+        scorecard.plagiarism_message = _plag_report.message
 
     # Redirect to report
     return RedirectResponse(
