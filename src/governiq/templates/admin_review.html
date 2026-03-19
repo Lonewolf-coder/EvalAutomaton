@@ -22,7 +22,7 @@
                 {{ (sc.overall_score * 100) | round(1) }}%
             </div>
             <div style="flex:1; min-width:250px;">
-                <h2 style="margin-bottom:.5rem;">
+                <h2 class="card-title" style="margin-bottom:.5rem;">
                     {% if sc.has_critical_failures %}<i data-lucide="shield-alert" class="icon icon-lg" style="color:var(--fail);"></i> Critical Compliance Failure
                     {% elif sc.overall_score >= 0.7 %}<i data-lucide="shield-check" class="icon icon-lg" style="color:var(--pass);"></i> Assessment Passed
                     {% elif sc.overall_score >= 0.5 %}<i data-lucide="alert-triangle" class="icon icon-lg" style="color:var(--warn);"></i> Needs Improvement
@@ -103,7 +103,7 @@
             <div class="grid-2">
                 <!-- Webhook column — Bug 4 fix: #7c3aed replaced with var(--purple-accent) -->
                 <div style="border-left:3px solid var(--purple-accent); padding-left:1rem;">
-                    <h4 style="color:var(--purple-accent); margin-bottom:.75rem;"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Results</h4>
+                    <h4 class="card-title" style="color:var(--purple-accent); margin-bottom:.75rem;"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Results</h4>
                     {% if ts.webhook_checks %}
                         {% for check in ts.webhook_checks %}
                         <div class="check-row">
@@ -120,7 +120,7 @@
 
                 <!-- CBM column — Bug 4 fix: #1e40af replaced with var(--info-accent) -->
                 <div style="border-left:3px solid var(--info-accent); padding-left:1rem;">
-                    <h4 style="color:var(--info-accent); margin-bottom:.75rem;"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Evaluator Reference Panel</h4>
+                    <h4 class="card-title" style="color:var(--info-accent); margin-bottom:.75rem;"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Evaluator Reference Panel</h4>
                     {% for check in ts.cbm_checks %}
                     <div class="check-row">
                         <div class="check-icon check-icon--{% if check.status == 'pass' %}pass{% elif check.status == 'fail' %}fail{% elif check.status == 'warning' %}warn{% else %}info{% endif %}">
@@ -134,7 +134,7 @@
 
             {% if ts.evidence_cards %}
             <div class="divider"></div>
-            <h4 style="margin-bottom:.75rem;"><i data-lucide="file-search" class="icon icon-sm"></i> Evidence Cards</h4>
+            <h4 class="card-title" style="margin-bottom:.75rem;"><i data-lucide="file-search" class="icon icon-sm"></i> Evidence Cards</h4>
             {% for card in ts.evidence_cards %}
             <div class="evidence evidence--{{ card.color }}">
                 <div class="evidence-header" onclick="this.nextElementSibling.classList.toggle('hidden')">
@@ -165,7 +165,7 @@
             <div class="grid-3">
                 {% if sc.kore_api_insights.get('bot_details') and not sc.kore_api_insights.bot_details.get('error') %}
                 <div>
-                    <h4><i data-lucide="bot" class="icon icon-sm"></i> Bot Details</h4>
+                    <h4 class="card-title"><i data-lucide="bot" class="icon icon-sm"></i> Bot Details</h4>
                     {% set bd = sc.kore_api_insights.bot_details %}
                     <p class="text-small"><strong>Name:</strong> {{ bd.get('name', bd.get('botName', 'N/A')) }}</p>
                     <p class="text-small"><strong>Type:</strong> {{ bd.get('type', bd.get('botType', 'N/A')) }}</p>
@@ -174,7 +174,7 @@
                 {% endif %}
                 {% if sc.kore_api_insights.get('analytics') and not sc.kore_api_insights.analytics.get('error') %}
                 <div>
-                    <h4><i data-lucide="bar-chart-3" class="icon icon-sm"></i> Analytics (30d)</h4>
+                    <h4 class="card-title"><i data-lucide="bar-chart-3" class="icon icon-sm"></i> Analytics (30d)</h4>
                     {% set an = sc.kore_api_insights.analytics %}
                     <p class="text-small"><strong>Conversations:</strong> {{ an.get('totalConversations', 'N/A') }}</p>
                     <p class="text-small"><strong>Success:</strong> {{ an.get('successfulConversations', 'N/A') }}</p>
@@ -183,7 +183,7 @@
                 {% endif %}
                 {% if sc.kore_api_insights.get('intent_stats') and not sc.kore_api_insights.intent_stats.get('error') %}
                 <div>
-                    <h4><i data-lucide="brain" class="icon icon-sm"></i> Intent Detection</h4>
+                    <h4 class="card-title"><i data-lucide="brain" class="icon icon-sm"></i> Intent Detection</h4>
                     {% set it = sc.kore_api_insights.intent_stats %}
                     <p class="text-small"><strong>Intents:</strong> {{ it.get('intents', 'N/A') }}</p>
                     <p class="text-small"><strong>Accuracy:</strong> {{ it.get('accuracy', 'N/A') }}</p>

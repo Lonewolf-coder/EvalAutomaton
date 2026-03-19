@@ -23,7 +23,7 @@
                     {{ (sc.overall_score * 100) | round(1) }}%
                 </div>
                 <div style="flex:1; min-width:250px;">
-                    <h2 style="font-size:1.5rem; margin-bottom:.5rem;">
+                    <h2 class="card-title" style="font-size:1.5rem; margin-bottom:.5rem;">
                         {% if sc.has_critical_failures %}
                             <i data-lucide="shield-alert" class="icon icon-lg" style="color:var(--fail);"></i> Critical Compliance Failure
                         {% elif sc.overall_score >= 0.7 %}
@@ -183,7 +183,7 @@
             <div class="grid-2">
                 <!-- Webhook column — Bug 4 fix: #7c3aed replaced with var(--purple-accent) -->
                 <div style="border-left:3px solid var(--purple-accent); padding-left:1rem;">
-                    <h4 style="color:var(--purple-accent); margin-bottom:.75rem;"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Results</h4>
+                    <h4 class="card-title" style="color:var(--purple-accent); margin-bottom:.75rem;"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Results</h4>
                     {% if ts.webhook_checks %}
                         {% for check in ts.webhook_checks %}
                         <div class="check-row">
@@ -203,7 +203,7 @@
 
                 <!-- CBM column — Bug 4 fix: #1e40af replaced with var(--info-accent) -->
                 <div style="border-left:3px solid var(--info-accent); padding-left:1rem;">
-                    <h4 style="color:var(--info-accent); margin-bottom:.75rem;"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Structural Checks</h4>
+                    <h4 class="card-title" style="color:var(--info-accent); margin-bottom:.75rem;"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Structural Checks</h4>
                     {% for check in ts.cbm_checks %}
                     <div class="check-row">
                         <div class="check-icon check-icon--{% if check.status == 'pass' %}pass{% elif check.status == 'fail' %}fail{% elif check.status == 'warning' %}warn{% else %}info{% endif %}">
@@ -221,7 +221,7 @@
             <!-- Evidence Cards -->
             {% if ts.evidence_cards %}
             <div class="divider"></div>
-            <h4 style="margin-bottom:.75rem;"><i data-lucide="file-search" class="icon icon-sm"></i> Evidence</h4>
+            <h4 class="card-title" style="margin-bottom:.75rem;"><i data-lucide="file-search" class="icon icon-sm"></i> Evidence</h4>
             {% for card in ts.evidence_cards %}
             <div class="evidence evidence--{{ card.color }}">
                 <div class="evidence-header" onclick="this.nextElementSibling.classList.toggle('hidden')">
@@ -391,7 +391,7 @@
             <div class="grid-3">
                 {% if sc.kore_api_insights.get('bot_details') and not sc.kore_api_insights.bot_details.get('error') %}
                 <div class="card">
-                    <div class="card-header"><h4><i data-lucide="bot" class="icon icon-sm"></i> Bot Details</h4></div>
+                    <div class="card-header"><h4 class="card-title"><i data-lucide="bot" class="icon icon-sm"></i> Bot Details</h4></div>
                     <div class="card-body text-small">
                         {% set bd = sc.kore_api_insights.bot_details %}
                         <p><strong>Name:</strong> {{ bd.get('name', bd.get('botName', 'N/A')) }}</p>
@@ -407,7 +407,7 @@
 
                 {% if sc.kore_api_insights.get('analytics') and not sc.kore_api_insights.analytics.get('error') %}
                 <div class="card">
-                    <div class="card-header"><h4><i data-lucide="bar-chart-3" class="icon icon-sm"></i> Analytics (30 days)</h4></div>
+                    <div class="card-header"><h4 class="card-title"><i data-lucide="bar-chart-3" class="icon icon-sm"></i> Analytics (30 days)</h4></div>
                     <div class="card-body text-small">
                         {% set an = sc.kore_api_insights.analytics %}
                         <p><strong>Total Conversations:</strong> {{ an.get('totalConversations', an.get('total', 'N/A')) }}</p>
@@ -423,7 +423,7 @@
 
                 {% if sc.kore_api_insights.get('intent_stats') and not sc.kore_api_insights.intent_stats.get('error') %}
                 <div class="card">
-                    <div class="card-header"><h4><i data-lucide="brain" class="icon icon-sm"></i> Intent Detection</h4></div>
+                    <div class="card-header"><h4 class="card-title"><i data-lucide="brain" class="icon icon-sm"></i> Intent Detection</h4></div>
                     <div class="card-body text-small">
                         {% set it = sc.kore_api_insights.intent_stats %}
                         {% if it.get('intents') %}
@@ -444,7 +444,7 @@
             <div class="divider"></div>
             <!-- Per-Task Analytics — deferred, refreshable -->
             <div style="display:flex; align-items:center; gap:.75rem; margin-bottom:.75rem; flex-wrap:wrap;">
-                <h4 style="margin:0;"><i data-lucide="bar-chart-2" class="icon icon-sm"></i> Per-Task Analytics</h4>
+                <h4 class="card-title" style="margin:0;"><i data-lucide="bar-chart-2" class="icon icon-sm"></i> Per-Task Analytics</h4>
                 {% if sc.analytics_status == 'available' %}
                 <span class="badge badge-pass" style="font-size:.75rem;">&#10003; Available</span>
                 {% elif sc.analytics_status == 'partial' %}
@@ -550,11 +550,11 @@
         <div class="card-body">
             <div class="grid-2">
                 <div>
-                    <h4 style="margin-bottom:.5rem;"><i data-lucide="file-code" class="icon icon-sm"></i> Pipeline A: Structural Analysis</h4>
+                    <h4 class="card-title" style="margin-bottom:.5rem;"><i data-lucide="file-code" class="icon icon-sm"></i> Pipeline A: Structural Analysis</h4>
                     <p class="text-small text-muted">Your bot export JSON was parsed to extract all dialogs, entity nodes, service nodes, Agent Nodes, and FAQ entries. Each was compared against the assessment requirements defined in the manifest. This analysis is <strong>deterministic</strong> &mdash; running it again on the same export produces identical results.</p>
                 </div>
                 <div>
-                    <h4 style="margin-bottom:.5rem;"><i data-lucide="webhook" class="icon icon-sm"></i> Pipeline B: Live Conversation Testing</h4>
+                    <h4 class="card-title" style="margin-bottom:.5rem;"><i data-lucide="webhook" class="icon icon-sm"></i> Pipeline B: Live Conversation Testing</h4>
                     <p class="text-small text-muted">An AI-powered conversation driver connected to your bot's webhook and conducted real conversations &mdash; booking appointments, retrieving records, modifying data, and testing edge cases. After each conversation, the system verified what data actually reached your Mock API.</p>
                 </div>
             </div>
