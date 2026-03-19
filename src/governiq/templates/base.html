@@ -103,7 +103,7 @@
         [data-theme="dark"] .badge-fail { background: var(--fail-bg); color: var(--fail-text); }
         [data-theme="dark"] .badge-warn { background: var(--warn-bg); color: var(--warn-text); }
         [data-theme="dark"] .badge-info { background: var(--info-bg); color: var(--info-text); }
-        [data-theme="dark"] .badge-grey { background: var(--border); color: #b0b0b0; }
+        [data-theme="dark"] .badge-grey { background: var(--bg-subtle); color: #b0b0b0; }
         [data-theme="dark"] .alert-danger  { background: var(--fail-bg); color: var(--fail-text); border-color: #5c1a1a; }
         [data-theme="dark"] .alert-warning { background: var(--warn-bg); color: var(--warn-text); border-color: #5c3a0e; }
         [data-theme="dark"] .alert-success { background: var(--pass-bg); color: var(--pass-text); border-color: #064e3b; }
@@ -614,9 +614,7 @@
                 if (e.isIntersecting) { e.target.classList.add('is-visible'); observer.unobserve(e.target); }
             });
         }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
-        document.addEventListener('DOMContentLoaded', function() {
-            document.querySelectorAll('.animate-in').forEach(function(el) { observer.observe(el); });
-        });
+        document.querySelectorAll('.animate-in').forEach(function(el) { observer.observe(el); });
     })();
     </script>
 
