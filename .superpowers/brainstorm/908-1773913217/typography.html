@@ -1,0 +1,172 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@700;800&family=IBM+Plex+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Fraunces:ital,wght@0,700;0,800;1,700&family=Geist:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+
+<style>
+  .typo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; margin-top: 1rem; }
+
+  .typo-card {
+    background: linear-gradient(160deg, #1a1440, #1e1b4b);
+    border: 1px solid rgba(139,92,246,0.2);
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+    position: relative;
+  }
+  .typo-card:hover { border-color: rgba(139,92,246,0.5); box-shadow: 0 0 20px rgba(139,92,246,0.12); }
+  .typo-card.selected { border-color: rgba(139,92,246,0.9); box-shadow: 0 0 28px rgba(139,92,246,0.25); }
+
+  .typo-preview {
+    background: linear-gradient(160deg, #0f0c29, #1e1b4b);
+    padding: 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    position: relative;
+    overflow: hidden;
+    min-height: 210px;
+  }
+  .typo-preview::before {
+    content: '';
+    position: absolute; top: -30px; right: -30px;
+    width: 100px; height: 100px;
+    background: radial-gradient(circle, rgba(139,92,246,0.2), transparent 70%);
+    pointer-events: none;
+  }
+
+  .typo-meta {
+    padding: 14px 16px;
+  }
+  .typo-meta h3 { font-size: 13px; font-weight: 700; color: #e2e8f0; margin-bottom: 3px; }
+  .typo-meta p { font-size: 11px; color: rgba(255,255,255,0.4); line-height: 1.5; }
+
+  /* Shared preview elements */
+  .nav-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px; padding: 4px 10px; margin-bottom: 14px;
+  }
+  .nav-dot { width: 6px; height: 6px; border-radius: 50%; background: linear-gradient(135deg,#8b5cf6,#06b6d4); }
+
+  .score-line { display: flex; align-items: baseline; gap: 8px; margin: 6px 0 10px; }
+  .score-pct { font-size: 38px; font-weight: 800; line-height: 1;
+    background: linear-gradient(135deg, #34d399, #06b6d4);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+
+  .pass-chip {
+    display: inline-block;
+    background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.3);
+    color: #34d399; padding: 2px 9px; border-radius: 20px; font-size: 9px; font-weight: 700;
+    letter-spacing: .5px; text-transform: uppercase;
+  }
+
+  .body-line { color: rgba(255,255,255,0.45); font-size: 11.5px; line-height: 1.6; margin-top: 8px; }
+  .label-tag { color: rgba(255,255,255,0.3); font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 3px; }
+
+  .letter { position: absolute; top: 10px; right: 12px; color: rgba(255,255,255,0.15); font-size: 18px; font-weight: 800; }
+</style>
+
+<h2>Which typography pairing feels right?</h2>
+<p class="subtitle">Each option uses a distinctive display font for headings and a refined body font for content. These are live — loaded from Google Fonts.</p>
+
+<div class="typo-grid">
+
+  <!-- A: Syne + DM Sans -->
+  <div class="typo-card option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="typo-preview">
+      <div class="nav-chip">
+        <div class="nav-dot"></div>
+        <span style="font-family:'DM Sans',sans-serif; color:rgba(255,255,255,0.6); font-size:10px; font-weight:500;">Evaluator Dashboard</span>
+      </div>
+      <div class="label-tag" style="font-family:'DM Sans',sans-serif;">Overall Score</div>
+      <div class="score-line">
+        <span class="score-pct" style="font-family:'Syne',sans-serif;">87%</span>
+        <span class="pass-chip" style="font-family:'DM Sans',sans-serif;">Passed</span>
+      </div>
+      <div style="font-family:'Syne',sans-serif; color:#e2e8f0; font-size:16px; font-weight:700; letter-spacing:-.3px; margin-bottom:4px;">Assessment Passed</div>
+      <div class="body-line" style="font-family:'DM Sans',sans-serif;">Candidate completed 10 of 12 tasks. Two edge-case flows require attention before certification.</div>
+      <div style="margin-top:12px; display:flex; gap:6px;">
+        <div style="flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 8px;">
+          <div class="label-tag" style="font-family:'DM Sans',sans-serif; font-size:8px;">Tasks</div>
+          <div style="font-family:'Syne',sans-serif; color:#fff; font-size:14px; font-weight:700;">10/12</div>
+        </div>
+        <div style="flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 8px;">
+          <div class="label-tag" style="font-family:'DM Sans',sans-serif; font-size:8px;">FAQ</div>
+          <div style="font-family:'Syne',sans-serif; color:#34d399; font-size:14px; font-weight:700;">92%</div>
+        </div>
+      </div>
+    </div>
+    <div class="typo-meta">
+      <h3 style="font-family:'Syne',sans-serif;">A — Syne + DM Sans</h3>
+      <p style="font-family:'DM Sans',sans-serif;">Syne is bold, wide, geometric — commands authority. DM Sans is warm and highly legible for dense data. Popular in fintech and compliance tools.</p>
+    </div>
+    <div class="letter" style="font-family:'Syne',sans-serif;">A</div>
+  </div>
+
+  <!-- B: Bricolage Grotesque + Geist -->
+  <div class="typo-card option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="typo-preview">
+      <div class="nav-chip">
+        <div class="nav-dot"></div>
+        <span style="font-family:'Geist',sans-serif; color:rgba(255,255,255,0.6); font-size:10px; font-weight:500;">Evaluator Dashboard</span>
+      </div>
+      <div class="label-tag" style="font-family:'Geist',sans-serif;">Overall Score</div>
+      <div class="score-line">
+        <span class="score-pct" style="font-family:'Bricolage Grotesque',sans-serif;">87%</span>
+        <span class="pass-chip" style="font-family:'Geist',sans-serif;">Passed</span>
+      </div>
+      <div style="font-family:'Bricolage Grotesque',sans-serif; color:#e2e8f0; font-size:16px; font-weight:700; letter-spacing:-.4px; margin-bottom:4px;">Assessment Passed</div>
+      <div class="body-line" style="font-family:'Geist',sans-serif;">Candidate completed 10 of 12 tasks. Two edge-case flows require attention before certification.</div>
+      <div style="margin-top:12px; display:flex; gap:6px;">
+        <div style="flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 8px;">
+          <div class="label-tag" style="font-family:'Geist',sans-serif; font-size:8px;">Tasks</div>
+          <div style="font-family:'Bricolage Grotesque',sans-serif; color:#fff; font-size:14px; font-weight:700;">10/12</div>
+        </div>
+        <div style="flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 8px;">
+          <div class="label-tag" style="font-family:'Geist',sans-serif; font-size:8px;">FAQ</div>
+          <div style="font-family:'Bricolage Grotesque',sans-serif; color:#34d399; font-size:14px; font-weight:700;">92%</div>
+        </div>
+      </div>
+    </div>
+    <div class="typo-meta">
+      <h3 style="font-family:'Bricolage Grotesque',sans-serif;">B — Bricolage + Geist ⭐ Recommended</h3>
+      <p style="font-family:'Geist',sans-serif;">Bricolage Grotesque has distinct character at large sizes without being loud. Geist (Vercel's font) is engineered for code-adjacent UIs — crisp, neutral, technical.</p>
+    </div>
+    <div class="letter" style="font-family:'Bricolage Grotesque',sans-serif;">B</div>
+  </div>
+
+  <!-- C: Fraunces + Plus Jakarta Sans -->
+  <div class="typo-card option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="typo-preview">
+      <div class="nav-chip">
+        <div class="nav-dot"></div>
+        <span style="font-family:'Plus Jakarta Sans',sans-serif; color:rgba(255,255,255,0.6); font-size:10px; font-weight:500;">Evaluator Dashboard</span>
+      </div>
+      <div class="label-tag" style="font-family:'Plus Jakarta Sans',sans-serif;">Overall Score</div>
+      <div class="score-line">
+        <span class="score-pct" style="font-family:'Fraunces',serif;">87%</span>
+        <span class="pass-chip" style="font-family:'Plus Jakarta Sans',sans-serif;">Passed</span>
+      </div>
+      <div style="font-family:'Fraunces',serif; color:#e2e8f0; font-size:16px; font-weight:700; letter-spacing:-.2px; margin-bottom:4px;">Assessment Passed</div>
+      <div class="body-line" style="font-family:'Plus Jakarta Sans',sans-serif;">Candidate completed 10 of 12 tasks. Two edge-case flows require attention before certification.</div>
+      <div style="margin-top:12px; display:flex; gap:6px;">
+        <div style="flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 8px;">
+          <div class="label-tag" style="font-family:'Plus Jakarta Sans',sans-serif; font-size:8px;">Tasks</div>
+          <div style="font-family:'Fraunces',serif; color:#fff; font-size:14px; font-weight:700;">10/12</div>
+        </div>
+        <div style="flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 8px;">
+          <div class="label-tag" style="font-family:'Plus Jakarta Sans',sans-serif; font-size:8px;">FAQ</div>
+          <div style="font-family:'Fraunces',serif; color:#34d399; font-size:14px; font-weight:700;">92%</div>
+        </div>
+      </div>
+    </div>
+    <div class="typo-meta">
+      <h3 style="font-family:'Fraunces',serif;">C — Fraunces + Jakarta Sans</h3>
+      <p style="font-family:'Plus Jakarta Sans',sans-serif;">Fraunces is an optical serif with ink-trap details — striking and unusual for a SaaS product. Jakarta Sans grounds it. Stands out from every other eval tool.</p>
+    </div>
+    <div class="letter" style="font-family:'Fraunces',serif;">C</div>
+  </div>
+
+</div>
+
+<p class="subtitle" style="margin-top:1.25rem; text-align:center;">All three work with both light and dark themes. The body font also applies to form labels, table content, and hints throughout.</p>

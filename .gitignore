@@ -11,3 +11,9 @@ data/
 *.log
 .vscode/
 .idea/
+
+# Superpowers MCP working files
+.superpowers/
+
+# Claude Code local files
+.claude/settings.local.json

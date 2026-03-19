@@ -1,0 +1,237 @@
+<style>
+  /* Shared card base */
+  .demo-wrapper { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-top: 1rem; }
+  .demo-card {
+    background: linear-gradient(160deg, #1a1440, #1e1b4b);
+    border: 1px solid rgba(139,92,246,0.25);
+    border-radius: 14px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+    position: relative;
+  }
+  .demo-card:hover { border-color: rgba(139,92,246,0.6); box-shadow: 0 0 24px rgba(139,92,246,0.15); }
+  .demo-card.selected { border-color: rgba(139,92,246,0.9); box-shadow: 0 0 32px rgba(139,92,246,0.3); }
+  .demo-preview {
+    background: linear-gradient(160deg,#0f0c29,#302b63);
+    padding: 18px;
+    min-height: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: relative;
+    overflow: hidden;
+  }
+  .demo-label {
+    padding: 14px 16px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
+  .demo-label h3 { color: #e2e8f0; font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .demo-label p { color: rgba(255,255,255,0.45); font-size: 11px; line-height: 1.5; }
+
+  /* Score ring */
+  .score-ring {
+    width: 64px; height: 64px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 15px; color: #34d399;
+    border: 2.5px solid #34d399;
+    background: rgba(52,211,153,0.1);
+    margin: 0 auto;
+  }
+
+  /* Stat row */
+  .stat-row { display: flex; gap: 6px; }
+  .stat-chip {
+    flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px; padding: 6px 8px; text-align: center;
+  }
+  .stat-chip .val { font-size: 14px; font-weight: 700; color: #fff; }
+  .stat-chip .lbl { font-size: 8px; color: rgba(255,255,255,0.4); margin-top: 1px; }
+
+  /* Badge */
+  .pass-badge {
+    display: inline-block; background: rgba(52,211,153,0.15);
+    border: 1px solid rgba(52,211,153,0.3); color: #34d399;
+    font-size: 9px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+    letter-spacing: .5px;
+  }
+
+  /* ---- OPTION A: Whisper ---- */
+  .anim-whisper .score-ring {
+    animation: whisper-in 0.6s ease-out both;
+  }
+  .anim-whisper .stat-chip {
+    animation: whisper-in 0.5s ease-out both;
+  }
+  .anim-whisper .stat-chip:nth-child(2) { animation-delay: 0.08s; }
+  .anim-whisper .stat-chip:nth-child(3) { animation-delay: 0.16s; }
+  .anim-whisper .pass-badge { animation: whisper-in 0.5s 0.3s ease-out both; }
+  @keyframes whisper-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ---- OPTION B: Confident ---- */
+  .anim-confident .score-ring {
+    animation: ring-pop 0.7s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  .anim-confident .stat-chip {
+    animation: slide-up 0.45s cubic-bezier(0.22,1,0.36,1) both;
+  }
+  .anim-confident .stat-chip:nth-child(2) { animation-delay: 0.1s; }
+  .anim-confident .stat-chip:nth-child(3) { animation-delay: 0.2s; }
+  .anim-confident .pass-badge {
+    animation: badge-reveal 0.4s 0.35s cubic-bezier(0.22,1,0.36,1) both;
+  }
+  .anim-confident .score-val-animated {
+    animation: count-up-glow 1s 0.3s ease-out both;
+  }
+  @keyframes ring-pop {
+    from { opacity: 0; transform: scale(0.6); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes badge-reveal {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes count-up-glow {
+    0% { text-shadow: none; }
+    50% { text-shadow: 0 0 12px rgba(52,211,153,0.8); }
+    100% { text-shadow: none; }
+  }
+
+  /* ---- OPTION C: Expressive ---- */
+  .anim-expressive .demo-preview::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 0%, rgba(139,92,246,0.25), transparent 60%);
+    animation: glow-pulse 3s ease-in-out infinite;
+  }
+  .anim-expressive .score-ring {
+    animation: ring-pop 0.8s cubic-bezier(0.34,1.56,0.64,1) both;
+    position: relative;
+  }
+  .anim-expressive .score-ring::after {
+    content: '';
+    position: absolute; inset: -6px;
+    border-radius: 50%;
+    border: 1px solid rgba(52,211,153,0.3);
+    animation: ring-ripple 2s 0.8s ease-out infinite;
+  }
+  .anim-expressive .stat-chip {
+    animation: slide-up 0.5s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  .anim-expressive .stat-chip:nth-child(2) { animation-delay: 0.12s; }
+  .anim-expressive .stat-chip:nth-child(3) { animation-delay: 0.24s; }
+  .anim-expressive .stat-chip .val {
+    background: linear-gradient(135deg, #fff, rgba(255,255,255,0.7));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .anim-expressive .pass-badge {
+    background: linear-gradient(90deg, rgba(52,211,153,0.2), rgba(6,182,212,0.2));
+    border-color: rgba(52,211,153,0.4);
+    animation: shimmer 2s 1s ease-in-out infinite;
+  }
+  @keyframes glow-pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+  @keyframes ring-ripple {
+    from { transform: scale(1); opacity: 0.6; }
+    to { transform: scale(1.5); opacity: 0; }
+  }
+  @keyframes shimmer {
+    0%, 100% { box-shadow: 0 0 0 rgba(52,211,153,0); }
+    50% { box-shadow: 0 0 10px rgba(52,211,153,0.25); }
+  }
+
+  /* Replay button */
+  .replay-btn {
+    display: block; margin: 1.5rem auto 0;
+    background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3);
+    color: #c4b5fd; padding: 8px 20px; border-radius: 8px;
+    cursor: pointer; font-size: 12px; font-weight: 600;
+    transition: all .2s;
+  }
+  .replay-btn:hover { background: rgba(139,92,246,0.25); color: #ddd6fe; }
+</style>
+
+<h2>How expressive should the animations be?</h2>
+<p class="subtitle">All three use the Modern SaaS (C) aesthetic. Click to select, then hit Replay to watch them again.</p>
+
+<div class="demo-wrapper" id="demoWrapper">
+
+  <!-- A: Whisper -->
+  <div class="demo-card option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="demo-preview anim-whisper">
+      <div class="score-ring">87%</div>
+      <div class="stat-row">
+        <div class="stat-chip"><div class="val">12</div><div class="lbl">TASKS</div></div>
+        <div class="stat-chip"><div class="val" style="color:#34d399;">10</div><div class="lbl">PASSED</div></div>
+        <div class="stat-chip"><div class="val" style="color:#f87171;">2</div><div class="lbl">FAILED</div></div>
+      </div>
+      <div style="text-align:center;"><span class="pass-badge">✓ ASSESSMENT PASSED</span></div>
+    </div>
+    <div class="demo-label">
+      <h3>A — Whisper</h3>
+      <p>Pure opacity + translate fades. Nothing bounces or glows. Content arrives cleanly. Respects focus — animations never distract.</p>
+    </div>
+    <div class="letter" style="position:absolute;top:10px;right:12px;color:rgba(255,255,255,0.2);font-size:18px;font-weight:800;">A</div>
+  </div>
+
+  <!-- B: Confident -->
+  <div class="demo-card option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="demo-preview anim-confident">
+      <div class="score-ring"><span class="score-val-animated">87%</span></div>
+      <div class="stat-row">
+        <div class="stat-chip"><div class="val">12</div><div class="lbl">TASKS</div></div>
+        <div class="stat-chip"><div class="val" style="color:#34d399;">10</div><div class="lbl">PASSED</div></div>
+        <div class="stat-chip"><div class="val" style="color:#f87171;">2</div><div class="lbl">FAILED</div></div>
+      </div>
+      <div style="text-align:center;"><span class="pass-badge">✓ ASSESSMENT PASSED</span></div>
+    </div>
+    <div class="demo-label">
+      <h3>B — Confident ⭐ Recommended</h3>
+      <p>Score ring pops in with slight spring. Stats stagger up. Score number briefly glows green on entry. Purposeful without being distracting.</p>
+    </div>
+    <div class="letter" style="position:absolute;top:10px;right:12px;color:rgba(255,255,255,0.2);font-size:18px;font-weight:800;">B</div>
+  </div>
+
+  <!-- C: Expressive -->
+  <div class="demo-card option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="demo-preview anim-expressive">
+      <div class="score-ring" style="position:relative;">87%</div>
+      <div class="stat-row">
+        <div class="stat-chip"><div class="val">12</div><div class="lbl">TASKS</div></div>
+        <div class="stat-chip"><div class="val" style="color:#34d399;">10</div><div class="lbl">PASSED</div></div>
+        <div class="stat-chip"><div class="val" style="color:#f87171;">2</div><div class="lbl">FAILED</div></div>
+      </div>
+      <div style="text-align:center;"><span class="pass-badge">✓ ASSESSMENT PASSED</span></div>
+    </div>
+    <div class="demo-label">
+      <h3>C — Expressive</h3>
+      <p>Persistent ambient glow pulse behind the score. Ripple ring radiates outward. Badge shimmers subtly. Breathing, living UI.</p>
+    </div>
+    <div class="letter" style="position:absolute;top:10px;right:12px;color:rgba(255,255,255,0.2);font-size:18px;font-weight:800;">C</div>
+  </div>
+
+</div>
+
+<button class="replay-btn" onclick="replayAnimations()">↺ Replay animations</button>
+
+<script>
+function replayAnimations() {
+  const wrapper = document.getElementById('demoWrapper');
+  const previews = wrapper.querySelectorAll('.demo-preview');
+  previews.forEach(p => {
+    p.style.animation = 'none';
+    const clone = p.cloneNode(true);
+    p.parentNode.replaceChild(clone, p);
+  });
+}
+</script>
