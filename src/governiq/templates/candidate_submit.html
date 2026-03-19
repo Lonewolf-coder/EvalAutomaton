@@ -5,7 +5,8 @@
 <div class="container">
     <div class="flex-between spacer">
         <div>
-            <h1><i data-lucide="upload-cloud" class="icon icon-lg" style="margin-right:.4rem;"></i> Submit Your Assessment</h1>
+            <!-- Bug 3 fix: removed inline margin-right style, added card-title class to h1 -->
+            <h1 class="card-title"><i data-lucide="upload-cloud" class="icon icon-lg"></i> Submit Your Assessment</h1>
             <p class="text-muted">Upload your bot export to be evaluated for certification.</p>
         </div>
         <span class="portal-badge portal-badge--candidate">Candidate Portal</span>
@@ -27,7 +28,8 @@
         <div>
             <form id="submissionForm" action="/candidate/submit" method="post" enctype="multipart/form-data">
                 <div class="card spacer">
-                    <div class="card-header"><h3><i data-lucide="user" class="icon" style="margin-right:.4rem;"></i> Your Details</h3></div>
+                    <!-- Bug 3 fix: removed inline margin-right style, added card-title class -->
+                    <div class="card-header"><h3 class="card-title"><i data-lucide="user" class="icon"></i> Your Details</h3></div>
                     <div class="card-body">
                         <div class="form-group">
                             <label class="form-label">Your Name</label>
@@ -42,7 +44,8 @@
                 </div>
 
                 <div class="card spacer">
-                    <div class="card-header"><h3><i data-lucide="clipboard-list" class="icon" style="margin-right:.4rem;"></i> Assessment Selection</h3></div>
+                    <!-- Bug 3 fix: removed inline margin-right style, added card-title class -->
+                    <div class="card-header"><h3 class="card-title"><i data-lucide="clipboard-list" class="icon"></i> Assessment Selection</h3></div>
                     <div class="card-body">
                         <div class="form-group">
                             <label class="form-label">Assessment Type</label>
@@ -58,21 +61,26 @@
                 </div>
 
                 <div class="card spacer">
-                    <div class="card-header"><h3><i data-lucide="file-json" class="icon" style="margin-right:.4rem;"></i> Bot Export File</h3></div>
+                    <!-- Bug 3 fix: removed inline margin-right style, added card-title class -->
+                    <div class="card-header"><h3 class="card-title"><i data-lucide="file-json" class="icon"></i> Bot Export File</h3></div>
                     <div class="card-body">
                         <div class="form-group">
+                            <!-- Bug 1 fix: added drag-drop support and clear button -->
                             <label class="file-upload" id="exportUpload">
                                 <input type="file" name="bot_export" accept=".json,.zip" required>
                                 <div class="file-upload-icon"><i data-lucide="file-up" class="icon icon-xl" style="color:var(--primary);"></i></div>
-                                <div class="file-upload-text">Click to upload your bot export</div>
+                                <div class="file-upload-text">Click or drag to upload your bot export</div>
                                 <div class="file-upload-hint">Accepts <strong>.json</strong> or <strong>.zip</strong> — Export from Kore.ai XO Platform &rarr; Bot Settings &rarr; Export</div>
+                                <!-- Bug 1 fix: clear button — hidden until a file is selected -->
+                                <button type="button" class="file-clear" title="Remove file">×</button>
                             </label>
                         </div>
                     </div>
                 </div>
 
                 <div class="card spacer">
-                    <div class="card-header"><h3><i data-lucide="key-round" class="icon" style="margin-right:.4rem;"></i> Kore.ai Platform Credentials <span class="badge badge-warn">Required for Webhook Testing</span></h3></div>
+                    <!-- Bug 3 fix: removed inline margin-right style, added card-title class -->
+                    <div class="card-header"><h3 class="card-title"><i data-lucide="key-round" class="icon"></i> Kore.ai Platform Credentials <span class="badge badge-warn">Required for Webhook Testing</span></h3></div>
                     <div class="card-body">
                         <div class="alert alert-info" style="margin-bottom:1rem;">
                             <i data-lucide="info" class="icon icon-sm" style="flex-shrink:0;margin-top:2px;"></i>
@@ -103,15 +111,17 @@
                             </div>
                         </div>
                         <div class="form-group">
-                            <label class="form-label"><i data-lucide="webhook" class="icon icon-sm"></i> Bot Webhook URL <span class="badge badge-grey">Optional if using Kore credentials</span></label>
+                            <!-- Bug 2 fix: changed badge from grey/Optional to warn/Required, updated hint text -->
+                            <label class="form-label"><i data-lucide="webhook" class="icon icon-sm"></i> Bot Webhook URL <span class="badge badge-warn">Required for Live Testing</span></label>
                             <input type="url" name="webhook_url" class="form-input" placeholder="e.g. https://bots.kore.ai/hooks/...">
-                            <div class="form-hint">Your bot's webhook URL. If Bot ID + Client ID + Client Secret are provided, the system uses Kore.ai's BotMessages API directly (recommended). The webhook URL serves as a fallback.</div>
+                            <div class="form-hint">Required for live bot testing. Without a Webhook URL, only the structural CBM audit runs — no conversation testing, no score.</div>
                         </div>
                     </div>
                 </div>
 
                 <div class="card spacer">
-                    <div class="card-header"><h3><i data-lucide="server" class="icon" style="margin-right:.4rem;"></i> Mock API Details <span class="badge badge-grey">Optional</span></h3></div>
+                    <!-- Bug 3 fix: removed inline margin-right style, added card-title class -->
+                    <div class="card-header"><h3 class="card-title"><i data-lucide="server" class="icon"></i> Mock API Details <span class="badge badge-grey">Optional</span></h3></div>
                     <div class="card-body">
                         <div class="form-group">
                             <label class="form-label"><i data-lucide="link" class="icon icon-sm"></i> Mock API Base URL</label>
@@ -135,7 +145,8 @@
         <!-- Info Panel -->
         <div>
             <div class="card spacer">
-                <div class="card-header"><h3><i data-lucide="list-ordered" class="icon" style="margin-right:.4rem;"></i> What Happens After You Submit</h3></div>
+                <!-- Bug 3 fix: removed inline margin-right style, added card-title class -->
+                <div class="card-header"><h3 class="card-title"><i data-lucide="list-ordered" class="icon"></i> What Happens After You Submit</h3></div>
                 <div class="card-body">
                     <div class="check-row">
                         <div class="check-icon check-icon--info"><i data-lucide="file-search" class="icon icon-sm"></i></div>
@@ -157,7 +168,8 @@
             </div>
 
             <div class="card">
-                <div class="card-header"><h3><i data-lucide="check-square" class="icon" style="margin-right:.4rem;"></i> Checklist Before Submitting</h3></div>
+                <!-- Bug 3 fix: removed inline margin-right style, added card-title class -->
+                <div class="card-header"><h3 class="card-title"><i data-lucide="check-square" class="icon"></i> Checklist Before Submitting</h3></div>
                 <div class="card-body">
                     <div class="check-row">
                         <div class="check-icon check-icon--warn"><i data-lucide="alert-triangle" class="icon icon-sm"></i></div>
@@ -183,15 +195,60 @@
 
 {% block extra_scripts %}
 <script>
-document.querySelectorAll('.file-upload').forEach(label => {
-    const input = label.querySelector('input[type="file"]');
-    input.addEventListener('change', () => {
+/* Bug 1 fix: drag-and-drop support + clear button for file upload fields */
+document.querySelectorAll('.file-upload').forEach(function(label) {
+    var input = label.querySelector('input[type="file"]');
+    var clearBtn = label.querySelector('.file-clear');
+
+    function updateFileUI() {
         if (input.files.length > 0) {
             label.classList.add('has-file');
             label.querySelector('.file-upload-text').textContent = input.files[0].name;
-            label.querySelector('.file-upload-hint').textContent = (input.files[0].size / 1024).toFixed(1) + ' KB';
+            label.querySelector('.file-upload-hint').textContent = (input.files[0].size / 1024).toFixed(1) + ' KB — ready to submit';
+            if (clearBtn) clearBtn.style.display = 'flex';
+        }
+    }
+
+    function clearFile(e) {
+        e.preventDefault(); e.stopPropagation();
+        input.value = '';
+        label.classList.remove('has-file', 'drag-active');
+        label.querySelector('.file-upload-text').textContent = 'Click or drag to upload your bot export';
+        label.querySelector('.file-upload-hint').textContent = 'Accepts .json or .zip — Export from Kore.ai XO Platform → Bot Settings → Export';
+        if (clearBtn) clearBtn.style.display = 'none';
+    }
+
+    input.addEventListener('change', updateFileUI);
+
+    label.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        label.classList.add('drag-active');
+    });
+    label.addEventListener('dragleave', function(e) {
+        if (!label.contains(e.relatedTarget)) {
+            label.classList.remove('drag-active');
         }
     });
+    label.addEventListener('drop', function(e) {
+        e.preventDefault();
+        label.classList.remove('drag-active');
+        if (e.dataTransfer.files.length > 0) {
+            try {
+                var dt = new DataTransfer();
+                dt.items.add(e.dataTransfer.files[0]);
+                input.files = dt.files;
+            } catch(err) {
+                label.classList.add('has-file');
+                label.querySelector('.file-upload-text').textContent = e.dataTransfer.files[0].name;
+                label.querySelector('.file-upload-hint').textContent = (e.dataTransfer.files[0].size / 1024).toFixed(1) + ' KB';
+                if (clearBtn) clearBtn.style.display = 'flex';
+                return;
+            }
+            updateFileUI();
+        }
+    });
+
+    if (clearBtn) clearBtn.addEventListener('click', clearFile);
 });
 </script>
 {% endblock %}
