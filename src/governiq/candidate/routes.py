@@ -10,8 +10,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ..core.engine import EvaluationEngine
@@ -197,9 +197,68 @@ async def candidate_submit_page(request: Request):
     })
 
 
+async def _run_evaluation_background(
+    session_id: str,
+    manifest,
+    bot_export_data: dict,
+    candidate_id: str,
+    webhook_url: str,
+    kore_creds,
+    llm_config,
+    kore_bearer_token: str,
+    plag_report,
+) -> None:
+    """Run full evaluation in the background and write the result to disk."""
+    results_dir = DATA_DIR / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    stub_path = results_dir / f"scorecard_{session_id}.json"
+    try:
+        engine = EvaluationEngine(
+            manifest=manifest,
+            llm_api_key=llm_config.api_key,
+            llm_model=llm_config.model,
+            llm_base_url=llm_config.base_url,
+            llm_api_format=llm_config.api_format,
+            kore_bearer_token=kore_bearer_token,
+            kore_credentials=kore_creds,
+        )
+        if webhook_url or kore_creds:
+            scorecard = await engine.run_full_evaluation(
+                bot_export=bot_export_data,
+                candidate_id=candidate_id,
+            )
+        else:
+            scorecard = await engine.run_cbm_only(
+                bot_export=bot_export_data,
+                candidate_id=candidate_id,
+            )
+
+        # Apply plagiarism flag
+        if plag_report and plag_report.risk_level != PlagiarismRisk.NONE:
+            scorecard.plagiarism_flag = True
+            scorecard.plagiarism_message = plag_report.message
+
+        # Write final scorecard (overwrites the stub)
+        import json as _json
+        with stub_path.open("w") as f:
+            _json.dump(scorecard.to_dict(), f, indent=2)
+
+    except Exception as exc:
+        logger.exception("Background evaluation failed for session %s", session_id)
+        import json as _json
+        error_data = {
+            "session_id": session_id,
+            "status": "error",
+            "error": str(exc),
+        }
+        with stub_path.open("w") as f:
+            _json.dump(error_data, f)
+
+
 @router.post("/submit")
 async def candidate_submit(
     request: Request,
+    background_tasks: BackgroundTasks,
     candidate_name: str = Form(""),
     candidate_email: str = Form(""),
     assessment_type: str = Form(""),
@@ -212,7 +271,7 @@ async def candidate_submit(
     client_secret: str = Form(""),
     bot_export: UploadFile = File(...),
 ):
-    """Handle candidate submission — run evaluation and redirect to report."""
+    """Handle candidate submission — launch background evaluation and return session_id."""
     from ..webhook.jwt_auth import KoreCredentials, get_kore_bearer_token
     from ..core.llm_config import load_llm_config
 
@@ -322,54 +381,35 @@ async def candidate_submit(
     # Load LLM config from admin settings
     llm_config = load_llm_config()
 
-    # Run evaluation
-    engine = EvaluationEngine(
+    # Generate session_id and write stub immediately
+    session_id = str(_uuid_mod.uuid4())
+    results_dir = DATA_DIR / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    stub_path = results_dir / f"scorecard_{session_id}.json"
+    import json as _json
+    with stub_path.open("w") as f:
+        _json.dump({
+            "session_id": session_id,
+            "status": "running",
+            "candidate_id": candidate_id,
+            "assessment_name": manifest.assessment_name,
+        }, f)
+
+    # Launch evaluation in background
+    background_tasks.add_task(
+        _run_evaluation_background,
+        session_id=session_id,
         manifest=manifest,
-        llm_api_key=llm_config.api_key,
-        llm_model=llm_config.model,
-        llm_base_url=llm_config.base_url,
-        llm_api_format=llm_config.api_format,
+        bot_export_data=bot_export_data,
+        candidate_id=candidate_id,
+        webhook_url=webhook_url,
+        kore_creds=kore_creds,
+        llm_config=llm_config,
         kore_bearer_token=kore_bearer_token,
-        kore_credentials=kore_creds,
+        plag_report=_plag_report,
     )
-    try:
-        # Run full evaluation if webhook URL or Kore credentials are available
-        if webhook_url or kore_creds:
-            scorecard = await engine.run_full_evaluation(
-                bot_export=bot_export_data,
-                candidate_id=candidate_id,
-            )
-        else:
-            scorecard = await engine.run_cbm_only(
-                bot_export=bot_export_data,
-                candidate_id=candidate_id,
-            )
-    except ValueError as e:
-        return templates.TemplateResponse("candidate_submit.html", {
-            "request": request,
-            "portal": "candidate",
-            "available_manifests": available,
-            "error": f"Evaluation error: {e}",
-        })
-    except Exception as e:
-        logger.exception("Evaluation failed for candidate %s", candidate_id)
-        return templates.TemplateResponse("candidate_submit.html", {
-            "request": request,
-            "portal": "candidate",
-            "available_manifests": available,
-            "error": f"Unexpected evaluation error: {e}",
-        })
 
-    # Apply plagiarism flag from pre-check
-    if _plag_report and _plag_report.risk_level != PlagiarismRisk.NONE:
-        scorecard.plagiarism_flag = True
-        scorecard.plagiarism_message = _plag_report.message
-
-    # Redirect to report
-    return RedirectResponse(
-        url=f"/candidate/report/{scorecard.session_id}",
-        status_code=303,
-    )
+    return JSONResponse({"session_id": session_id, "status": "running"})
 
 
 @router.get("/history", response_class=HTMLResponse)

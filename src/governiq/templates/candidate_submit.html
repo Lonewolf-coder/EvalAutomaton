@@ -135,9 +135,36 @@
                     </div>
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-lg btn-block">
-                    <i data-lucide="send" class="icon"></i> Submit for Evaluation
-                </button>
+                <div id="submitArea">
+                  <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
+                    <i data-lucide="send" class="icon icon-sm"></i> Submit Assessment
+                  </button>
+                </div>
+
+                <!-- Progress panel (hidden until submit) -->
+                <div id="progressPanel" style="display:none; margin-top:1.25rem;">
+                  <div class="card" style="padding:1.25rem;">
+                    <div class="card-title" style="margin-bottom:1rem;">
+                      <i data-lucide="loader" class="icon icon-sm" id="progressSpinner"></i>
+                      <h3>Evaluating your submission...</h3>
+                    </div>
+                    <div id="progressSteps" style="display:flex; flex-direction:column; gap:.6rem;">
+                      <div class="progress-step" id="step1">
+                        <i data-lucide="circle" class="icon icon-sm step-icon"></i>
+                        <span>Checking your bot file...</span>
+                      </div>
+                      <div class="progress-step" id="step2" style="opacity:.4;">
+                        <i data-lucide="circle" class="icon icon-sm step-icon"></i>
+                        <span>Testing your bot...</span>
+                      </div>
+                      <div class="progress-step" id="step3" style="opacity:.4;">
+                        <i data-lucide="circle" class="icon icon-sm step-icon"></i>
+                        <span>Calculating your score...</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
             </form>
         </div>
 
@@ -249,6 +276,87 @@ document.querySelectorAll('.file-upload').forEach(function(label) {
 
     if (clearBtn) clearBtn.addEventListener('click', clearFile);
 });
+
+/* Async submission with progress polling */
+const form = document.querySelector("form");
+if (form) {
+  form.addEventListener("submit", async function(e) {
+    e.preventDefault();
+    document.getElementById("submitArea").style.display = "none";
+    document.getElementById("progressPanel").style.display = "block";
+    markStep("step1", "active");
+
+    const formData = new FormData(form);
+    let sessionId = null;
+    try {
+      const resp = await fetch("/candidate/submit", {method:"POST", body: formData});
+      if (!resp.ok) {
+        showFormError("Submission failed. Please try again.");
+        resetProgress();
+        return;
+      }
+      const data = await resp.json();
+      sessionId = data.session_id;
+    } catch(err) {
+      showFormError("Could not reach the server. Please try again.");
+      resetProgress();
+      return;
+    }
+
+    markStep("step1", "done");
+    markStep("step2", "active");
+
+    // Poll for completion
+    const poll = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/v1/results/${sessionId}`);
+        if (!r.ok) return;
+        const sc = await r.json();
+        if (sc.status !== "running") {
+          clearInterval(poll);
+          markStep("step2", "done");
+          markStep("step3", "active");
+          setTimeout(() => {
+            markStep("step3", "done");
+            if (sc.status === "error") {
+              showFormError(sc.error || "Evaluation failed. Please try again.");
+              resetProgress();
+            } else {
+              window.location.href = `/candidate/report/${sessionId}`;
+            }
+          }, 600);
+        }
+      } catch(e) { /* keep polling */ }
+    }, 3000);
+  });
+}
+
+function markStep(id, state) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.opacity = "1";
+  const icon = el.querySelector(".step-icon");
+  if (state === "active") icon.setAttribute("data-lucide", "loader");
+  if (state === "done")   icon.setAttribute("data-lucide", "check-circle");
+  if (window.lucide) lucide.createIcons();
+}
+
+function resetProgress() {
+  document.getElementById("submitArea").style.display = "block";
+  document.getElementById("progressPanel").style.display = "none";
+}
+
+function showFormError(msg) {
+  let err = document.getElementById("jsError");
+  if (!err) {
+    err = document.createElement("div");
+    err.id = "jsError";
+    err.className = "alert alert-danger";
+    document.querySelector(".card-body")?.prepend(err);
+  }
+  err.textContent = msg;
+  err.style.display = "block";
+}
 </script>
 {% endblock %}
 {% endblock %}
