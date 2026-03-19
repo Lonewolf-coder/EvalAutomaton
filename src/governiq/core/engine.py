@@ -17,7 +17,7 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -170,13 +170,13 @@ class EvaluationEngine:
 
         # Step 6: Run Webhook Pipeline (Pipeline B) — all tasks
         logger.info("=== Pipeline B: Webhook Journey ===")
-        eval_start_time = datetime.utcnow()
+        eval_start_time = datetime.now(timezone.utc)
         if self.manifest.webhook_url or self.kore_bearer_token:
             task_sessions = await self._run_webhook_pipeline(context, scorecard)
         else:
             logger.info("No webhook URL or Kore credentials — skipping webhook pipeline.")
             task_sessions = {}
-        eval_end_time = datetime.utcnow()
+        eval_end_time = datetime.now(timezone.utc)
 
         # Step 7A: Persist session IDs + eval window for deferred analytics refresh.
         # Analytics are NOT fetched now — Kore.ai can take up to 10 hours to process data.
@@ -340,7 +340,7 @@ class EvaluationEngine:
         else:
             status = "available"
 
-        now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         scorecard.analytics_status = status
         scorecard.analytics_last_checked_at = now_iso
 
@@ -435,14 +435,14 @@ class EvaluationEngine:
             )
 
         # --- Run only incomplete tasks ---
-        eval_start_time = datetime.utcnow()
+        eval_start_time = datetime.now(timezone.utc)
         if self.manifest.webhook_url or self.kore_bearer_token:
             new_sessions = await self._run_webhook_pipeline(
                 context, scorecard, skip_task_ids=already_done
             )
         else:
             new_sessions = {}
-        eval_end_time = datetime.utcnow()
+        eval_end_time = datetime.now(timezone.utc)
 
         # Merge new session IDs (keep old ones for already-done tasks)
         for tid, v in new_sessions.items():

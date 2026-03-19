@@ -144,6 +144,8 @@ class Scorecard:
     # Flags
     state_seeded: bool = False
     state_seed_tasks: list[str] = field(default_factory=list)
+    plagiarism_flag: bool = False
+    plagiarism_message: str = ""
 
     # Kore.ai public API insights (bot details, analytics, intent stats)
     kore_api_insights: dict[str, Any] = field(default_factory=dict)
@@ -167,6 +169,8 @@ class Scorecard:
     # ISO timestamp of last refresh attempt (None = never refreshed)
     analytics_last_checked_at: str | None = None
 
+    # Scoring formula: Webhook 80% + FAQ 10% + Compliance 10%
+    # CBM structural audit is informational only — 0% weight
     @property
     def overall_score(self) -> float:
         """Compute weighted overall score.
@@ -189,28 +193,6 @@ class Scorecard:
     def any_webhook_tested(self) -> bool:
         """Whether any task was tested via webhook."""
         return any(t.webhook_tested for t in self.task_scores)
-
-    def compute_weighted_score(
-        self,
-        cbm_weight: float = 0.40,
-        webhook_weight: float = 0.40,
-        compliance_weight: float = 0.10,
-        faq_weight: float = 0.10,
-    ) -> float:
-        """Compute overall score with explicit weights."""
-        if not self.task_scores:
-            return 0.0
-
-        cbm_avg = sum(t.cbm_score for t in self.task_scores) / len(self.task_scores)
-        webhook_avg = sum(t.webhook_score for t in self.task_scores) / len(self.task_scores)
-        comp = self._compliance_score()
-
-        return (
-            cbm_avg * cbm_weight
-            + webhook_avg * webhook_weight
-            + comp * compliance_weight
-            + self.faq_score * faq_weight
-        )
 
     def _compliance_score(self) -> float:
         if not self.compliance_results:
@@ -301,4 +283,6 @@ class Scorecard:
             "eval_window": self.eval_window,
             "analytics_status": self.analytics_status,
             "analytics_last_checked_at": self.analytics_last_checked_at,
+            "plagiarism_flag": self.plagiarism_flag,
+            "plagiarism_message": self.plagiarism_message,
         }
