@@ -11,6 +11,7 @@ Serves two portals from a single server:
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -28,6 +29,17 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: ensure data directories exist (CWD must be project root)
+    for d in ["data", "data/results", "data/runtime_contexts",
+              "data/manifests", "data/fingerprints"]:
+        Path(d).mkdir(parents=True, exist_ok=True)
+    yield
+    # Shutdown: nothing needed
+
+
 app = FastAPI(
     title="GovernIQ Universal Evaluation Platform",
     description=(
@@ -36,6 +48,7 @@ app = FastAPI(
         "Two portals: Candidate (submit & view reports) and Admin (review & manage)."
     ),
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Static files
