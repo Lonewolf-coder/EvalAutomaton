@@ -5,15 +5,15 @@
 <div class="container-wide">
     <div class="flex-between spacer">
         <div>
-            <h1><i data-lucide="layout-dashboard" class="icon icon-lg" style="margin-right:.4rem;"></i> Evaluator Dashboard</h1>
+            <h1 class="card-title"><i data-lucide="layout-dashboard" class="icon icon-lg"></i> Evaluator Dashboard</h1>
             <p class="text-muted">Review and manage all candidate submissions.</p>
         </div>
         <span class="portal-badge portal-badge--admin">Admin / Evaluator</span>
     </div>
 
-    <!-- Stats Row -->
-    <div class="grid-4 spacer">
-        <div class="card">
+    <!-- Stats Row — stagger enables scroll-triggered animation delay per child -->
+    <div class="grid-4 spacer stagger">
+        <div class="card animate-in">
             <div class="stat-card">
                 <div class="stat-icon stat-icon--blue"><i data-lucide="inbox" class="icon"></i></div>
                 <div>
@@ -22,7 +22,7 @@
                 </div>
             </div>
         </div>
-        <div class="card">
+        <div class="card animate-in">
             <div class="stat-card">
                 <div class="stat-icon stat-icon--green"><i data-lucide="check-circle-2" class="icon"></i></div>
                 <div>
@@ -31,7 +31,7 @@
                 </div>
             </div>
         </div>
-        <div class="card">
+        <div class="card animate-in">
             <div class="stat-card">
                 <div class="stat-icon stat-icon--red"><i data-lucide="x-circle" class="icon"></i></div>
                 <div>
@@ -40,7 +40,7 @@
                 </div>
             </div>
         </div>
-        <div class="card">
+        <div class="card animate-in">
             <div class="stat-card">
                 <div class="stat-icon stat-icon--amber"><i data-lucide="alert-triangle" class="icon"></i></div>
                 <div>
@@ -55,7 +55,7 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="cpu" class="icon" style="margin-right:.4rem;"></i> LLM Provider Configuration</h3>
+                <h3 class="card-title"><i data-lucide="cpu" class="icon"></i> LLM Provider Configuration</h3>
                 <span class="badge badge-info"><i data-lucide="zap" class="icon icon-sm"></i> {{ llm_config.provider | upper }}</span>
             </div>
         </div>
@@ -105,7 +105,7 @@
             </form>
 
             <div class="divider"></div>
-            <h4 style="margin-bottom:.5rem;"><i data-lucide="layers" class="icon icon-sm"></i> Supported Providers</h4>
+            <h4 class="card-title" style="margin-bottom:.5rem;"><i data-lucide="layers" class="icon icon-sm"></i> Supported Providers</h4>
             <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
                 {% for p in providers %}
                 <div class="badge badge-grey" style="padding:.4rem .75rem; font-size:.8rem;">
@@ -120,7 +120,7 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="file-cog" class="icon" style="margin-right:.4rem;"></i> Assessment Manifests</h3>
+                <h3 class="card-title"><i data-lucide="file-cog" class="icon"></i> Assessment Manifests</h3>
                 <div class="flex gap-1 items-center">
                     <span class="badge badge-grey">{{ manifests | length }} loaded</span>
                     <a href="/admin/manifests" class="btn btn-outline btn-sm"><i data-lucide="settings" class="icon icon-sm"></i> Manage</a>
@@ -153,7 +153,7 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="list-checks" class="icon" style="margin-right:.4rem;"></i> All Submissions</h3>
+                <h3 class="card-title"><i data-lucide="list-checks" class="icon"></i> All Submissions</h3>
                 <div class="flex gap-1 items-center">
                     <span class="badge badge-grey">{{ evaluations | length }} total</span>
                     <a href="/admin/compare" class="btn btn-outline btn-sm"><i data-lucide="git-compare" class="icon icon-sm"></i> Compare</a>

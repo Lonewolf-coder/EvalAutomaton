@@ -3,17 +3,17 @@
 
 {% block content %}
 <div class="container" style="max-width:900px;">
-    <h1 class="spacer"><i data-lucide="info" class="icon icon-lg" style="margin-right:.4rem;"></i> How Evaluation Works</h1>
+    <h1 class="card-title spacer"><i data-lucide="info" class="icon icon-lg"></i> How Evaluation Works</h1>
 
     <div class="card spacer">
-        <div class="card-header"><h3><i data-lucide="telescope" class="icon" style="margin-right:.4rem;"></i> Overview</h3></div>
+        <div class="card-header"><h3 class="card-title"><i data-lucide="telescope" class="icon"></i> Overview</h3></div>
         <div class="card-body">
             <p>GovernIQ evaluates chatbot assessments using two independent pipelines that run against your bot. The results from both are merged into a single scorecard.</p>
             <p class="text-muted text-small" style="margin-top:.5rem;">The evaluation engine is <strong>domain-agnostic</strong>. It doesn't know what a flight, appointment, or leave request is. It knows six testing patterns. A configuration file (called a "manifest") tells it what to check for each assessment type. This means new assessment types cost zero code changes.</p>
         </div>
     </div>
 
-    <h2 class="spacer"><i data-lucide="git-branch" class="icon" style="margin-right:.4rem;"></i> The Two Pipelines</h2>
+    <h2 class="card-title spacer"><i data-lucide="git-branch" class="icon"></i> The Two Pipelines</h2>
 
     <div class="grid-2 spacer">
         <div class="card">
@@ -52,7 +52,7 @@
         </div>
     </div>
 
-    <h2 class="spacer"><i data-lucide="blocks" class="icon" style="margin-right:.4rem;"></i> The Six Testing Patterns</h2>
+    <h2 class="card-title spacer"><i data-lucide="blocks" class="icon"></i> The Six Testing Patterns</h2>
     <div class="card spacer">
         <div class="card-body">
             <p class="text-small text-muted spacer">Every task in every assessment maps to exactly one of these patterns:</p>
@@ -70,7 +70,7 @@
         </div>
     </div>
 
-    <h2 class="spacer"><i data-lucide="calculator" class="icon" style="margin-right:.4rem;"></i> Scoring</h2>
+    <h2 class="card-title spacer"><i data-lucide="calculator" class="icon"></i> Scoring</h2>
     <div class="card spacer">
         <div class="card-body">
             <div class="grid-2" style="gap:1.5rem;">
@@ -88,7 +88,7 @@
         </div>
     </div>
 
-    <h2 class="spacer"><i data-lucide="database" class="icon" style="margin-right:.4rem;"></i> State Seeding (Fairness)</h2>
+    <h2 class="card-title spacer"><i data-lucide="database" class="icon"></i> State Seeding (Fairness)</h2>
     <div class="card spacer">
         <div class="card-body">
             <p class="text-small">If the bot fails to create a booking through conversation (Task 2), Tasks 3 and 4 (retrieval, modification) cannot be tested fairly. To prevent unfair cascade failures, the engine will:</p>
@@ -102,7 +102,7 @@
         </div>
     </div>
 
-    <h2 class="spacer"><i data-lucide="lightbulb" class="icon" style="margin-right:.4rem;"></i> Key Decisions</h2>
+    <h2 class="card-title spacer"><i data-lucide="lightbulb" class="icon"></i> Key Decisions</h2>
     <div class="card spacer">
         <div class="card-body">
             <div class="check-row">
