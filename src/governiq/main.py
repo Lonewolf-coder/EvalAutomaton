@@ -18,6 +18,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .api.routes import router as api_router
 from .candidate.routes import router as candidate_router
@@ -64,6 +65,27 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 app.include_router(api_router)
 app.include_router(candidate_router)
 app.include_router(admin_router)
+
+
+# ---------------------------------------------------------------------------
+# HTTP exception handler — renders branded error.html for 404 and other errors
+# ---------------------------------------------------------------------------
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404:
+        return templates.TemplateResponse("error.html", {
+            "request": request, "portal": None,
+            "error_title": "Page not found",
+            "error_icon": "map-pin-off",
+            "error_message": "The page you were looking for does not exist.",
+        }, status_code=404)
+    return templates.TemplateResponse("error.html", {
+        "request": request, "portal": None,
+        "error_title": "Something went wrong",
+        "error_icon": "alert-circle",
+        "error_message": "An unexpected error occurred. Please try again or go to the dashboard.",
+    }, status_code=exc.status_code)
 
 
 # ---------------------------------------------------------------------------

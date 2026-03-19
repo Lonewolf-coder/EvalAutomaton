@@ -221,6 +221,56 @@
 
 {% block extra_scripts %}
 <script>
+// Inline form validation — shows errors below each field before async submit runs
+// Uses capture phase (third arg = true) so it intercepts before the async handler below
+function validateSubmitForm(form) {
+  let valid = true;
+  clearValidationErrors();
+
+  const assessment = form.querySelector("[name='assessment_type']");
+  if (!assessment || !assessment.value) {
+    showFieldError("assessment_type", "Please select an assessment.");
+    valid = false;
+  }
+
+  const export_file = form.querySelector("[name='bot_export']");
+  if (!export_file || !export_file.files || !export_file.files.length) {
+    showFieldError("bot_export", "Please upload a bot export file (.zip or .json).");
+    valid = false;
+  }
+
+  return valid;
+}
+
+function showFieldError(name, msg) {
+  const field = document.querySelector(`[name="${name}"]`);
+  if (!field) return;
+  let err = field.parentElement.querySelector(".field-error");
+  if (!err) {
+    err = document.createElement("div");
+    err.className = "field-error";
+    err.style.cssText = "color:#ef4444;font-size:.75rem;margin-top:.25rem;";
+    field.parentElement.appendChild(err);
+  }
+  err.textContent = msg;
+}
+
+function clearValidationErrors() {
+  document.querySelectorAll(".field-error").forEach(e => e.remove());
+}
+
+const submitFormEl = document.querySelector("form");
+if (submitFormEl) {
+  submitFormEl.addEventListener("submit", function(e) {
+    if (!validateSubmitForm(submitFormEl)) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    }
+  }, true);  // capture phase — runs before async submit handler
+}
+</script>
+
+<script>
 /* Bug 1 fix: drag-and-drop support + clear button for file upload fields */
 document.querySelectorAll('.file-upload').forEach(function(label) {
     var input = label.querySelector('input[type="file"]');

@@ -70,14 +70,15 @@
         </div>
     </div>
 
+    <!-- Scoring section — weights corrected: Webhook 80%, FAQ 10%, Compliance 10%, CBM 0% (informational) -->
     <h2 class="card-title spacer"><i data-lucide="calculator" class="icon"></i> Scoring</h2>
     <div class="card spacer">
         <div class="card-body">
             <div class="grid-2" style="gap:1.5rem;">
-                <div class="method-card"><div class="method-num" style="background:var(--info-bg);color:var(--info);"><i data-lucide="file-code" class="icon icon-sm"></i></div><div><div class="method-title">CBM Structural — 40%</div><div class="method-desc">Does the bot have the right internal structure?</div></div></div>
-                <div class="method-card"><div class="method-num" style="background:var(--accent-bg);color:var(--accent);"><i data-lucide="webhook" class="icon icon-sm"></i></div><div><div class="method-title">Webhook Functional — 40%</div><div class="method-desc">Does the bot actually work in conversation?</div></div></div>
-                <div class="method-card"><div class="method-num" style="background:var(--pass-bg);color:var(--pass);"><i data-lucide="shield" class="icon icon-sm"></i></div><div><div class="method-title">Compliance — 10%</div><div class="method-desc">Are platform settings correct? (DialogGPT, channels, language)</div></div></div>
-                <div class="method-card"><div class="method-num" style="background:var(--warn-bg);color:var(--warn);"><i data-lucide="help-circle" class="icon icon-sm"></i></div><div><div class="method-title">FAQs — 10%</div><div class="method-desc">Are FAQs implemented with correct answers and alternates?</div></div></div>
+                <div class="method-card"><div class="method-num" style="background:var(--accent-bg);color:var(--accent);"><i data-lucide="webhook" class="icon icon-sm"></i></div><div><div class="method-title">Webhook Functional — 80%</div><div class="method-desc">Does the bot actually work in conversation?</div></div></div>
+                <div class="method-card"><div class="method-num" style="background:var(--warn-bg);color:var(--warn);"><i data-lucide="help-circle" class="icon icon-sm"></i></div><div><div class="method-title">FAQ Semantic Similarity — 10%</div><div class="method-desc">Are FAQs implemented with correct answers and alternates?</div></div></div>
+                <div class="method-card"><div class="method-num" style="background:var(--pass-bg);color:var(--pass);"><i data-lucide="shield" class="icon icon-sm"></i></div><div><div class="method-title">Compliance Checks — 10%</div><div class="method-desc">Are platform settings correct? (DialogGPT, channels, language)</div></div></div>
+                <div class="method-card"><div class="method-num" style="background:var(--info-bg);color:var(--info);"><i data-lucide="file-code" class="icon icon-sm"></i></div><div><div class="method-title">CBM Structural — Informational only (0%)</div><div class="method-desc">Structural audit shown for reference — does not contribute to your score.</div></div></div>
             </div>
             <div class="divider"></div>
             <div class="grid-3" style="text-align:center;">

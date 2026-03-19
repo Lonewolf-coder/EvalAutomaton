@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ error_title | default("Something went wrong") }} — GovernIQ{% endblock %}
+
+{% block content %}
+<!-- Branded error page — rendered for 404 and other HTTP errors via main.py exception handler -->
+<div class="container" style="max-width:480px; margin:4rem auto; text-align:center;">
+  <div class="card" style="padding:2.5rem 2rem;">
+
+    <!-- Error icon — defaults to alert-circle, overridden per error type (e.g. map-pin-off for 404) -->
+    <div style="margin-bottom:1.5rem;">
+      <i data-lucide="{{ error_icon | default('alert-circle') }}" style="width:48px;height:48px;color:#ef4444;"></i>
+    </div>
+
+    <!-- Error title -->
+    <h1 style="font-family:'Bricolage Grotesque',sans-serif; font-size:1.5rem; margin-bottom:.75rem;">
+      {{ error_title | default("Something went wrong") }}
+    </h1>
+
+    <!-- Error message -->
+    <p style="color:var(--text-secondary); font-size:.9rem; line-height:1.6; margin-bottom:1.75rem;">
+      {{ error_message | default("An unexpected error occurred. Please try again.") }}
+    </p>
+
+    <!-- Navigation actions -->
+    <div style="display:flex; gap:.75rem; justify-content:center; flex-wrap:wrap;">
+      <a href="/admin/" class="btn btn-primary">
+        <i data-lucide="layout-dashboard" class="icon icon-sm"></i> Go to Dashboard
+      </a>
+      <a href="javascript:history.back()" class="btn btn-secondary">
+        <i data-lucide="arrow-left" class="icon icon-sm"></i> Go Back
+      </a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

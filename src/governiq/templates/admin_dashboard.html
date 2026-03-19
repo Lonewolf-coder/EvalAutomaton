@@ -233,11 +233,11 @@
             </tbody>
         </table>
         {% else %}
-        <div class="card-body" style="text-align:center; padding:3rem;">
-            <div style="margin-bottom:1rem;"><i data-lucide="inbox" class="icon icon-xl" style="color:var(--muted);"></i></div>
-            <h3>No submissions yet</h3>
-            <p class="text-muted" style="margin-bottom:1rem;">Candidates submit through the Candidate Portal.</p>
-            <a href="/candidate/" class="btn btn-primary"><i data-lucide="external-link" class="icon icon-sm"></i> Candidate Portal</a>
+        <!-- Empty state — shown when no submissions have been made yet -->
+        <div style="text-align:center; padding:3rem 1rem; color:var(--text-secondary);">
+          <i data-lucide="inbox" style="width:40px;height:40px;margin-bottom:1rem;opacity:.4;"></i>
+          <h3 style="font-family:'Bricolage Grotesque',sans-serif;margin-bottom:.5rem;">No submissions yet</h3>
+          <p style="font-size:.85rem;">Candidates submit at <strong>/candidate/</strong> on this server.</p>
         </div>
         {% endif %}
     </div>

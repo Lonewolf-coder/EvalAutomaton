@@ -65,9 +65,12 @@
             </tbody>
         </table>
         {% else %}
-        <div class="card-body" style="text-align:center; padding:2rem;">
-            <div style="margin-bottom:.75rem;"><i data-lucide="folder-open" class="icon icon-xl" style="color:var(--muted);"></i></div>
-            <p class="text-muted">No active manifests. <a href="/admin/manifest/new">Create one</a> or place JSON files in <code>manifests/</code>.</p>
+        <!-- Empty state — shown when no active manifests exist -->
+        <div style="text-align:center; padding:3rem 1rem; color:var(--text-secondary);">
+          <i data-lucide="file-cog" style="width:40px;height:40px;margin-bottom:1rem;opacity:.4;"></i>
+          <h3 style="font-family:'Bricolage Grotesque',sans-serif;margin-bottom:.5rem;">No manifests loaded</h3>
+          <p style="font-size:.85rem;margin-bottom:1.25rem;">Upload a manifest file to configure an assessment.</p>
+          <a href="/admin/manifests/new" class="btn btn-primary">Create Manifest</a>
         </div>
         {% endif %}
     </div>
