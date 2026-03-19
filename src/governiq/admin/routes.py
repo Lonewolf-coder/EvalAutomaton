@@ -157,6 +157,44 @@ async def admin_dashboard(request: Request):
     })
 
 
+@router.get("/settings", response_class=HTMLResponse)
+async def admin_settings_page(request: Request):
+    """Multi-provider AI settings page."""
+    llm_config = load_llm_config()
+    return templates.TemplateResponse("admin_settings.html", {
+        "request": request,
+        "portal": "admin",
+        "llm_config": llm_config,
+        "providers": get_provider_info(),
+        "provider_defaults": PROVIDER_DEFAULTS,
+    })
+
+
+@router.post("/settings")
+async def save_admin_settings(
+    request: Request,
+    provider: str = Form("anthropic"),
+    api_key: str = Form(""),
+    model: str = Form(""),
+    base_url: str = Form(""),
+    temperature: str = Form("0.3"),
+    azure_deployment: str = Form(""),
+):
+    """Save AI provider settings."""
+    defaults = PROVIDER_DEFAULTS.get(provider, {})
+    config = LLMConfig(
+        provider=provider,
+        api_key=api_key,
+        model=model or defaults.get("default_model", ""),
+        base_url=base_url or defaults.get("base_url", ""),
+        api_format=defaults.get("api_format", "openai"),
+        temperature=float(temperature),
+        azure_deployment=azure_deployment,
+    )
+    save_llm_config(config)
+    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+
+
 @router.post("/llm-config")
 async def save_llm_settings(
     request: Request,

@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}AI Settings — GovernIQ{% endblock %}
+
+{% block extra_head %}
+<style>
+  .provider-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; margin: 1.5rem 0; }
+  @media(max-width:768px){ .provider-grid { grid-template-columns: 1fr 1fr; } }
+
+  .provider-card {
+    border: 2px solid rgba(139,92,246,.15); border-radius: 12px;
+    padding: 1.1rem 1rem; cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+    background: var(--surface-2);
+  }
+  .provider-card:hover { border-color: rgba(139,92,246,.45); box-shadow: 0 0 20px rgba(139,92,246,.1); }
+  .provider-card.selected { border-color: rgba(139,92,246,.9); box-shadow: 0 0 28px rgba(139,92,246,.2); }
+  .provider-card-header { display: flex; align-items: center; gap: .6rem; margin-bottom: .4rem; }
+  .provider-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg,#7c3aed,#0891b2); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .provider-icon svg { width: 16px; height: 16px; color: #fff; }
+  .provider-name { font-family: 'Bricolage Grotesque',sans-serif; font-weight: 700; font-size: .9rem; }
+  .provider-desc { font-size: .75rem; color: var(--text-secondary); line-height: 1.45; }
+
+  .provider-fields {
+    display: none; margin-top: 1.5rem;
+    background: var(--surface-2); border-radius: 12px;
+    border: 1px solid rgba(139,92,246,.2); padding: 1.25rem;
+  }
+  .provider-fields.visible { display: block; }
+
+  .field-group { margin-bottom: 1rem; }
+  .field-group label { display: block; font-size: .8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: .35rem; }
+  .field-group input {
+    width: 100%; padding: .55rem .75rem; border-radius: 7px;
+    background: var(--surface-3); border: 1px solid rgba(255,255,255,.1);
+    color: var(--text-primary); font-size: .85rem;
+    font-family: 'Geist', sans-serif;
+  }
+  .field-group input:focus { outline: none; border-color: rgba(139,92,246,.6); }
+
+  .input-with-toggle { display: flex; align-items: center; }
+  .input-with-toggle input { flex: 1; border-radius: 7px 0 0 7px; }
+  .input-with-toggle button { padding: .55rem .5rem; background: var(--surface-3); border: 1px solid rgba(255,255,255,.1); border-left: none; border-radius: 0 7px 7px 0; color: var(--text-secondary); cursor: pointer; }
+
+  .test-result { padding: .6rem .9rem; border-radius: 7px; font-size: .8rem; margin: .75rem 0; display: none; }
+  .test-result.success { background: rgba(52,211,153,.1); color: #34d399; border: 1px solid rgba(52,211,153,.2); display: block; }
+  .test-result.error   { background: rgba(239,68,68,.1);  color: #ef4444; border: 1px solid rgba(239,68,68,.2);  display: block; }
+
+  .settings-actions { display: flex; gap: .75rem; align-items: center; margin-top: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="page-header">
+    <div class="card-title">
+      <i data-lucide="settings" class="icon"></i>
+      <h1>AI Settings</h1>
+    </div>
+    <p class="subtitle">Choose which AI model powers your bot evaluations. Your settings are saved on this machine only.</p>
+  </div>
+
+  {% if request.query_params.get("saved") %}
+  <div class="alert alert-success">
+    <i data-lucide="check-circle" class="icon icon-sm"></i>
+    Settings saved. The health bar will update on next page load.
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="card-body">
+      <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:1rem;">
+        Select your AI provider, enter the required details, test the connection, then save.
+      </p>
+
+      <!-- Provider selection cards -->
+      <div class="provider-grid">
+        {% set providers_display = [
+          ("lm_studio",    "cpu",       "LM Studio",          "Free · runs on your PC · no internet needed"),
+          ("anthropic",    "bot",       "Claude (Anthropic)",  "Best evaluation quality · requires API key"),
+          ("openai",       "zap",       "OpenAI",              "Great evaluation quality · requires API key"),
+          ("azure_openai", "cloud",     "Azure OpenAI",        "For corporate environments"),
+          ("ollama",       "terminal",  "Ollama",              "Free · local · technical users"),
+          ("gemini",       "sparkles",  "Google Gemini",       "Alternative cloud option · requires API key"),
+        ] %}
+        {% for pid, icon, name, desc in providers_display %}
+        <div class="provider-card {% if llm_config.provider == pid %}selected{% endif %}"
+             data-provider="{{ pid }}"
+             onclick="selectProvider('{{ pid }}')">
+          <div class="provider-card-header">
+            <div class="provider-icon"><i data-lucide="{{ icon }}"></i></div>
+            <span class="provider-name">{{ name }}</span>
+          </div>
+          <div class="provider-desc">{{ desc }}</div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Dynamic fields form -->
+      <form method="post" action="/admin/settings" id="settingsForm">
+        <input type="hidden" name="provider" id="selectedProvider" value="{{ llm_config.provider }}">
+
+        <div class="provider-fields visible" id="fieldsPanel">
+          <div id="dynamicFields"><!-- filled by JS --></div>
+          <div id="testResult" class="test-result"></div>
+          <div class="settings-actions">
+            <button type="button" class="btn btn-secondary" onclick="testConnection()">
+              <i data-lucide="wifi" class="icon icon-sm"></i> Test Connection
+            </button>
+            <button type="submit" class="btn btn-primary">
+              <i data-lucide="save" class="icon icon-sm"></i> Save Settings
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Current config summary -->
+  <div class="card" style="margin-top:1rem;">
+    <div class="card-body">
+      <div class="card-title"><i data-lucide="info" class="icon icon-sm"></i> <h3>Current Configuration</h3></div>
+      <table class="data-table" style="margin-top:.75rem;">
+        <tr><td style="color:var(--text-secondary);width:140px;">Provider</td><td>{{ llm_config.provider }}</td></tr>
+        <tr><td style="color:var(--text-secondary);">Model</td><td>{{ llm_config.model or "—" }}</td></tr>
+        <tr><td style="color:var(--text-secondary);">Base URL</td><td>{{ llm_config.base_url or "—" }}</td></tr>
+        <tr><td style="color:var(--text-secondary);">API Key</td><td>{{ "••••••••" if llm_config.api_key else "Not set" }}</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const PROVIDER_DEFAULTS = {{ provider_defaults | tojson }};
+const CURRENT_CONFIG = {
+  provider: "{{ llm_config.provider }}",
+  api_key: "{{ '••••••••' if llm_config.api_key else '' }}",
+  model: "{{ llm_config.model }}",
+  base_url: "{{ llm_config.base_url }}",
+};
+
+const PROVIDER_FIELDS = {
+  lm_studio:    [{id:"base_url",   label:"LM Studio Address",  type:"url",      placeholder:"http://localhost:1234/v1"}],
+  anthropic:    [{id:"api_key",    label:"API Key",             type:"password", placeholder:"sk-ant-..."},
+                 {id:"model",      label:"Model",               type:"text",     placeholder:"claude-haiku-4-5-20251001"}],
+  openai:       [{id:"api_key",    label:"API Key",             type:"password", placeholder:"sk-..."},
+                 {id:"model",      label:"Model",               type:"text",     placeholder:"gpt-4o-mini"}],
+  azure_openai: [{id:"base_url",   label:"Azure Endpoint",      type:"url",      placeholder:"https://{resource}.openai.azure.com/"},
+                 {id:"api_key",    label:"API Key",             type:"password", placeholder:""},
+                 {id:"model",      label:"Deployment Name",     type:"text",     placeholder:"gpt-4o-mini"}],
+  ollama:       [{id:"base_url",   label:"Ollama Address",      type:"url",      placeholder:"http://localhost:11434/v1"},
+                 {id:"model",      label:"Model",               type:"text",     placeholder:"llama3.2"}],
+  gemini:       [{id:"api_key",    label:"API Key",             type:"password", placeholder:"AIza..."},
+                 {id:"model",      label:"Model",               type:"text",     placeholder:"gemini-2.0-flash-lite"}],
+};
+
+function selectProvider(pid) {
+  document.querySelectorAll(".provider-card").forEach(c => c.classList.remove("selected"));
+  document.querySelector(`[data-provider="${pid}"]`).classList.add("selected");
+  document.getElementById("selectedProvider").value = pid;
+  renderFields(pid);
+  document.getElementById("fieldsPanel").classList.add("visible");
+  document.getElementById("testResult").className = "test-result";
+}
+
+function renderFields(pid) {
+  const fields = PROVIDER_FIELDS[pid] || [];
+  const defaults = PROVIDER_DEFAULTS[pid] || {};
+  const container = document.getElementById("dynamicFields");
+  container.innerHTML = fields.map(f => {
+    const isPassword = f.type === "password";
+    const val = f.id === "api_key" ? CURRENT_CONFIG.api_key
+              : f.id === "base_url" ? (CURRENT_CONFIG.base_url || defaults.base_url || "")
+              : f.id === "model"    ? (CURRENT_CONFIG.model || defaults.default_model || "")
+              : "";
+    if (isPassword) {
+      return `<div class="field-group">
+        <label>${f.label}</label>
+        <div class="input-with-toggle">
+          <input type="password" name="${f.id}" id="field_${f.id}" value="${val}" placeholder="${f.placeholder}">
+          <button type="button" onclick="toggleReveal('field_${f.id}', this)">
+            <i data-lucide="eye" style="width:14px;height:14px;"></i>
+          </button>
+        </div>
+      </div>`;
+    }
+    return `<div class="field-group">
+      <label>${f.label}</label>
+      <input type="${f.type}" name="${f.id}" id="field_${f.id}" value="${val}" placeholder="${f.placeholder}">
+    </div>`;
+  }).join("");
+  if (window.lucide) lucide.createIcons();
+}
+
+function toggleReveal(fieldId, btn) {
+  const input = document.getElementById(fieldId);
+  if (input.type === "password") {
+    input.type = "text";
+    btn.innerHTML = '<i data-lucide="eye-off" style="width:14px;height:14px;"></i>';
+  } else {
+    input.type = "password";
+    btn.innerHTML = '<i data-lucide="eye" style="width:14px;height:14px;"></i>';
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+async function testConnection() {
+  const pid = document.getElementById("selectedProvider").value;
+  const urlField = document.getElementById("field_base_url");
+  const keyField = document.getElementById("field_api_key");
+  const result = document.getElementById("testResult");
+  result.className = "test-result";
+  result.textContent = "Testing connection...";
+  result.style.display = "block";
+  try {
+    const resp = await fetch("/api/v1/health/test-ai", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        provider: pid,
+        url: urlField ? urlField.value : "",
+        api_key: keyField ? keyField.value : "",
+      }),
+    });
+    const data = await resp.json();
+    if (data.status === "ok") {
+      result.className = "test-result success";
+      result.textContent = "Connected — " + data.message;
+    } else {
+      result.className = "test-result error";
+      result.textContent = data.message;
+    }
+  } catch (e) {
+    result.className = "test-result error";
+    result.textContent = "Could not reach the server. Try again.";
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  renderFields(CURRENT_CONFIG.provider);
+  if (window.lucide) lucide.createIcons();
+});
+</script>
+{% endblock %}
