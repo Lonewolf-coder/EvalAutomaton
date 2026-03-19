@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
@@ -59,6 +60,12 @@ class ResumeResponse(BaseModel):
     has_critical_failures: bool
     completed_tasks: list[str]
     scorecard: dict[str, Any]
+
+
+class TestAIRequest(BaseModel):
+    provider: str = "lmstudio"
+    url: str = "http://localhost:1234/v1"
+    api_key: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -361,3 +368,132 @@ async def refresh_analytics(session_id: str):
         total_tasks=result.get("total_tasks", 0),
         message=result.get("message", ""),
     )
+
+
+# ---------------------------------------------------------------------------
+# Health endpoints
+# ---------------------------------------------------------------------------
+
+def _check_ai_model(url: str = "", api_key: str = "") -> dict:
+    """Check if the configured AI provider is reachable."""
+    from ..core.llm_config import load_llm_config
+    config = load_llm_config()
+    probe_url = url or config.base_url
+    if not probe_url:
+        return {
+            "status": "failing",
+            "message": "No AI provider configured. Go to Settings to connect an AI model.",
+            "detail": "base_url is empty",
+        }
+    models_url = probe_url.rstrip("/") + "/models"
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    elif config.api_key:
+        headers["Authorization"] = f"Bearer {config.api_key}"
+    try:
+        r = httpx.get(models_url, headers=headers, timeout=4.0)
+        if r.status_code < 500:
+            return {
+                "status": "ok",
+                "message": "AI model is connected and ready.",
+                "detail": f"HTTP {r.status_code}",
+            }
+        return {
+            "status": "failing",
+            "message": "AI model returned an error. Check that the model is loaded.",
+            "detail": f"HTTP {r.status_code}",
+        }
+    except httpx.ConnectError:
+        return {
+            "status": "failing",
+            "message": "AI model is not running. Start LM Studio (or your AI provider) and load a model.",
+            "detail": "Connection refused",
+        }
+    except Exception as exc:
+        return {
+            "status": "failing",
+            "message": "Could not reach the AI model. Check your connection settings.",
+            "detail": str(exc)[:120],
+        }
+
+
+def _check_storage() -> dict:
+    """Check if the results directory is writable."""
+    results_dir = Path("./data/results")
+    try:
+        results_dir.mkdir(parents=True, exist_ok=True)
+        test_file = results_dir / ".health_check"
+        test_file.write_text("ok")
+        test_file.unlink()
+        return {
+            "status": "ok",
+            "message": "Storage is working correctly.",
+            "detail": str(results_dir.resolve()),
+        }
+    except Exception as exc:
+        return {
+            "status": "failing",
+            "message": "Results cannot be saved. Check that you have write permission to the data folder.",
+            "detail": str(exc)[:120],
+        }
+
+
+def _check_manifests() -> dict:
+    """Check that at least one manifest file exists."""
+    manifests_dir = Path("./manifests")
+    if not manifests_dir.exists():
+        return {
+            "status": "failing",
+            "message": "No assessment is configured. Go to Manifests to load one.",
+            "detail": "manifests/ directory not found",
+        }
+    manifests = list(manifests_dir.glob("*.json"))
+    if not manifests:
+        return {
+            "status": "failing",
+            "message": "No assessment is configured. Go to Manifests to upload one.",
+            "detail": "No .json files in manifests/",
+        }
+    return {
+        "status": "ok",
+        "message": f"{len(manifests)} assessment(s) available.",
+        "detail": f"{len(manifests)} manifest(s) found",
+    }
+
+
+@router.get("/health")
+async def system_health():
+    """Live subsystem health check. Called by the health bar on every page load."""
+    ai = _check_ai_model()
+    storage = _check_storage()
+    manifests = _check_manifests()
+    app_sub = {
+        "status": "ok",
+        "message": "GovernIQ is running correctly.",
+        "detail": "process alive",
+    }
+
+    subsystems = {
+        "ai_model": ai,
+        "storage": storage,
+        "manifests": manifests,
+        "app": app_sub,
+    }
+
+    advisories: list[str] = []
+    if any(s["status"] == "failing" for s in subsystems.values()):
+        overall = "error"
+    elif advisories:
+        overall = "warning"
+    else:
+        overall = "ok"
+
+    return {"status": overall, "subsystems": subsystems, "advisories": advisories}
+
+
+@router.post("/health/test-ai")
+async def test_ai_connection(request: TestAIRequest):
+    """Test an AI provider connection without saving the config."""
+    result = _check_ai_model(url=request.url, api_key=request.api_key)
+    return {"status": result["status"], "message": result["message"]}
