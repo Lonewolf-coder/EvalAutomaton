@@ -5,7 +5,8 @@
 <div class="container-wide">
     <div class="flex-between spacer no-print">
         <div>
-            <h1><i data-lucide="clipboard-check" class="icon icon-lg" style="margin-right:.4rem;"></i> Evaluator Review</h1>
+            <!-- Bug 3 fix: card-title class aligns icon + text; inline margin-right removed -->
+            <h1 class="card-title"><i data-lucide="clipboard-check" class="icon icon-lg"></i> Evaluator Review</h1>
             <p class="text-muted">{{ sc.assessment_name }} &mdash; Candidate: {{ sc.candidate_id or 'N/A' }} &mdash; Session: {{ sc.session_id }}</p>
         </div>
         <div class="flex gap-2">
@@ -61,7 +62,13 @@
     <!-- COMPLIANCE -->
     {% if sc.compliance_results %}
     <div class="card spacer">
-        <div class="card-header"><div class="flex-between"><h3><i data-lucide="shield" class="icon" style="margin-right:.4rem;"></i> Compliance Checks</h3><span class="badge {% if compliance_summary.all_passed %}badge-pass{% else %}badge-fail{% endif %}">{{ compliance_summary.passed }}/{{ compliance_summary.total }}</span></div></div>
+        <div class="card-header">
+            <div class="flex-between">
+                <!-- Bug 3 fix: card-title class on h3; inline margin-right removed from icon -->
+                <h3 class="card-title"><i data-lucide="shield" class="icon"></i> Compliance Checks</h3>
+                <span class="badge {% if compliance_summary.all_passed %}badge-pass{% else %}badge-fail{% endif %}">{{ compliance_summary.passed }}/{{ compliance_summary.total }}</span>
+            </div>
+        </div>
         <div class="card-body">
             {% for cr in sc.compliance_results %}
             <div class="check-row">
@@ -83,7 +90,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between" style="flex-wrap:wrap; gap:.5rem;">
-                <h3><i data-lucide="clipboard-check" class="icon" style="margin-right:.4rem;"></i> {{ ts.task_name }}</h3>
+                <!-- Bug 3 fix: card-title class on h3; inline margin-right removed from icon -->
+                <h3 class="card-title"><i data-lucide="clipboard-check" class="icon"></i> {{ ts.task_name }}</h3>
                 <div class="flex gap-1">
                     <span class="badge badge-info"><i data-lucide="file-code" class="icon icon-sm"></i> CBM: {{ (ts.cbm_score * 100) | round(0) }}%</span>
                     <span class="badge badge-primary"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook: {{ (ts.webhook_score * 100) | round(0) }}%</span>
@@ -93,8 +101,9 @@
         </div>
         <div class="card-body">
             <div class="grid-2">
-                <div style="border-left:3px solid #7c3aed; padding-left:1rem;">
-                    <h4 style="color:#7c3aed; margin-bottom:.75rem;"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Results</h4>
+                <!-- Webhook column — Bug 4 fix: #7c3aed replaced with var(--purple-accent) -->
+                <div style="border-left:3px solid var(--purple-accent); padding-left:1rem;">
+                    <h4 style="color:var(--purple-accent); margin-bottom:.75rem;"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Results</h4>
                     {% if ts.webhook_checks %}
                         {% for check in ts.webhook_checks %}
                         <div class="check-row">
@@ -109,8 +118,9 @@
                     {% endif %}
                 </div>
 
-                <div style="border-left:3px solid #1e40af; padding-left:1rem;">
-                    <h4 style="color:#1e40af; margin-bottom:.75rem;"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Evaluator Reference Panel</h4>
+                <!-- CBM column — Bug 4 fix: #1e40af replaced with var(--info-accent) -->
+                <div style="border-left:3px solid var(--info-accent); padding-left:1rem;">
+                    <h4 style="color:var(--info-accent); margin-bottom:.75rem;"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Evaluator Reference Panel</h4>
                     {% for check in ts.cbm_checks %}
                     <div class="check-row">
                         <div class="check-icon check-icon--{% if check.status == 'pass' %}pass{% elif check.status == 'fail' %}fail{% elif check.status == 'warning' %}warn{% else %}info{% endif %}">
@@ -146,7 +156,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="activity" class="icon" style="margin-right:.4rem;"></i> Kore.ai Platform Insights</h3>
+                <!-- Bug 3 fix: card-title class on h3; inline margin-right removed from icon -->
+                <h3 class="card-title"><i data-lucide="activity" class="icon"></i> Kore.ai Platform Insights</h3>
                 <span class="badge badge-info"><i data-lucide="globe" class="icon icon-sm"></i> Public API Data</span>
             </div>
         </div>

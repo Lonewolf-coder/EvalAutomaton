@@ -5,7 +5,8 @@
 <div class="container-wide">
     <div class="flex-between spacer no-print">
         <div>
-            <h1><i data-lucide="file-bar-chart" class="icon icon-lg" style="margin-right:.4rem;"></i> Evaluation Report</h1>
+            <!-- Bug 3 fix: card-title class aligns icon + text; inline margin-right removed -->
+            <h1 class="card-title"><i data-lucide="file-bar-chart" class="icon icon-lg"></i> Evaluation Report</h1>
             <p class="text-muted">{{ sc.assessment_name }} &mdash; Session {{ sc.session_id }}</p>
         </div>
         <div class="flex gap-2">
@@ -93,16 +94,19 @@
 
     <!-- HOW THIS REPORT IS STRUCTURED -->
     <div class="card spacer">
-        <div class="card-header"><h3><i data-lucide="book-open" class="icon" style="margin-right:.4rem;"></i> How to Read This Report</h3></div>
+        <!-- Bug 3 fix: card-title class on h3; inline margin-right removed from icon -->
+        <div class="card-header"><h3 class="card-title"><i data-lucide="book-open" class="icon"></i> How to Read This Report</h3></div>
         <div class="card-body">
             <p class="text-small" style="margin-bottom:1rem;">Each task your bot was assessed on is shown below with two columns:</p>
             <div class="grid-2" style="gap:1rem;">
-                <div style="padding:.75rem; border-left:3px solid #7c3aed; background:#faf5ff; border-radius: 0 var(--radius) var(--radius) 0;">
-                    <strong style="color:#7c3aed;"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Results (left)</strong>
+                <!-- Bug 4 fix: hardcoded #7c3aed and #faf5ff replaced with CSS variables -->
+                <div style="padding:.75rem; border-left:3px solid var(--purple-accent); background:var(--purple-bg); border-radius: 0 var(--radius) var(--radius) 0;">
+                    <strong style="color:var(--purple-accent);"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Results (left)</strong>
                     <p class="text-small text-muted">What happened when the system talked to your live bot. Did the bot respond correctly? Did it save data to the API?</p>
                 </div>
-                <div style="padding:.75rem; border-left:3px solid #1e40af; background:#eff6ff; border-radius: 0 var(--radius) var(--radius) 0;">
-                    <strong style="color:#1e40af;"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Structural Checks (right)</strong>
+                <!-- Bug 4 fix: hardcoded #1e40af and #eff6ff replaced with CSS variables -->
+                <div style="padding:.75rem; border-left:3px solid var(--info-accent); background:var(--info-bg); border-radius: 0 var(--radius) var(--radius) 0;">
+                    <strong style="color:var(--info-accent);"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Structural Checks (right)</strong>
                     <p class="text-small text-muted">What the system found inside your bot export. Does it have the right nodes, entities, and service calls?</p>
                 </div>
             </div>
@@ -120,7 +124,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="shield" class="icon" style="margin-right:.4rem;"></i> Compliance Checks</h3>
+                <!-- Bug 3 fix: card-title class on h3; inline margin-right removed from icon -->
+                <h3 class="card-title"><i data-lucide="shield" class="icon"></i> Compliance Checks</h3>
                 <span class="badge {% if compliance_summary.all_passed %}badge-pass{% else %}badge-fail{% endif %}">
                     {{ compliance_summary.passed }}/{{ compliance_summary.total }} passed
                 </span>
@@ -157,7 +162,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between" style="flex-wrap:wrap; gap:.5rem;">
-                <h3><i data-lucide="clipboard-check" class="icon" style="margin-right:.4rem;"></i> {{ ts.task_name }}</h3>
+                <!-- Bug 3 fix: card-title class on h3; inline margin-right removed from icon -->
+                <h3 class="card-title"><i data-lucide="clipboard-check" class="icon"></i> {{ ts.task_name }}</h3>
                 <div class="flex gap-1">
                     <span class="badge badge-grey"><i data-lucide="file-code" class="icon icon-sm"></i> CBM: {{ (ts.cbm_score * 100) | round(0) }}%</span>
                     {% if ts.webhook_tested %}
@@ -175,9 +181,9 @@
         </div>
         <div class="card-body">
             <div class="grid-2">
-                <!-- Webhook column -->
-                <div style="border-left:3px solid #7c3aed; padding-left:1rem;">
-                    <h4 style="color:#7c3aed; margin-bottom:.75rem;"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Results</h4>
+                <!-- Webhook column — Bug 4 fix: #7c3aed replaced with var(--purple-accent) -->
+                <div style="border-left:3px solid var(--purple-accent); padding-left:1rem;">
+                    <h4 style="color:var(--purple-accent); margin-bottom:.75rem;"><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Results</h4>
                     {% if ts.webhook_checks %}
                         {% for check in ts.webhook_checks %}
                         <div class="check-row">
@@ -195,9 +201,9 @@
                     {% endif %}
                 </div>
 
-                <!-- CBM column -->
-                <div style="border-left:3px solid #1e40af; padding-left:1rem;">
-                    <h4 style="color:#1e40af; margin-bottom:.75rem;"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Structural Checks</h4>
+                <!-- CBM column — Bug 4 fix: #1e40af replaced with var(--info-accent) -->
+                <div style="border-left:3px solid var(--info-accent); padding-left:1rem;">
+                    <h4 style="color:var(--info-accent); margin-bottom:.75rem;"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Structural Checks</h4>
                     {% for check in ts.cbm_checks %}
                     <div class="check-row">
                         <div class="check-icon check-icon--{% if check.status == 'pass' %}pass{% elif check.status == 'fail' %}fail{% elif check.status == 'warning' %}warn{% else %}info{% endif %}">
@@ -237,7 +243,8 @@
     {% if map_tasks %}
     <div class="card spacer">
         <div class="card-header">
-            <h3><i data-lucide="git-branch-plus" class="icon" style="margin-right:.4rem;"></i> CBM Map — Structural Node Analysis</h3>
+            <!-- Bug 3 fix: card-title class on h3; inline margin-right removed from icon -->
+            <h3 class="card-title"><i data-lucide="git-branch-plus" class="icon"></i> CBM Map — Structural Node Analysis</h3>
         </div>
         <div class="card-body">
             <p class="text-small text-muted spacer">
@@ -347,7 +354,8 @@
     <!-- RECOMMENDATIONS -->
     {% if recommendations %}
     <div class="card spacer">
-        <div class="card-header"><h3><i data-lucide="lightbulb" class="icon" style="margin-right:.4rem;"></i> Recommendations</h3></div>
+        <!-- Bug 3 fix: card-title class on h3; inline margin-right removed from icon -->
+        <div class="card-header"><h3 class="card-title"><i data-lucide="lightbulb" class="icon"></i> Recommendations</h3></div>
         <div class="card-body">
             <p class="text-small text-muted spacer">Based on the evaluation results, here are the key areas to address:</p>
             {% for rec in recommendations %}
@@ -373,7 +381,8 @@
     <div class="card spacer">
         <div class="card-header">
             <div class="flex-between">
-                <h3><i data-lucide="activity" class="icon" style="margin-right:.4rem;"></i> Kore.ai Platform Insights</h3>
+                <!-- Bug 3 fix: card-title class on h3; inline margin-right removed from icon -->
+                <h3 class="card-title"><i data-lucide="activity" class="icon"></i> Kore.ai Platform Insights</h3>
                 <span class="badge badge-info"><i data-lucide="globe" class="icon icon-sm"></i> Public API</span>
             </div>
         </div>
@@ -536,7 +545,8 @@
 
     <!-- EVALUATION METHODOLOGY -->
     <div class="card spacer">
-        <div class="card-header"><h3><i data-lucide="flask-conical" class="icon" style="margin-right:.4rem;"></i> How This Evaluation Was Conducted</h3></div>
+        <!-- Bug 3 fix: card-title class on h3; inline margin-right removed from icon -->
+        <div class="card-header"><h3 class="card-title"><i data-lucide="flask-conical" class="icon"></i> How This Evaluation Was Conducted</h3></div>
         <div class="card-body">
             <div class="grid-2">
                 <div>
