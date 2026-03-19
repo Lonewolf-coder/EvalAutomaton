@@ -12,6 +12,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from ..core.engine import EvaluationEngine
+from ..core.llm_config import load_llm_config
 from ..core.manifest import Manifest
 from ..core.manifest_validator import validate_manifest
 
@@ -376,7 +377,6 @@ async def refresh_analytics(session_id: str):
 
 def _check_ai_model(url: str = "", api_key: str = "") -> dict:
     """Check if the configured AI provider is reachable."""
-    from ..core.llm_config import load_llm_config
     config = load_llm_config()
     probe_url = url or config.base_url
     if not probe_url:
