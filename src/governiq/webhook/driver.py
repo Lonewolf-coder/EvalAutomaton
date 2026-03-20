@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 
 from ..core.manifest import TaskDefinition
+from .message_normaliser import normalise_messages
 
 logger = logging.getLogger(__name__)
 
@@ -472,14 +473,8 @@ class KoreWebhookClient:
 
             # Primary: data[] array (standard Kore.ai webhook format)
             if "data" in data and isinstance(data["data"], list):
-                texts = []
-                for item in data["data"]:
-                    if isinstance(item, dict):
-                        val = item.get("val", "") or item.get("text", "")
-                        if val:
-                            texts.append(val)
-                    elif isinstance(item, str):
-                        texts.append(item)
+                _texts, _raws = normalise_messages(data["data"])
+                texts = [t for t in _texts if t]
                 if texts:
                     return "\n".join(texts)
 
@@ -494,13 +489,8 @@ class KoreWebhookClient:
                 return data["val"]
 
         if isinstance(data, list) and data:
-            parts = []
-            for item in data:
-                if isinstance(item, dict):
-                    parts.append(item.get("val", "") or item.get("text", "") or str(item))
-                else:
-                    parts.append(str(item))
-            return "\n".join(p for p in parts if p)
+            _texts, _raws = normalise_messages(data)
+            return "\n".join(t for t in _texts if t)
 
         return str(data)
 
