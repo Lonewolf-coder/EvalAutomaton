@@ -108,3 +108,27 @@ def test_submit_stub_has_all_required_fields(tmp_path):
     finally:
         for p in patches:
             p.stop()
+
+
+def test_zip_cleanup_skips_active_lock(tmp_path):
+    """cleanup_old_uploads must NOT delete an upload if a lock file exists for that session."""
+    from src.governiq.candidate.routes import cleanup_old_uploads
+
+    uploads = tmp_path / "uploads"
+    locks = tmp_path / "locks"
+    uploads.mkdir()
+    locks.mkdir()
+
+    session_id = "locked-session"
+    upload_dir = uploads / session_id
+    upload_dir.mkdir()
+    (upload_dir / "bot_export.zip").write_bytes(b"fake")
+
+    # Write a lock file for this session
+    (locks / f"{session_id}.lock").write_text('{"started_at": "2020-01-01T00:00:00+00:00"}')
+
+    # Run cleanup with 0-day retention (everything would normally be deleted)
+    cleanup_old_uploads(uploads_dir=uploads, locks_dir=locks, max_age_days=0)
+
+    # Upload must still exist because of the lock
+    assert (upload_dir / "bot_export.zip").exists()

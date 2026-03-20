@@ -5,9 +5,10 @@ from __future__ import annotations
 import io
 import json
 import logging
+import shutil
 import uuid as _uuid_mod
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,28 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 MANIFESTS_DIR = Path("manifests")
 DATA_DIR = Path("data")
+
+
+def cleanup_old_uploads(
+    uploads_dir: Path | None = None,
+    locks_dir: Path | None = None,
+    max_age_days: int = 7,
+) -> None:
+    """Remove upload directories older than max_age_days, skipping sessions with active locks."""
+    uploads_dir = uploads_dir or (DATA_DIR / "uploads")
+    locks_dir = locks_dir or (DATA_DIR / "locks")
+    if not uploads_dir.exists():
+        return
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    for session_dir in uploads_dir.iterdir():
+        if not session_dir.is_dir():
+            continue
+        lock_file = locks_dir / f"{session_dir.name}.lock"
+        if lock_file.exists():
+            continue  # Never delete while lock exists
+        mtime = datetime.fromtimestamp(session_dir.stat().st_mtime, tz=timezone.utc)
+        if mtime < cutoff:
+            shutil.rmtree(session_dir, ignore_errors=True)
 
 
 def _load_available_manifests() -> list[dict[str, Any]]:
@@ -274,6 +297,12 @@ async def candidate_submit(
     from ..webhook.jwt_auth import KoreCredentials, get_kore_bearer_token
     from ..core.llm_config import load_llm_config
 
+    # Clean up old uploads at the start of each submission
+    try:
+        cleanup_old_uploads()
+    except Exception:
+        pass
+
     available = _load_available_manifests()
     candidate_id = candidate_email  # Email is the primary identifier
 
@@ -409,6 +438,14 @@ async def candidate_submit(
             "log_file": f"data/logs/eval_{session_id}.jsonl",
             "error": None,
         }, f)
+
+    # Save bot export for potential re-runs (content is the raw bytes read earlier in the handler)
+    _upload_dir = DATA_DIR / "uploads" / session_id
+    _upload_dir.mkdir(parents=True, exist_ok=True)
+    _filename = (bot_export.filename or "bot_export.json").lower()
+    _ext = ".zip" if (_filename.endswith(".zip") or content[:4] == b"PK\x03\x04") else ".json"
+    _upload_path = _upload_dir / f"bot_export{_ext}"
+    _upload_path.write_bytes(content)  # raw bytes — preserves ZIP binary
 
     # Launch evaluation in background
     background_tasks.add_task(
