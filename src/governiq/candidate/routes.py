@@ -7,6 +7,7 @@ import json
 import logging
 import uuid as _uuid_mod
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -381,6 +382,13 @@ async def candidate_submit(
 
     # Generate session_id and write stub immediately
     session_id = str(_uuid_mod.uuid4())
+    _submitted_at = datetime.now(timezone.utc).isoformat()
+
+    # Ensure extra data directories exist
+    (DATA_DIR / "logs").mkdir(parents=True, exist_ok=True)
+    (DATA_DIR / "uploads").mkdir(parents=True, exist_ok=True)
+    (DATA_DIR / "locks").mkdir(parents=True, exist_ok=True)
+
     results_dir = DATA_DIR / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
     stub_path = results_dir / f"scorecard_{session_id}.json"
@@ -389,7 +397,17 @@ async def candidate_submit(
             "session_id": session_id,
             "status": "running",
             "candidate_id": candidate_id,
+            "manifest_id": manifest.manifest_id,
             "assessment_name": manifest.assessment_name,
+            "webhook_url": webhook_url or "",
+            "submitted_at": _submitted_at,
+            "completed_tasks": [],
+            "halt_reason": None,
+            "halted_on_task": None,
+            "halted_at": None,
+            "parent_session_id": None,
+            "log_file": f"data/logs/eval_{session_id}.jsonl",
+            "error": None,
         }, f)
 
     # Launch evaluation in background
