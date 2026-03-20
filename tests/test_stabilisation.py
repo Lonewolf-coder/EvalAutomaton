@@ -110,6 +110,80 @@ def test_submit_stub_has_all_required_fields(tmp_path):
             p.stop()
 
 
+def test_submit_saves_bot_export_to_uploads(tmp_path):
+    """Bot export file must be saved under DATA_DIR/uploads/{session_id}/ after a submission."""
+    import io
+    from fastapi.testclient import TestClient
+
+    manifests_dir = tmp_path / "manifests"
+    manifests_dir.mkdir()
+    manifest_data = {
+        "manifest_id": "test-manifest-v1",
+        "assessment_name": "Test Assessment",
+        "assessment_type": "test",
+        "tasks": [
+            {
+                "task_id": "task1",
+                "task_name": "Test Task",
+                "pattern": "CREATE",
+                "dialog_name": "TestDialog",
+            }
+        ],
+        "scoring_config": {
+            "webhook_functional_weight": 0.80,
+            "compliance_weight": 0.10,
+            "faq_weight": 0.10,
+            "pass_threshold": 0.70,
+        },
+    }
+    (manifests_dir / "test-manifest-v1.json").write_text(json.dumps(manifest_data))
+
+    patches = [
+        patch("src.governiq.candidate.routes.DATA_DIR", tmp_path),
+        patch("src.governiq.candidate.routes.MANIFESTS_DIR", manifests_dir),
+        patch("src.governiq.candidate.routes._run_evaluation_background"),
+    ]
+
+    for p in patches:
+        p.start()
+
+    try:
+        from src.governiq.main import app
+
+        client = TestClient(app, raise_server_exceptions=False)
+
+        bot_export = json.dumps({"name": "TestBot", "intents": []}).encode()
+        response = client.post(
+            "/candidate/submit",
+            data={
+                "candidate_name": "Test User",
+                "candidate_email": "test@example.com",
+                "assessment_type": "test-manifest-v1",
+                "mock_api_url": "",
+                "mock_api_schema": "",
+                "webhook_url": "",
+                "bot_id": "",
+                "bot_name": "",
+                "client_id": "",
+                "client_secret": "",
+            },
+            files={"bot_export": ("bot_export.json", io.BytesIO(bot_export), "application/json")},
+        )
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text[:200]}"
+        session_id = response.json()["session_id"]
+
+        upload_dir = tmp_path / "uploads" / session_id
+        assert upload_dir.exists(), f"Upload directory not created at {upload_dir}"
+        uploaded_files = list(upload_dir.iterdir())
+        assert len(uploaded_files) > 0, "No files written to upload directory"
+        assert any(f.name.startswith("bot_export") for f in uploaded_files), (
+            f"No bot_export file found in {upload_dir}; found: {[f.name for f in uploaded_files]}"
+        )
+    finally:
+        for p in patches:
+            p.stop()
+
+
 def test_zip_cleanup_skips_active_lock(tmp_path):
     """cleanup_old_uploads must NOT delete an upload if a lock file exists for that session."""
     from src.governiq.candidate.routes import cleanup_old_uploads

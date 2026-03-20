@@ -480,12 +480,14 @@ async def candidate_submit(
         }, f)
 
     # Save bot export for potential re-runs (content is the raw bytes read earlier in the handler)
-    _upload_dir = DATA_DIR / "uploads" / session_id
-    _upload_dir.mkdir(parents=True, exist_ok=True)
-    _filename = (bot_export.filename or "bot_export.json").lower()
-    _ext = ".zip" if (_filename.endswith(".zip") or content[:4] == b"PK\x03\x04") else ".json"
-    _upload_path = _upload_dir / f"bot_export{_ext}"
-    _upload_path.write_bytes(content)  # raw bytes — preserves ZIP binary
+    try:
+        _upload_dir = DATA_DIR / "uploads" / session_id
+        _upload_dir.mkdir(parents=True, exist_ok=True)
+        _filename = (bot_export.filename or "bot_export.json").lower()
+        _ext = ".zip" if (_filename.endswith(".zip") or content[:4] == b"PK\x03\x04") else ".json"
+        (_upload_dir / f"bot_export{_ext}").write_bytes(content)
+    except Exception:
+        logger.warning("Failed to save bot export for session %s — re-run will not be possible", session_id)
 
     # Launch evaluation in background
     background_tasks.add_task(
