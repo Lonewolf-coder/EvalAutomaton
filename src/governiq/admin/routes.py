@@ -41,7 +41,11 @@ def _load_all_evaluations() -> list[dict[str, Any]]:
     for f in sorted(results_dir.glob("scorecard_*.json"), reverse=True):
         try:
             with f.open("r") as fh:
-                evals.append(json.load(fh))
+                data = json.load(fh)
+            # Skip in-progress stubs and error records — they lack overall_score
+            if data.get("status") in ("running", "error"):
+                continue
+            evals.append(data)
         except Exception:
             pass
     return evals
