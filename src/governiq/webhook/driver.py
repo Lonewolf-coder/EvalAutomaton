@@ -72,13 +72,14 @@ class LLMConversationDriver:
             )
         return self._client
 
-    async def _llm_call(self, system_prompt: str, user_prompt: str) -> str | None:
-        """Make an LLM API call. Supports both Anthropic and OpenAI formats."""
-        if not self.api_key and self.api_format == "anthropic":
-            return None
-        try:
-            client = await self._get_client()
+    async def _llm_call(
+        self, system_prompt: str, user_prompt: str, task_id: str = "unknown"
+    ) -> str | None:
+        """Make an LLM API call with one retry. Raises EvaluationHaltedError on persistent failure."""
+        from ..core.exceptions import EvaluationHaltedError
 
+        async def _attempt() -> str | None:
+            client = await self._get_client()
             if self.api_format == "anthropic":
                 response = await client.post(
                     "/messages",
@@ -86,9 +87,7 @@ class LLMConversationDriver:
                         "model": self.model,
                         "max_tokens": 256,
                         "system": system_prompt,
-                        "messages": [
-                            {"role": "user", "content": user_prompt},
-                        ],
+                        "messages": [{"role": "user", "content": user_prompt}],
                         "temperature": self.temperature,
                     },
                 )
@@ -113,10 +112,35 @@ class LLMConversationDriver:
                 )
                 response.raise_for_status()
                 data = response.json()
-            return data["choices"][0]["message"]["content"].strip()
-        except Exception as e:
-            logger.warning("LLM call failed, falling back to rules: %s", e)
+                return data["choices"][0]["message"]["content"].strip()
+
+        if not self.api_key and self.api_format == "anthropic":
             return None
+
+        # --- First attempt ---
+        try:
+            return await _attempt()
+        except Exception as first_exc:
+            err_str = str(first_exc)
+            # 401 = bad key — do not retry, halt immediately
+            if "401" in err_str:
+                raise EvaluationHaltedError(
+                    reason=f"LLM authentication failed: {err_str}",
+                    task_id=task_id,
+                    retriable=False,
+                )
+            logger.warning("LLM call failed on first attempt, retrying in 8s: %s", first_exc)
+
+        # --- One retry after 8 seconds ---
+        await asyncio.sleep(8)
+        try:
+            return await _attempt()
+        except Exception as second_exc:
+            raise EvaluationHaltedError(
+                reason=f"LLM call failed after retry: {second_exc}",
+                task_id=task_id,
+                retriable=True,
+            )
 
     # ---------------------------------------------------------------------------
     # ConversationDriver protocol methods
@@ -131,7 +155,10 @@ class LLMConversationDriver:
         )
         user = f"Task: {task.task_name}. Dialog: {task.dialog_name}."
 
-        llm_result = await self._llm_call(system, user)
+        try:
+            llm_result = await self._llm_call(system, user, task_id=task.task_id)
+        except Exception:
+            llm_result = None
         if llm_result:
             return llm_result
 
@@ -155,7 +182,10 @@ class LLMConversationDriver:
             f"Value to provide: {value}"
         )
 
-        llm_result = await self._llm_call(system, user)
+        try:
+            llm_result = await self._llm_call(system, user)
+        except Exception:
+            llm_result = None
         if llm_result:
             return llm_result
         return str(value)
@@ -168,7 +198,10 @@ class LLMConversationDriver:
             "Rephrase this amendment request to sound natural and conversational. "
             "Keep the meaning identical. One sentence."
         )
-        llm_result = await self._llm_call(system, result)
+        try:
+            llm_result = await self._llm_call(system, result)
+        except Exception:
+            llm_result = None
         return llm_result or result
 
     async def generate_confirmation(self, bot_message: str) -> str:
@@ -178,7 +211,10 @@ class LLMConversationDriver:
             "Respond with a brief, natural confirmation. "
             "Example: 'Yes, that's correct' or 'Yes, please proceed'."
         )
-        llm_result = await self._llm_call(system, f'Bot said: "{bot_message}"')
+        try:
+            llm_result = await self._llm_call(system, f'Bot said: "{bot_message}"')
+        except Exception:
+            llm_result = None
         return llm_result or "Yes, that's correct."
 
     async def classify_bot_intent(self, bot_message: str) -> str:
@@ -187,11 +223,14 @@ class LLMConversationDriver:
             "Classify the following chatbot message into exactly one category:\n"
             "- entity_request: the bot is asking the user for information (name, date, number, etc)\n"
             "- confirmation_request: the bot is asking for yes/no confirmation\n"
-            "- information: the bot is providing information or results\n"
+            "- information: bot is providing information or results\n"
             "- error: the bot returned an error message\n\n"
             "Respond with ONLY the category name, nothing else."
         )
-        llm_result = await self._llm_call(system, f'Bot message: "{bot_message}"')
+        try:
+            llm_result = await self._llm_call(system, f'Bot message: "{bot_message}"')
+        except Exception:
+            llm_result = None
 
         if llm_result:
             result = llm_result.lower().strip()

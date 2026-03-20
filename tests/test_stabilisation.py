@@ -398,3 +398,82 @@ def test_validate_manifest_data_warnings_only():
     assert result["valid"] is True  # Warnings don't block save
     assert len(result["warnings"]) > 0
     assert any("value_pool" in w for w in result["warnings"])
+
+
+# ---------------------------------------------------------------------------
+# Task 10: EvaluationHaltedError
+# ---------------------------------------------------------------------------
+
+def test_evaluation_halted_error_attributes():
+    from src.governiq.core.exceptions import EvaluationHaltedError
+    err = EvaluationHaltedError(reason="429 Too Many Requests", task_id="task2", retriable=True)
+    assert err.reason == "429 Too Many Requests"
+    assert err.task_id == "task2"
+    assert err.retriable is True
+
+    err2 = EvaluationHaltedError(reason="401 Unauthorized", task_id="task1", retriable=False)
+    assert err2.retriable is False
+
+    # Must be catchable as Exception
+    try:
+        raise err
+    except Exception as e:
+        assert "429" in str(e.reason)
+
+
+# ---------------------------------------------------------------------------
+# Task 11: Retry-Once Then Halt in driver.py
+# ---------------------------------------------------------------------------
+
+def test_halt_on_429_after_retry():
+    """LLM returning 429 twice should raise EvaluationHaltedError after one retry."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch, MagicMock
+    from src.governiq.webhook.driver import LLMConversationDriver
+    from src.governiq.core.exceptions import EvaluationHaltedError
+
+    driver = LLMConversationDriver(api_key="fake", api_format="openai", base_url="http://fake")
+
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+    mock_response.raise_for_status.side_effect = Exception("429 Too Many Requests")
+
+    with patch.object(driver, "_get_client") as mock_get_client:
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_get_client.return_value = mock_client
+
+        with patch("asyncio.sleep", new=AsyncMock()):
+            with pytest.raises(EvaluationHaltedError) as exc_info:
+                asyncio.run(
+                    driver._llm_call("sys", "user", task_id="task1")
+                )
+        assert exc_info.value.task_id == "task1"
+        assert exc_info.value.retriable is True
+
+
+def test_retry_success_on_first_429():
+    """LLM returning 429 once then 200 should succeed without halting."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from src.governiq.webhook.driver import LLMConversationDriver
+
+    driver = LLMConversationDriver(api_key="fake", api_format="openai", base_url="http://fake")
+
+    fail_response = MagicMock()
+    fail_response.raise_for_status.side_effect = Exception("429 Too Many Requests")
+
+    ok_response = MagicMock()
+    ok_response.raise_for_status = MagicMock()
+    ok_response.json.return_value = {"choices": [{"message": {"content": "Hello"}}]}
+
+    with patch.object(driver, "_get_client") as mock_get_client:
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=[fail_response, ok_response])
+        mock_get_client.return_value = mock_client
+
+        with patch("asyncio.sleep", new=AsyncMock()):
+            result = asyncio.run(
+                driver._llm_call("sys", "user", task_id="task1")
+            )
+        assert result == "Hello"
