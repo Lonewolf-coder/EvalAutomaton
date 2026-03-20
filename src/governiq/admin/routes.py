@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 import logging
@@ -992,6 +993,10 @@ async def restart_evaluation(
     mode='fresh'  — create a new session from the original upload.
     mode='resume' — continue from the last saved RuntimeContext checkpoint.
     """
+    # Validate session_id is a UUID to prevent path traversal
+    if not re.fullmatch(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', session_id):
+        return JSONResponse({"error": "Invalid session ID format"}, status_code=400)
+
     from ..candidate.routes import _run_evaluation_background
 
     results_dir = DATA_DIR / "results"
