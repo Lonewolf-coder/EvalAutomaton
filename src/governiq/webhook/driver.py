@@ -16,12 +16,15 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import httpx
 
 from ..core.manifest import TaskDefinition
 from .message_normaliser import normalise_messages
+
+if TYPE_CHECKING:
+    from ..core.eval_logger import EvalLogger
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +47,7 @@ class LLMConversationDriver:
         temperature: float = 0.3,
         api_format: str = "anthropic",
         extra_headers: dict[str, str] | None = None,
+        eval_logger: "EvalLogger | None" = None,
     ):
         self.api_key = api_key
         self.model = model
@@ -52,6 +56,7 @@ class LLMConversationDriver:
         self.api_format = api_format  # "openai" or "anthropic"
         self.extra_headers = extra_headers or {}
         self._client: httpx.AsyncClient | None = None
+        self._eval_logger = eval_logger
 
     async def _get_client(self) -> httpx.AsyncClient:
         if not self._client:

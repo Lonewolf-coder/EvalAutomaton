@@ -21,6 +21,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .eval_logger import EvalLogger
+from .exceptions import EvaluationHaltedError
 from .manifest import EnginePattern, Manifest
 from .manifest_validator import ValidationResult, validate_manifest
 from .runtime_context import RuntimeContext, TaskRecord
@@ -65,18 +67,21 @@ class EvaluationEngine:
         persist_dir: str = "./data",
         kore_bearer_token: str = "",
         kore_credentials: KoreCredentials | None = None,
+        eval_logger: EvalLogger | None = None,
     ):
         self.manifest = manifest
         self.persist_dir = Path(persist_dir)
         self.persist_dir.mkdir(parents=True, exist_ok=True)
         self.kore_bearer_token = kore_bearer_token
         self.kore_credentials = kore_credentials
+        self._eval_logger = eval_logger
 
         self.driver = LLMConversationDriver(
             api_key=llm_api_key,
             model=llm_model,
             base_url=llm_base_url,
             api_format=llm_api_format,
+            eval_logger=eval_logger,
         )
         self.webhook_client = KoreWebhookClient(
             webhook_url=manifest.webhook_url,
@@ -502,8 +507,15 @@ class EvaluationEngine:
                 kore_api=self.kore_api_client,
             )
 
-            # Execute the pattern
+            # Execute the pattern — EvaluationHaltedError propagates up
             try:
+                if self._eval_logger:
+                    self._eval_logger.log(
+                        task_id=task.task_id,
+                        level="info",
+                        event="task_start",
+                        detail=f"Starting task {task.task_id} ({task.pattern})",
+                    )
                 pattern_result = await executor.execute()
                 kore_sid = getattr(self.webhook_client, "_kore_session_id", None)
                 from_id = getattr(self.webhook_client, "_from_id", "")
@@ -515,6 +527,23 @@ class EvaluationEngine:
                     # Checkpoint: save partial context so a crash on the next task
                     # doesn't lose this task's records
                     context.save(self.persist_dir / "runtime_contexts")
+                if self._eval_logger:
+                    self._eval_logger.log(
+                        task_id=task.task_id,
+                        level="info",
+                        event="task_complete",
+                        detail=f"Success: {pattern_result.success}",
+                    )
+            except EvaluationHaltedError as halt_err:
+                if self._eval_logger:
+                    self._eval_logger.log(
+                        task_id=halt_err.task_id,
+                        level="error",
+                        event="evaluation_halted",
+                        detail=halt_err.reason,
+                    )
+                context.save(self.persist_dir / "runtime_contexts")
+                raise
             except Exception as e:
                 logger.error("Pattern execution failed for task '%s': %s", task.task_id, e)
                 # Create a synthetic failure result instead of silently skipping

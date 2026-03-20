@@ -477,3 +477,70 @@ def test_retry_success_on_first_429():
                 driver._llm_call("sys", "user", task_id="task1")
             )
         assert result == "Hello"
+
+
+# ---------------------------------------------------------------------------
+# Task 12: Halt Handler in Engine + EvalLogger Wiring
+# ---------------------------------------------------------------------------
+
+def test_halt_writes_checkpoint(tmp_path):
+    """On EvaluationHaltedError raised inside the engine, _run_evaluation_background must
+    update the stub with status='halted'. This test patches the engine to raise the error
+    and verifies the route's exception handler writes the correct stub fields."""
+    import json
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from src.governiq.core.exceptions import EvaluationHaltedError
+    import src.governiq.candidate.routes as cand_routes
+
+    session_id = "halt-bg-test"
+    results_dir = tmp_path / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    stub_path = results_dir / f"scorecard_{session_id}.json"
+    stub_path.write_text(json.dumps({
+        "session_id": session_id,
+        "status": "running",
+        "completed_tasks": ["task1"],
+        "halt_reason": None,
+        "halted_on_task": None,
+        "halted_at": None,
+    }))
+
+    # Minimal manifest mock
+    manifest = MagicMock()
+    manifest.assessment_name = "Test"
+    manifest.manifest_id = "test-v1"
+    manifest.scoring_config = {}
+
+    # Engine mock that raises EvaluationHaltedError on run
+    mock_engine_instance = MagicMock()
+    mock_engine_instance.run_cbm_only = AsyncMock(
+        side_effect=EvaluationHaltedError(reason="429 rate limit", task_id="task2", retriable=True)
+    )
+    mock_engine_instance.run_full_evaluation = AsyncMock(
+        side_effect=EvaluationHaltedError(reason="429 rate limit", task_id="task2", retriable=True)
+    )
+
+    original_data_dir = cand_routes.DATA_DIR
+    try:
+        cand_routes.DATA_DIR = tmp_path
+        with patch("src.governiq.candidate.routes.EvaluationEngine", return_value=mock_engine_instance):
+            asyncio.run(cand_routes._run_evaluation_background(
+                session_id=session_id,
+                manifest=manifest,
+                bot_export_data={"name": "TestBot"},
+                candidate_id="test@example.com",
+                webhook_url="",
+                kore_creds=None,
+                llm_config=MagicMock(api_key="k", model="m", base_url="", api_format="openai"),
+                kore_bearer_token="",
+                plag_report=None,
+            ))
+    finally:
+        cand_routes.DATA_DIR = original_data_dir
+
+    updated = json.loads(stub_path.read_text())
+    assert updated["status"] == "halted", f"Expected 'halted', got '{updated['status']}'"
+    assert updated["halt_reason"] == "429 rate limit"
+    assert updated["halted_on_task"] == "task2"
+    assert updated["halted_at"] is not None

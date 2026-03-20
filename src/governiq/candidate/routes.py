@@ -18,6 +18,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ..core.engine import EvaluationEngine
+from ..core.eval_logger import EvalLogger
+from ..core.exceptions import EvaluationHaltedError
 from ..core.manifest import Manifest
 from ..plagiarism.detector import detect as detect_plagiarism, PlagiarismRisk
 
@@ -275,6 +277,9 @@ async def _run_evaluation_background(
     stub_path = results_dir / f"scorecard_{session_id}.json"
     _create_lock(session_id)
     try:
+        _log_dir = DATA_DIR / "logs"
+        _eval_logger = EvalLogger(session_id=session_id, log_dir=_log_dir)
+
         engine = EvaluationEngine(
             manifest=manifest,
             llm_api_key=llm_config.api_key,
@@ -283,6 +288,7 @@ async def _run_evaluation_background(
             llm_api_format=llm_config.api_format,
             kore_bearer_token=kore_bearer_token,
             kore_credentials=kore_creds,
+            eval_logger=_eval_logger,
         )
         if webhook_url or kore_creds:
             scorecard = await engine.run_full_evaluation(
@@ -303,6 +309,21 @@ async def _run_evaluation_background(
         # Write final scorecard (overwrites the stub)
         with stub_path.open("w") as f:
             json.dump(scorecard.to_dict(), f, indent=2)
+
+    except EvaluationHaltedError as halt_err:
+        logger.warning("Evaluation halted for session %s: %s", session_id, halt_err.reason)
+        try:
+            existing = json.loads(stub_path.read_text()) if stub_path.exists() else {}
+        except Exception:
+            existing = {}
+        existing.update({
+            "status": "halted",
+            "halt_reason": halt_err.reason,
+            "halted_on_task": halt_err.task_id,
+            "halted_at": datetime.now(timezone.utc).isoformat(),
+        })
+        with stub_path.open("w") as f:
+            json.dump(existing, f, indent=2)
 
     except Exception as exc:
         logger.exception("Background evaluation failed for session %s", session_id)
