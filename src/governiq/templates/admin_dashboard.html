@@ -176,30 +176,74 @@
                     <th>Session</th>
                     <th>Candidate</th>
                     <th>Assessment</th>
+                    <th>Status</th>
                     <th>Score</th>
                     <th>Webhook</th>
                     <th>Verdict</th>
                     <th>Flags</th>
+                    <th>Controls</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
+                {# ------------------------------------------------------------------ #}
+                {# Badge colour map — keyed on display_status values from _enrich_submission #}
+                {# display_status values: completed, running, halted, error, stale, pending #}
+                {# ------------------------------------------------------------------ #}
+                {% set badge_map = {
+                  'completed': 'badge-pass',
+                  'running':   'badge-info',
+                  'halted':    'badge-warn',
+                  'error':     'badge-error',
+                  'stale':     'badge-grey',
+                  'pending':   'badge-pending',
+                } %}
+
                 {% for ev in evaluations %}
-                <tr>
-                    <td><input type="checkbox" class="compare-check" data-session="{{ ev.session_id }}" onchange="updateCompareBar()"></td>
-                    <td class="text-small" style="font-family:monospace;">{{ ev.session_id }}</td>
+                {# Re-run rows (have a parent_session_id) get a subtle background tint #}
+                <tr class="{% if ev.parent_session_id is defined and ev.parent_session_id %}re-run-row{% endif %}">
+                    {# Checkbox for compare — only on top-level rows; re-runs share parent context #}
+                    <td>
+                        {% if not (ev.parent_session_id is defined and ev.parent_session_id) %}
+                        <input type="checkbox" class="compare-check" data-session="{{ ev.session_id }}" onchange="updateCompareBar()">
+                        {% endif %}
+                    </td>
+
+                    {# Session ID — re-runs show an indented label instead of repeating the full ID #}
+                    <td class="text-small" style="font-family:monospace;">
+                        {% if ev.parent_session_id is defined and ev.parent_session_id %}
+                        <span class="re-run-indent">&#8627; Re-run</span><br>
+                        {% endif %}
+                        {{ ev.session_id }}
+                    </td>
+
                     <td><i data-lucide="user" class="icon icon-sm" style="margin-right:.2rem;"></i> {{ ev.candidate_id or 'N/A' }}</td>
                     <td>{{ ev.assessment_name }}</td>
+
+                    {# ---- Status badge column — uses enriched display_status field ---- #}
                     <td>
-                        {# Guard: overall_score is absent on running/error stubs — show status badge instead #}
+                        {% set ds = ev.display_status | default('pending') %}
+                        <span class="badge {{ badge_map.get(ds, 'badge-grey') }}"
+                              {% if ds == 'halted' and ev.halt_reason is defined and ev.halt_reason %}
+                              title="{{ ev.halt_reason }}"
+                              {% endif %}>
+                            {% if ds == 'running' %}<span class="spinner"></span>{% endif %}
+                            {{ ds | upper }}
+                        </span>
+                    </td>
+
+                    {# ---- Score — guard against running/error stubs that have no score yet ---- #}
+                    <td>
                         {% if ev.overall_score is defined and ev.overall_score is not none %}
                         <strong class="{% if ev.overall_score >= 0.7 %}text-pass{% elif ev.overall_score >= 0.5 %}text-warn{% else %}text-fail{% endif %}">
                             {{ (ev.overall_score * 100) | round(1) }}%
                         </strong>
                         {% else %}
-                        <span class="badge badge-{{ ev.status | default('error') }}">{{ ev.status | default('error') | upper }}</span>
+                        <span class="text-muted text-small">—</span>
                         {% endif %}
                     </td>
+
+                    {# ---- Webhook tested indicator ---- #}
                     <td>
                         {% if ev.any_webhook_tested %}
                             <span class="badge badge-pass"><i data-lucide="check" class="icon icon-sm"></i> Tested</span>
@@ -207,13 +251,16 @@
                             <span class="badge badge-warn"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Only</span>
                         {% endif %}
                     </td>
+
+                    {# ---- Business-logic verdict ---- #}
                     <td>
-                        {# Guard: verdict logic depends on overall_score — fall back for incomplete stubs #}
                         {% if ev.overall_score is not defined or ev.overall_score is none %}
-                            {% if ev.status == 'running' %}
+                            {% if ev.display_status | default('') == 'running' %}
                                 <span class="badge badge-info"><i data-lucide="loader" class="icon icon-sm"></i> IN PROGRESS</span>
+                            {% elif ev.display_status | default('') == 'halted' %}
+                                <span class="badge badge-warn"><i data-lucide="pause-circle" class="icon icon-sm"></i> HALTED</span>
                             {% else %}
-                                <span class="badge badge-fail"><i data-lucide="alert-circle" class="icon icon-sm"></i> {{ ev.status | default('error') | upper }}</span>
+                                <span class="badge badge-error"><i data-lucide="alert-circle" class="icon icon-sm"></i> {{ ev.display_status | default('error') | upper }}</span>
                             {% endif %}
                         {% elif not ev.any_webhook_tested %}
                             <span class="badge badge-warn"><i data-lucide="clock" class="icon icon-sm"></i> UNTESTED</span>
@@ -227,6 +274,8 @@
                             <span class="badge badge-fail"><i data-lucide="shield-x" class="icon icon-sm"></i> FAIL</span>
                         {% endif %}
                     </td>
+
+                    {# ---- Flags — plagiarism, seeded state ---- #}
                     <td>
                         {% if ev.state_seeded %}<span class="badge badge-warn"><i data-lucide="database" class="icon icon-sm"></i> seeded</span>{% endif %}
                         {% if ev.get('plagiarism_flag') %}
@@ -235,6 +284,39 @@
                         </span>
                         {% endif %}
                     </td>
+
+                    {# ---- Re-run controls — shown based on lock status, can_resume, can_start_fresh ---- #}
+                    {# has_active_lock: evaluation is currently running — show disabled button           #}
+                    {# can_resume: halted evaluation can continue from last checkpoint                  #}
+                    {# can_start_fresh: evaluation can be restarted from scratch (requires zip_available) #}
+                    <td class="controls-col">
+                        {% if ev.has_active_lock is defined and ev.has_active_lock %}
+                            <button class="btn btn-sm btn-outline" disabled title="Evaluation is currently running">Running…</button>
+                        {% else %}
+                            {% if ev.can_start_fresh is defined and ev.can_start_fresh %}
+                                {% if ev.zip_available is defined and ev.zip_available %}
+                                    <form method="POST" action="/admin/evaluation/{{ ev.session_id }}/restart" style="display:inline">
+                                        <input type="hidden" name="mode" value="fresh">
+                                        <button type="submit" class="btn btn-sm btn-outline">Start Fresh</button>
+                                    </form>
+                                {% else %}
+                                    <button class="btn btn-sm btn-outline" disabled title="Re-upload required">Start Fresh</button>
+                                {% endif %}
+                            {% endif %}
+                            {% if ev.can_resume is defined and ev.can_resume %}
+                                <form method="POST" action="/admin/evaluation/{{ ev.session_id }}/restart" style="display:inline">
+                                    <input type="hidden" name="mode" value="resume">
+                                    <button type="submit" class="btn btn-sm btn-primary">Resume</button>
+                                </form>
+                            {% endif %}
+                            {# Show a dash if no controls are applicable #}
+                            {% if not (ev.can_resume is defined and ev.can_resume) and not (ev.can_start_fresh is defined and ev.can_start_fresh) %}
+                                <span class="text-muted text-small">—</span>
+                            {% endif %}
+                        {% endif %}
+                    </td>
+
+                    {# ---- Review link ---- #}
                     <td>
                         <a href="/admin/review/{{ ev.session_id }}" class="btn btn-outline btn-sm">
                             <i data-lucide="clipboard-check" class="icon icon-sm"></i> Review

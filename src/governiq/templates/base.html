@@ -112,6 +112,10 @@
         [data-theme="dark"] .badge-warn { background: var(--warn-bg); color: var(--warn-text); }
         [data-theme="dark"] .badge-info { background: var(--info-bg); color: var(--info-text); }
         [data-theme="dark"] .badge-grey { background: var(--bg-subtle); color: #b0b0b0; }
+        /* Status-specific badge dark overrides — badge-error/running/pending use hardcoded light values */
+        [data-theme="dark"] .badge-error   { background: #3b0a0a; color: #fca5a5; }
+        [data-theme="dark"] .badge-running { background: #0c2744; color: #bae6fd; }
+        [data-theme="dark"] .badge-pending { background: rgba(255,255,255,0.06); color: #94a3b8; }
         [data-theme="dark"] .alert-danger  { background: var(--fail-bg); color: var(--fail-text); border-color: #5c1a1a; }
         [data-theme="dark"] .alert-warning { background: var(--warn-bg); color: var(--warn-text); border-color: #5c3a0e; }
         [data-theme="dark"] .alert-success { background: var(--pass-bg); color: var(--pass-text); border-color: #064e3b; }
@@ -360,6 +364,23 @@
         .badge-error   { background: #fee2e2; color: #991b1b; }
         .badge-running { background: #dbeafe; color: #1e40af; }
         .badge-pending { background: #f1f5f9; color: #64748b; }
+
+        /* ---- Submission list: re-run rows, indented labels, and inline spinner ---- */
+        /* Re-run rows (child evaluations with a parent_session_id) get a subtle background */
+        .re-run-row { background: #f8fafc; }
+        [data-theme="dark"] .re-run-row { background: rgba(255,255,255,0.025); }
+        /* Indented label inside the session cell for re-run rows */
+        .re-run-indent { color: #64748b; font-size: 0.8em; font-style: italic; }
+        /* Controls column — keep Start Fresh / Resume buttons together without wrapping */
+        .controls-col { white-space: nowrap; }
+        /* Inline spinner rendered inside the RUNNING status badge */
+        .spinner {
+            display: inline-block; width: 10px; height: 10px;
+            border: 2px solid currentColor; border-top-color: transparent;
+            border-radius: 50%; vertical-align: middle; margin-right: 2px;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         /* ---- Score Ring ---- */
         .score-ring {
