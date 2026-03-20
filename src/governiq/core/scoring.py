@@ -169,14 +169,55 @@ class Scorecard:
     # ISO timestamp of last refresh attempt (None = never refreshed)
     analytics_last_checked_at: str | None = None
 
-    # Scoring formula: Webhook 80% + FAQ 10% + Compliance 10%
-    # CBM structural audit is informational only — 0% weight
+    # Manifest scoring config — consumed at construction, never serialised.
+    # Must be the last field so Python's dataclass ordering rules are satisfied
+    # (fields with defaults must follow fields without defaults).
+    scoring_config: dict | None = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        """Derive weight attributes from scoring_config or apply legacy defaults."""
+        import logging as _logging
+
+        _LEGACY_WEBHOOK = 0.80
+        _LEGACY_COMPLIANCE = 0.10
+        _LEGACY_FAQ = 0.10
+        _LEGACY_THRESHOLD = 0.70
+
+        if self.scoring_config:
+            ww = float(self.scoring_config.get("webhook_functional_weight", _LEGACY_WEBHOOK))
+            cw = float(self.scoring_config.get("compliance_weight", _LEGACY_COMPLIANCE))
+            fw = float(self.scoring_config.get("faq_weight", _LEGACY_FAQ))
+            pt = float(self.scoring_config.get("pass_threshold", _LEGACY_THRESHOLD))
+
+            # Validate pass_threshold
+            if not (0.5 <= pt <= 1.0):
+                _logging.getLogger(__name__).warning(
+                    "Scorecard: pass_threshold %.2f out of range [0.5, 1.0], using 0.70", pt
+                )
+                pt = _LEGACY_THRESHOLD
+
+            # Normalise weights if they don't sum to 1.0
+            total = ww + cw + fw
+            if total > 0 and abs(total - 1.0) > 0.01:
+                ww, cw, fw = ww / total, cw / total, fw / total
+        else:
+            ww, cw, fw, pt = _LEGACY_WEBHOOK, _LEGACY_COMPLIANCE, _LEGACY_FAQ, _LEGACY_THRESHOLD
+
+        self._webhook_weight: float = ww
+        self._compliance_weight: float = cw
+        self._faq_weight: float = fw
+        self._pass_threshold: float = pt
+
     @property
     def overall_score(self) -> float:
         """Compute weighted overall score.
 
         Webhook is the authority. CBM is informational.
         Tasks without webhook testing score 0 (untested).
+
+        If faq_score is None, FAQ pipeline did not run — redistribute its
+        weight to webhook. If faq_score is 0.0 (ran but scored zero), no
+        redistribution occurs.
         """
         if not self.task_scores:
             return 0.0
@@ -187,7 +228,15 @@ class Scorecard:
         else:
             task_avg = 0.0
         compliance_score = self._compliance_score()
-        return task_avg * 0.80 + compliance_score * 0.10 + self.faq_score * 0.10
+
+        faq_w = self._faq_weight
+        webhook_w = self._webhook_weight
+        if self.faq_score is None and faq_w > 0:
+            webhook_w = webhook_w + faq_w
+            faq_w = 0.0
+
+        faq_contribution = (self.faq_score or 0.0) * faq_w
+        return task_avg * webhook_w + compliance_score * self._compliance_weight + faq_contribution
 
     @property
     def any_webhook_tested(self) -> bool:
@@ -274,7 +323,7 @@ class Scorecard:
                 }
                 for cr in self.compliance_results
             ],
-            "faq_score": round(self.faq_score, 4),
+            "faq_score": round(self.faq_score, 4) if self.faq_score is not None else None,
             "kore_api_insights": self.kore_api_insights,
             "analytics_by_task": self.analytics_by_task,
             "tooltips": self.tooltips,

@@ -833,3 +833,67 @@ def test_health_401_is_failing():
 
     assert result["status"] == "failing"
     assert "401" in result["message"] or "invalid" in result["message"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Task 21: Scorecard __post_init__ with scoring_config
+# ---------------------------------------------------------------------------
+
+
+def test_scoring_uses_manifest_weights():
+    """Scorecard must use scoring_config weights, not hardcoded 80/10/10."""
+    from src.governiq.core.scoring import Scorecard, TaskScore, CheckResult, CheckStatus
+
+    config = {
+        "webhook_functional_weight": 0.60,
+        "compliance_weight": 0.20,
+        "faq_weight": 0.20,
+        "pass_threshold": 0.70,
+    }
+    sc = Scorecard(
+        session_id="s1", candidate_id="c1", manifest_id="m1",
+        assessment_name="Test", scoring_config=config,
+    )
+    ts = TaskScore(task_id="t1", task_name="Task 1")
+    ts.webhook_checks = [CheckResult(
+        check_id="c1", task_id="t1", pipeline="webhook",
+        label="test", status=CheckStatus.PASS, score=1.0
+    )]
+    sc.task_scores = [ts]
+    sc.faq_score = 0.0  # FAQ ran but scored 0 -- NOT None, so NO redistribution
+
+    # Expected: 1.0 * 0.60 + 1.0 * 0.20 + 0.0 * 0.20 = 0.80
+    assert abs(sc.overall_score - 0.80) < 0.001
+
+
+def test_scoring_normalises_weights():
+    """Weights not summing to 1.0 must be normalised."""
+    from src.governiq.core.scoring import Scorecard
+
+    config = {
+        "webhook_functional_weight": 0.80,
+        "compliance_weight": 0.15,  # sums to 1.05
+        "faq_weight": 0.10,
+        "pass_threshold": 0.70,
+    }
+    sc = Scorecard(
+        session_id="s2", candidate_id="c2", manifest_id="m2",
+        assessment_name="Test", scoring_config=config,
+    )
+    total = sc._webhook_weight + sc._compliance_weight + sc._faq_weight
+    assert abs(total - 1.0) < 0.01
+
+
+def test_scoring_legacy_defaults_unchanged():
+    """Scorecard without scoring_config must still work (uses existing logic)."""
+    from src.governiq.core.scoring import Scorecard, TaskScore, CheckResult, CheckStatus
+
+    sc = Scorecard(session_id="s3", candidate_id="c3", manifest_id="m3", assessment_name="T")
+    ts = TaskScore(task_id="t1", task_name="Task 1")
+    ts.webhook_checks = [CheckResult(
+        check_id="c1", task_id="t1", pipeline="webhook",
+        label="test", status=CheckStatus.PASS, score=1.0
+    )]
+    sc.task_scores = [ts]
+    # With legacy weights, overall_score should still be > 0
+    assert sc.overall_score > 0.0
