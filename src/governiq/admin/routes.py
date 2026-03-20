@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 import shutil
 from pathlib import Path
@@ -35,9 +35,8 @@ DATA_DIR = Path("data")
 DATA_MANIFESTS_DIR = DATA_DIR / "manifests"
 
 
-def _is_lock_stale_admin(session_id: str, stale_minutes: int = 15) -> bool:
+def _is_lock_stale_admin(session_id: str, stale_minutes: int = 60) -> bool:
     """Admin-side stale lock check (mirrors candidate/routes.py version)."""
-    from datetime import datetime, timezone, timedelta
     lock_path = DATA_DIR / "locks" / f"{session_id}.lock"
     if not lock_path.exists():
         return True
