@@ -245,3 +245,22 @@ def test_stale_lock_detection(tmp_path):
     # Fresh lock is not stale
     _create_lock(session_id, locks_dir=locks_dir)
     assert _is_lock_stale(session_id, locks_dir=locks_dir) is False
+
+
+def test_value_pool_dict_normalised_at_load():
+    """A value_pool authored as a JSON object must be converted to a list at load time."""
+    from src.governiq.core.manifest import normalise_value_pools
+
+    task_data = {
+        "task_id": "t1",
+        "required_entities": [
+            {"entity_key": "city", "value_pool": {"0": "London", "1": "Paris", "2": "Rome"}},
+            {"entity_key": "date", "value_pool": ["2026-01-01", "2026-02-01"]},  # already a list
+        ],
+    }
+    normalise_value_pools(task_data)
+
+    entities = task_data["required_entities"]
+    assert isinstance(entities[0]["value_pool"], list)
+    assert set(entities[0]["value_pool"]) == {"London", "Paris", "Rome"}
+    assert entities[1]["value_pool"] == ["2026-01-01", "2026-02-01"]  # unchanged

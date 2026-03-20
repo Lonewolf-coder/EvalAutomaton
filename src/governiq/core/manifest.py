@@ -7,10 +7,30 @@ no code changes. The engine knows six patterns; the manifest tells it everything
 
 from __future__ import annotations
 
+import logging
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+_log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Normalisation helpers — called at manifest load time before Pydantic validation
+# ---------------------------------------------------------------------------
+
+def normalise_value_pools(task_data: dict) -> None:
+    """Convert any dict-typed value_pool to a list in-place. Warns if conversion needed."""
+    for entity in task_data.get("required_entities", []):
+        vp = entity.get("value_pool")
+        if isinstance(vp, dict):
+            _log.warning(
+                "MD-VPOOL: task '%s' entity '%s' value_pool is a dict — auto-converted to list. Fix manifest.",
+                task_data.get("task_id", "?"),
+                entity.get("entity_key", "?"),
+            )
+            entity["value_pool"] = list(vp.values())
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +76,7 @@ class EntityDefinition(BaseModel):
     """A single entity the bot must collect during a task."""
     entity_key: str = Field(..., description="Must match the bot's entity name exactly")
     semantic_hint: str = Field(..., description="Natural language description for LLM driver")
-    value_pool: list[str] | dict[str, Any] = Field(
+    value_pool: list[Any] | dict[str, Any] = Field(
         default_factory=list,
         description=(
             "Realistic test values the driver can inject. "
@@ -334,6 +354,16 @@ class Manifest(BaseModel):
     # Metadata
     created_by: str = Field(default="")
     notes: str = Field(default="")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalise_task_value_pools(cls, values: Any) -> Any:
+        """Normalise dict-typed value_pool entries in all tasks before Pydantic validation."""
+        if isinstance(values, dict):
+            for task_data in values.get("tasks", []):
+                if isinstance(task_data, dict):
+                    normalise_value_pools(task_data)
+        return values
 
     def get_task(self, task_id: str) -> TaskDefinition | None:
         """Look up a task by its ID."""
