@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from ..core.engine import EvaluationEngine
@@ -18,6 +19,8 @@ from ..core.manifest_validator import validate_manifest
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["evaluation"])
+
+DATA_DIR = Path("data")
 
 
 # ---------------------------------------------------------------------------
@@ -371,50 +374,62 @@ async def refresh_analytics(session_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Log streaming
+# ---------------------------------------------------------------------------
+
+def read_log_entries(
+    session_id: str,
+    offset: int = 0,
+    logs_dir: Path | None = None,
+) -> dict:
+    """Read log entries from the JSONL file starting at offset."""
+    logs_dir = logs_dir or (DATA_DIR / "logs")
+    log_file = logs_dir / f"eval_{session_id}.jsonl"
+
+    entries = []
+    if log_file.exists():
+        try:
+            lines = log_file.read_text(encoding="utf-8").strip().split("\n")
+            lines = [l for l in lines if l.strip()]
+            for line in lines[offset:]:
+                try:
+                    entries.append(json.loads(line))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    next_offset = offset + len(entries)
+
+    # Check if evaluation is in terminal state
+    stub_path = DATA_DIR / "results" / f"scorecard_{session_id}.json"
+    done = False
+    if stub_path.exists():
+        try:
+            stub = json.loads(stub_path.read_text())
+            done = stub.get("status") in ("completed", "error", "halted")
+        except Exception:
+            pass
+
+    return {"entries": entries, "next_offset": next_offset, "done": done}
+
+
+@router.get("/logs/{session_id}")
+async def get_evaluation_log(session_id: str, offset: int = 0):
+    """Stream evaluation log entries for the live log panel."""
+    return JSONResponse(read_log_entries(session_id=session_id, offset=offset))
+
+
+# ---------------------------------------------------------------------------
 # Health endpoints
 # ---------------------------------------------------------------------------
 
+from ..core.health import check_ai_model as _check_ai_model_impl
+
+
 def _check_ai_model(url: str = "", api_key: str = "") -> dict:
-    """Check if the configured AI provider is reachable."""
-    config = load_llm_config()
-    probe_url = url or config.base_url
-    if not probe_url:
-        return {
-            "status": "failing",
-            "message": "No AI provider configured. Go to Settings to connect an AI model.",
-            "detail": "base_url is empty",
-        }
-    models_url = probe_url.rstrip("/") + "/models"
-    headers = {}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    elif config.api_key:
-        headers["Authorization"] = f"Bearer {config.api_key}"
-    try:
-        r = httpx.get(models_url, headers=headers, timeout=4.0)
-        if r.status_code < 500:
-            return {
-                "status": "ok",
-                "message": "AI model is connected and ready.",
-                "detail": f"HTTP {r.status_code}",
-            }
-        return {
-            "status": "failing",
-            "message": "AI model returned an error. Check that the model is loaded.",
-            "detail": f"HTTP {r.status_code}",
-        }
-    except httpx.ConnectError:
-        return {
-            "status": "failing",
-            "message": "AI model is not running. Start LM Studio (or your AI provider) and load a model.",
-            "detail": "Connection refused",
-        }
-    except Exception as exc:
-        return {
-            "status": "failing",
-            "message": "Could not reach the AI model. Check your connection settings.",
-            "detail": str(exc)[:120],
-        }
+    """Thin wrapper — delegates to shared health.check_ai_model."""
+    return _check_ai_model_impl(url=url, api_key=api_key)
 
 
 def _check_storage() -> dict:

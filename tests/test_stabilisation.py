@@ -700,3 +700,56 @@ def test_restart_blocked_by_active_lock(tmp_path):
         assert admin_routes._is_lock_stale_admin(session_id) is False
     finally:
         admin_routes.DATA_DIR = original
+
+
+# ---------------------------------------------------------------------------
+# Task 17: Log Streaming Endpoint
+# ---------------------------------------------------------------------------
+
+def test_log_endpoint_offset(tmp_path):
+    """GET /api/v1/logs/{id}?offset=N returns only entries after offset."""
+    import json
+
+    session_id = "log-test-1"
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    log_file = logs_dir / f"eval_{session_id}.jsonl"
+
+    entries = [
+        {"ts": "2026-01-01T00:00:00", "task_id": "task1", "level": "info",
+         "event": f"event_{i}", "detail": "", "raw": {}}
+        for i in range(5)
+    ]
+    log_file.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+
+    from src.governiq.api.routes import read_log_entries
+    result = read_log_entries(session_id=session_id, offset=2, logs_dir=logs_dir)
+    assert result["next_offset"] == 5
+    assert len(result["entries"]) == 3
+    assert result["entries"][0]["event"] == "event_2"
+
+
+def test_log_endpoint_done_when_terminal(tmp_path):
+    """done=True when the scorecard has a terminal status."""
+    import json
+    from src.governiq.api.routes import read_log_entries
+
+    session_id = "done-test"
+    logs_dir = tmp_path / "logs"
+    results_dir = tmp_path / "results"
+    logs_dir.mkdir()
+    results_dir.mkdir()
+    (logs_dir / f"eval_{session_id}.jsonl").write_text("")
+    (results_dir / f"scorecard_{session_id}.json").write_text(
+        json.dumps({"session_id": session_id, "status": "completed"})
+    )
+
+    import src.governiq.api.routes as api_routes
+    original = api_routes.DATA_DIR
+    try:
+        api_routes.DATA_DIR = tmp_path
+        result = read_log_entries(session_id=session_id, offset=0, logs_dir=logs_dir)
+    finally:
+        api_routes.DATA_DIR = original
+
+    assert result["done"] is True
