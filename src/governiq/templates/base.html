@@ -625,6 +625,202 @@
         text-decoration: none; border-bottom: 1px solid rgba(167,139,250,.3);
       }
     </style>
+    <style>
+      /* ================================================================
+         Live Log Panel — Admin portal only
+         Fixed floating panel in the bottom-right corner.
+         Activated via window.startLogPanel(sessionId).
+         Polls GET /api/v1/logs/{session_id}?offset=N every 3 seconds.
+         ================================================================ */
+
+      /* ---- Panel container ---- */
+      .log-panel {
+        position: fixed;
+        bottom: 1rem;
+        right: 1rem;
+        width: 480px;
+        max-height: 60vh;
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 0.5rem;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        z-index: 9999;
+        font-family: monospace;
+        font-size: 0.78rem;
+        display: flex;
+        flex-direction: column;
+        /* Subtle animated border to draw attention when active */
+        border: 1px solid #1e293b;
+        transition: border-color 0.3s;
+      }
+      /* Hide completely when --hidden modifier is present */
+      .log-panel--hidden { display: none; }
+      /* Collapse the body when minimised */
+      .log-panel--minimised .log-panel__body { display: none; }
+      /* Accent border when polling is live */
+      .log-panel--live { border-color: #334155; }
+
+      /* ---- Header bar ---- */
+      .log-panel__header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0.75rem;
+        background: #1e293b;
+        border-radius: 0.5rem 0.5rem 0 0;
+        cursor: pointer;
+        user-select: none;
+        gap: 0.5rem;
+      }
+      /* When minimised the radius applies to all corners */
+      .log-panel--minimised .log-panel__header {
+        border-radius: 0.5rem;
+      }
+
+      .log-panel__title {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #94a3b8;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      /* Live pulse dot shown beside the title when polling */
+      .log-panel__live-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #4ade80;
+        flex-shrink: 0;
+        animation: log-pulse 1.5s infinite;
+      }
+      .log-panel__live-dot--hidden { display: none; }
+
+      @keyframes log-pulse {
+        0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(74,222,128,0.5); }
+        50%       { opacity: 0.7; box-shadow: 0 0 0 4px rgba(74,222,128,0); }
+      }
+
+      .log-panel__controls {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        flex-shrink: 0;
+      }
+
+      /* ---- Small icon buttons inside the header ---- */
+      .log-btn {
+        background: none;
+        border: none;
+        color: #64748b;
+        cursor: pointer;
+        padding: 2px 5px;
+        border-radius: 3px;
+        font-size: 0.85rem;
+        line-height: 1;
+        transition: color 0.15s, background 0.15s;
+      }
+      .log-btn:hover { color: #e2e8f0; background: rgba(255,255,255,0.08); }
+
+      /* ---- Scrollable body ---- */
+      .log-panel__body {
+        overflow-y: auto;
+        padding: 0.5rem;
+        flex: 1;
+        /* Custom scrollbar for dark panel */
+        scrollbar-width: thin;
+        scrollbar-color: #334155 transparent;
+      }
+      .log-panel__body::-webkit-scrollbar { width: 5px; }
+      .log-panel__body::-webkit-scrollbar-track { background: transparent; }
+      .log-panel__body::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+      /* Empty state message */
+      .log-panel__empty {
+        color: #475569;
+        font-size: 0.75rem;
+        padding: 1rem 0.5rem;
+        text-align: center;
+      }
+
+      /* ---- Log entry list ---- */
+      .log-entries { display: flex; flex-direction: column; gap: 2px; }
+
+      /* Task group header — separates entries by task_id */
+      .log-task-header {
+        color: #475569;
+        font-weight: bold;
+        font-size: 0.7rem;
+        margin-top: 0.5rem;
+        margin-bottom: 2px;
+        padding: 2px 4px;
+        border-left: 2px solid #334155;
+        letter-spacing: 0.03em;
+      }
+
+      /* Individual log row */
+      .log-entry {
+        display: flex;
+        gap: 0.5rem;
+        padding: 2px 4px;
+        border-bottom: 1px solid rgba(30,41,59,0.8);
+        border-radius: 2px;
+        transition: background 0.1s;
+      }
+      .log-entry:hover { background: rgba(255,255,255,0.03); }
+
+      /* Timestamp column */
+      .log-entry .ts {
+        color: #475569;
+        flex-shrink: 0;
+        min-width: 60px;
+      }
+
+      /* Event type column */
+      .log-entry .event {
+        flex-shrink: 0;
+        min-width: 130px;
+      }
+
+      /* Detail / message column */
+      .log-entry .detail {
+        color: #cbd5e1;
+        word-break: break-word;
+        flex: 1;
+      }
+
+      /* ---- Event-type colour coding ---- */
+      .log-entry--bot_message        .event { color: #60a5fa; }
+      .log-entry--user_message       .event { color: #4ade80; }
+      .log-entry--check_pass         .event { color: #4ade80; }
+      .log-entry--task_complete      .event { color: #4ade80; }
+      .log-entry--check_fail         .event { color: #f87171; }
+      .log-entry--evaluation_halted  .event { color: #f87171; }
+      .log-entry--error              .event { color: #f87171; }
+      .log-entry--warn               .event { color: #fbbf24; }
+      .log-entry--state_seeded       .event { color: #fbbf24; }
+      .log-entry--api_call           .event { color: #a78bfa; }
+      .log-entry--api_response       .event { color: #a78bfa; }
+      .log-entry--info               .event { color: #94a3b8; }
+
+      /* ---- Responsive — collapse to smaller size on narrow screens ---- */
+      @media (max-width: 540px) {
+        .log-panel {
+          width: calc(100vw - 1rem);
+          right: 0.5rem;
+          bottom: 0.5rem;
+        }
+      }
+
+      /* ---- Print — hide the panel entirely ---- */
+      @media print {
+        .log-panel { display: none !important; }
+      }
+    </style>
     {% block extra_head %}{% endblock %}
 </head>
 <body>
@@ -867,5 +1063,304 @@
     </script>
 
     {% block extra_scripts %}{% endblock %}
+
+    {% if portal == 'admin' %}
+    <!-- ================================================================
+         Live Evaluation Log Panel — Admin portal only
+         This panel is hidden by default (.log-panel--hidden).
+         Call window.startLogPanel(sessionId) from any admin page to open
+         it and begin polling GET /api/v1/logs/{session_id}?offset=N.
+         Polling stops automatically when data.done === true.
+         The panel state (open/minimised) persists across navigation via
+         sessionStorage (which session is being watched) and localStorage
+         (whether the panel is minimised).
+         ================================================================ -->
+    <div id="eval-log-panel"
+         class="log-panel log-panel--hidden"
+         role="complementary"
+         aria-label="Evaluation Log">
+
+      <!-- Header: title, live-pulse dot, minimise and close buttons -->
+      <div class="log-panel__header" onclick="toggleLogPanel()">
+        <span id="log-panel-title" class="log-panel__title">Evaluation Log</span>
+        <span id="log-panel-live-dot" class="log-panel__live-dot log-panel__live-dot--hidden"
+              title="Polling live"></span>
+        <div class="log-panel__controls">
+          <!-- Stop onclick bubbling on buttons so they don't trigger toggleLogPanel -->
+          <button onclick="event.stopPropagation(); toggleLogPanel()"
+                  class="log-btn"
+                  id="log-toggle-btn"
+                  title="Minimise / restore">&#8212;</button>
+          <button onclick="event.stopPropagation(); closeLogPanel()"
+                  class="log-btn"
+                  title="Close">&#10005;</button>
+        </div>
+      </div>
+
+      <!-- Scrollable log body -->
+      <div id="log-panel-body" class="log-panel__body">
+        <div id="log-entries" class="log-entries">
+          <!-- Log entries are injected here by _appendEntries() -->
+          <div class="log-panel__empty" id="log-empty-msg">
+            Waiting for evaluation to start...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+    /* ================================================================
+       Live Log Panel — JavaScript controller
+       Polls /api/v1/logs/{sessionId}?offset=N every 3 s.
+       Stops polling when the API returns done: true.
+       Entries are grouped by task_id with a header row between groups.
+       ================================================================ */
+    (function() {
+      /* ---- Internal state ---- */
+      var _logSessionId  = null;   // currently watched session
+      var _logOffset     = 0;      // next offset to request
+      var _logPollTimer  = null;   // setTimeout handle
+      var _lastTaskId    = null;   // tracks task grouping in the panel
+      var _polling       = false;  // true while a timer is pending
+
+      /* ================================================================
+         Public API — callable from any admin page template
+         ================================================================ */
+
+      /**
+       * Open the log panel and begin polling a session.
+       * Can be called with the same session_id again to restart from 0.
+       *
+       * @param {string} sessionId  - The evaluation session UUID.
+       */
+      window.startLogPanel = function(sessionId) {
+        _logSessionId = sessionId;
+        _logOffset    = 0;
+        _lastTaskId   = null;
+
+        // Cancel any running poll cycle
+        if (_logPollTimer) { clearTimeout(_logPollTimer); _logPollTimer = null; }
+        _polling = false;
+
+        // Show the panel
+        var panel = document.getElementById('eval-log-panel');
+        if (!panel) return;
+        panel.classList.remove('log-panel--hidden');
+        panel.classList.add('log-panel--live');
+
+        // Update title to show first 8 chars of session ID
+        var titleEl = document.getElementById('log-panel-title');
+        if (titleEl) {
+          titleEl.textContent = 'Evaluation Log \u2014 ' + sessionId.substring(0, 8) + '\u2026';
+        }
+
+        // Clear previous entries and show empty state
+        var entriesEl = document.getElementById('log-entries');
+        if (entriesEl) {
+          entriesEl.innerHTML =
+            '<div class="log-panel__empty" id="log-empty-msg">Connecting to log stream\u2026</div>';
+        }
+
+        // Show the live pulse dot
+        _setLiveDot(true);
+
+        // Persist session so the panel survives page navigation
+        try { sessionStorage.setItem('logSessionId', sessionId); } catch(e) {}
+
+        // Restore minimised state preference
+        try {
+          if (localStorage.getItem('logPanelMinimised') === 'true') {
+            panel.classList.add('log-panel--minimised');
+          } else {
+            panel.classList.remove('log-panel--minimised');
+          }
+        } catch(e) {}
+
+        _pollLog();
+      };
+
+      /**
+       * Toggle minimised / expanded state.
+       * Persists the choice to localStorage.
+       */
+      window.toggleLogPanel = function() {
+        var panel = document.getElementById('eval-log-panel');
+        if (!panel) return;
+        var minimised = panel.classList.toggle('log-panel--minimised');
+        try { localStorage.setItem('logPanelMinimised', minimised ? 'true' : 'false'); } catch(e) {}
+      };
+
+      /**
+       * Close the panel and stop polling.
+       * Removes the session from sessionStorage so it doesn't reopen.
+       */
+      window.closeLogPanel = function() {
+        var panel = document.getElementById('eval-log-panel');
+        if (panel) panel.classList.add('log-panel--hidden');
+        if (_logPollTimer) { clearTimeout(_logPollTimer); _logPollTimer = null; }
+        _polling = false;
+        _logSessionId = null;
+        _setLiveDot(false);
+        try { sessionStorage.removeItem('logSessionId'); } catch(e) {}
+      };
+
+      /* ================================================================
+         Private helpers
+         ================================================================ */
+
+      /** Fire one poll request, then schedule the next if not done. */
+      function _pollLog() {
+        if (!_logSessionId) return;
+        _polling = true;
+        fetch('/api/v1/logs/' + _logSessionId + '?offset=' + _logOffset)
+          .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+          })
+          .then(function(data) {
+            // Remove the empty-state placeholder on first real data
+            var emptyMsg = document.getElementById('log-empty-msg');
+            if (emptyMsg && data.entries && data.entries.length > 0) {
+              emptyMsg.parentNode.removeChild(emptyMsg);
+            }
+
+            _appendEntries(data.entries || []);
+            _logOffset = data.next_offset;
+
+            if (data.done) {
+              // Evaluation has finished — stop polling
+              _polling = false;
+              _logPollTimer = null;
+              _setLiveDot(false);
+              // Append a visual "done" marker
+              _appendDoneMarker();
+            } else {
+              // Schedule next poll in 3 seconds
+              _logPollTimer = setTimeout(_pollLog, 3000);
+            }
+          })
+          .catch(function() {
+            // Network error or unexpected response — retry in 5 seconds
+            _logPollTimer = setTimeout(_pollLog, 5000);
+          });
+      }
+
+      /**
+       * Insert a list of log entry objects into the panel.
+       * Groups entries by task_id with a header row.
+       * Auto-scrolls to the bottom if the user is already at the bottom.
+       *
+       * @param {Array} entries  - Array of log entry objects from the API.
+       */
+      function _appendEntries(entries) {
+        var container = document.getElementById('log-entries');
+        if (!container) return;
+
+        // Detect whether the user has scrolled up (to preserve their scroll)
+        var body = document.getElementById('log-panel-body');
+        var wasAtBottom = !body ||
+          (body.scrollHeight - body.scrollTop <= body.clientHeight + 10);
+
+        entries.forEach(function(entry) {
+          // Insert a task group header whenever the task_id changes
+          if (entry.task_id && entry.task_id !== _lastTaskId) {
+            var header = document.createElement('div');
+            header.className = 'log-task-header';
+            header.textContent = '\u25B6 ' + entry.task_id;
+            container.appendChild(header);
+            _lastTaskId = entry.task_id;
+          }
+
+          // Build the log row
+          var row = document.createElement('div');
+          row.className = 'log-entry log-entry--' + (entry.event || 'info');
+          row.innerHTML =
+            '<span class="ts">'     + _esc((entry.ts  || '').substring(11, 19)) + '</span>' +
+            '<span class="event">[' + _esc(entry.event || 'info')               + ']</span>' +
+            '<span class="detail">' + _esc(entry.detail || '')                  + '</span>';
+          container.appendChild(row);
+        });
+
+        // Auto-scroll only if the panel was already at the bottom
+        if (wasAtBottom && body) {
+          body.scrollTop = body.scrollHeight;
+        }
+      }
+
+      /** Append a visual separator indicating the evaluation has finished. */
+      function _appendDoneMarker() {
+        var container = document.getElementById('log-entries');
+        if (!container) return;
+        var marker = document.createElement('div');
+        marker.style.cssText =
+          'color:#475569;font-size:.7rem;text-align:center;padding:.5rem;' +
+          'border-top:1px solid #1e293b;margin-top:.25rem;';
+        marker.textContent = '\u2014 evaluation complete \u2014';
+        container.appendChild(marker);
+        // Scroll to show the done marker
+        var body = document.getElementById('log-panel-body');
+        if (body) body.scrollTop = body.scrollHeight;
+      }
+
+      /** Show or hide the live-pulse dot in the panel header. */
+      function _setLiveDot(visible) {
+        var dot = document.getElementById('log-panel-live-dot');
+        if (!dot) return;
+        if (visible) {
+          dot.classList.remove('log-panel__live-dot--hidden');
+        } else {
+          dot.classList.add('log-panel__live-dot--hidden');
+        }
+      }
+
+      /** HTML-escape a string so it is safe to inject via innerHTML. */
+      function _esc(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      /* ================================================================
+         Restore panel on page load
+         1. If the URL contains ?restarted=<sessionId>, open the panel
+            for that session and strip the query param from the URL.
+         2. Otherwise, if sessionStorage has a saved session (from before
+            navigation), re-open it and continue polling from offset 0.
+         3. Restore minimised state from localStorage.
+         ================================================================ */
+      document.addEventListener('DOMContentLoaded', function() {
+        var params = new URLSearchParams(location.search);
+        var restartedSession = params.get('restarted');
+        if (restartedSession) {
+          window.startLogPanel(restartedSession);
+          // Clean up the query string without reloading the page
+          try { history.replaceState({}, '', location.pathname); } catch(e) {}
+          return;
+        }
+
+        // Restore a session that was active before navigation
+        var savedSession = null;
+        try { savedSession = sessionStorage.getItem('logSessionId'); } catch(e) {}
+        if (savedSession) {
+          window.startLogPanel(savedSession);
+          return;
+        }
+
+        // Nothing to restore — apply minimised preference if panel is somehow visible
+        try {
+          if (localStorage.getItem('logPanelMinimised') === 'true') {
+            var panel = document.getElementById('eval-log-panel');
+            if (panel) panel.classList.add('log-panel--minimised');
+          }
+        } catch(e) {}
+      });
+
+    })(); // end live log panel IIFE
+    </script>
+    {% endif %}
+    <!-- end admin-only live log panel -->
+
 </body>
 </html>
