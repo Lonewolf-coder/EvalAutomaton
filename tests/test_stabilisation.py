@@ -342,3 +342,59 @@ def test_template_guard_error_stub():
         assert "err-stub-1" in rendered or "error" in rendered.lower()
     except Exception as e:
         pytest.fail(f"Template raised an exception for error stub: {e}")
+
+
+def test_validate_manifest_data_valid():
+    from src.governiq.admin.routes import validate_manifest_data
+    data = {
+        "manifest_id": "test-v1",
+        "tasks": [
+            {"task_id": "t1", "required_entities": [{"entity_key": "x", "value_pool": ["a", "b"]}]}
+        ],
+        "scoring_config": {
+            "webhook_functional_weight": 0.80,
+            "compliance_weight": 0.10,
+            "faq_weight": 0.10,
+            "pass_threshold": 0.70,
+        },
+    }
+    result = validate_manifest_data(data)
+    assert result["valid"] is True
+    assert result["errors"] == []
+
+
+def test_validate_manifest_data_bad_threshold():
+    from src.governiq.admin.routes import validate_manifest_data
+    data = {
+        "manifest_id": "test-v1",
+        "tasks": [],
+        "scoring_config": {
+            "webhook_functional_weight": 0.80,
+            "compliance_weight": 0.10,
+            "faq_weight": 0.10,
+            "pass_threshold": 0.10,  # Invalid — below 0.5
+        },
+    }
+    result = validate_manifest_data(data)
+    assert result["valid"] is False
+    assert any("pass_threshold" in e for e in result["errors"])
+
+
+def test_validate_manifest_data_warnings_only():
+    from src.governiq.admin.routes import validate_manifest_data
+    data = {
+        "manifest_id": "test-v1",
+        "tasks": [
+            {"task_id": "t1", "required_entities": [{"entity_key": "x", "value_pool": {"0": "a"}}]}
+        ],
+        "scoring_config": {
+            "webhook_functional_weight": 0.80,
+            "compliance_weight": 0.10,
+            "faq_weight": 0.10,
+            "pass_threshold": 0.70,
+        },
+    }
+    result = validate_manifest_data(data)
+    assert result["valid"] is True  # Warnings don't block save
+    assert len(result["warnings"]) > 0
+    assert any("value_pool" in w for w in result["warnings"])
