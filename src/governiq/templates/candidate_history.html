@@ -29,7 +29,7 @@
             <tbody>
                 {% for s in submissions %}
                 <tr>
-                    <td><i data-lucide="calendar" class="icon icon-sm" style="margin-right:.3rem;"></i> {{ s.submitted_at or 'N/A' }}</td>
+                    <td><i data-lucide="calendar" class="icon icon-sm" style="margin-right:.3rem;"></i> {% if s.submitted_at is defined and s.submitted_at %}{{ s.submitted_at }}{% else %}N/A{% endif %}</td>
                     <td><i data-lucide="file-text" class="icon icon-sm" style="margin-right:.3rem;"></i> {{ s.assessment_name }}</td>
                     <td>{{ s.candidate_id or 'N/A' }}</td>
                     <td>

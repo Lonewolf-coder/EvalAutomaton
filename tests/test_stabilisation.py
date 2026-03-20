@@ -306,14 +306,14 @@ def test_manifest_loads_with_dict_value_pool():
 
 def test_template_guard_error_stub():
     """Rendering candidate_history with an error stub must not raise UndefinedError."""
-    from jinja2 import Environment, FileSystemLoader, Undefined
+    from jinja2 import Environment, FileSystemLoader, StrictUndefined
     from pathlib import Path
     from types import SimpleNamespace
 
     template_dir = Path("src/governiq/templates")
     env = Environment(
         loader=FileSystemLoader(str(template_dir)),
-        undefined=Undefined,  # strict — raises on missing
+        undefined=StrictUndefined,  # strict — raises on missing
     )
 
     # Provide a minimal mock request object so base.html navigation renders.

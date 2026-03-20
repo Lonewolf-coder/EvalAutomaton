@@ -283,6 +283,38 @@
         }
         .form-textarea { min-height: 100px; resize: vertical; }
 
+        /* Fix: select elements invisible on some browsers due to white-on-white */
+        select,
+        select option {
+            color: #1e293b;
+            background-color: #ffffff;
+        }
+        /* Dark theme override — keep select readable on dark backgrounds */
+        [data-theme="dark"] select,
+        [data-theme="dark"] select option {
+            color: #f0f0f0;
+            background-color: #1e1b4b;
+        }
+
+        /* Input with show/hide toggle (e.g. API key fields) */
+        .input-with-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .show-hide-btn {
+            background: none;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+        .show-hide-btn:hover {
+            background: var(--bg-subtle);
+            border-color: var(--primary);
+        }
+
         /* File upload — includes drag-active state for Bug 1 */
         .file-upload {
             display: flex; flex-direction: column; align-items: center;
@@ -325,6 +357,9 @@
         .badge-info    { background: var(--info-bg);    color: var(--info-text); }
         .badge-grey    { background: var(--bg-subtle);  color: var(--muted); }
         .badge-primary { background: var(--primary-bg); color: var(--primary-text); }
+        .badge-error   { background: #fee2e2; color: #991b1b; }
+        .badge-running { background: #dbeafe; color: #1e40af; }
+        .badge-pending { background: #f1f5f9; color: #64748b; }
 
         /* ---- Score Ring ---- */
         .score-ring {
@@ -699,6 +734,25 @@
         }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
         document.querySelectorAll('.animate-in').forEach(function(el) { observer.observe(el); });
     })();
+
+    // API key / password show-hide toggle
+    // Usage: <button class="show-hide-btn" onclick="toggleVisibility('inputId', this)">
+    //          <span class="icon-eye">&#128065;</span>
+    //        </button>
+    function toggleVisibility(inputId, btn) {
+        var input = document.getElementById(inputId);
+        if (!input) return;
+        var eyeSpan = btn.querySelector('.icon-eye');
+        if (input.type === 'password') {
+            input.type = 'text';
+            btn.setAttribute('aria-label', 'Hide key');
+            if (eyeSpan) eyeSpan.textContent = '\uD83D\uDE48'; /* 🙈 */
+        } else {
+            input.type = 'password';
+            btn.setAttribute('aria-label', 'Show key');
+            if (eyeSpan) eyeSpan.textContent = '\uD83D\uDC41'; /* 👁 */
+        }
+    }
     </script>
 
     <script>

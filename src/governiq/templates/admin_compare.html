@@ -214,8 +214,8 @@
                     </tr>
                     <tr>
                         <td><strong><i data-lucide="webhook" class="icon icon-sm"></i> Webhook Tested</strong></td>
-                        <td>{% if left.any_webhook_tested %}<span class="badge badge-pass"><i data-lucide="check" class="icon icon-sm"></i> Yes</span>{% else %}<span class="badge badge-warn">No</span>{% endif %}</td>
-                        <td>{% if right.any_webhook_tested %}<span class="badge badge-pass"><i data-lucide="check" class="icon icon-sm"></i> Yes</span>{% else %}<span class="badge badge-warn">No</span>{% endif %}</td>
+                        <td>{% if left.any_webhook_tested is defined and left.any_webhook_tested %}<span class="badge badge-pass"><i data-lucide="check" class="icon icon-sm"></i> Yes</span>{% else %}<span class="badge badge-warn">No</span>{% endif %}</td>
+                        <td>{% if right.any_webhook_tested is defined and right.any_webhook_tested %}<span class="badge badge-pass"><i data-lucide="check" class="icon icon-sm"></i> Yes</span>{% else %}<span class="badge badge-warn">No</span>{% endif %}</td>
                         <td>—</td>
                     </tr>
                     <tr>
