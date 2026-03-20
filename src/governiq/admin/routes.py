@@ -75,7 +75,10 @@ def _enrich_submission(data: dict[str, Any]) -> dict[str, Any]:
 
     # ZIP availability
     upload_dir = DATA_DIR / "uploads" / session_id
-    zip_available = upload_dir.exists() and any(upload_dir.iterdir())
+    try:
+        zip_available = upload_dir.exists() and any(upload_dir.iterdir())
+    except OSError:
+        zip_available = False
 
     # Resume check -- RuntimeContext must exist, be valid JSON, and have session_id
     can_resume = False
@@ -114,8 +117,8 @@ def _load_all_evaluations() -> list[dict[str, Any]]:
             with f.open("r") as fh:
                 data = json.load(fh)
             evals.append(_enrich_submission(data))
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to load scorecard %s: %s", f.name, exc)
     return evals
 
 
@@ -233,7 +236,13 @@ def _save_manifest(data: dict[str, Any]) -> Path:
 
 def _build_stats(evaluations: list[dict[str, Any]]) -> dict[str, int]:
     total = len(evaluations)
-    passed = sum(1 for e in evaluations if e.get("overall_score", 0) >= 0.7 and not e.get("has_critical_failures"))
+    passed = sum(
+        1 for e in evaluations
+        if e.get("overall_score") is not None
+        and (pt := e.get("pass_threshold") or e.get("scoring_config", {}).get("pass_threshold"))
+        and e.get("overall_score", 0) >= pt
+        and not e.get("has_critical_failures")
+    )
     critical = sum(1 for e in evaluations if e.get("has_critical_failures"))
     failed = total - passed
     return {"total": total, "passed": passed, "failed": failed, "critical": critical}

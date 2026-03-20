@@ -630,3 +630,47 @@ def test_enrich_can_resume_corrupt_context(tmp_path):
         admin_routes.DATA_DIR = original
 
     assert enriched["can_resume"] is False
+
+
+# ---------------------------------------------------------------------------
+# Task 14: _build_stats pass_threshold + corrupt file logging
+# ---------------------------------------------------------------------------
+
+
+def test_build_stats_uses_scorecard_pass_threshold():
+    """_build_stats must read pass_threshold from scorecard, not hardcoded 0.7."""
+    from src.governiq.admin.routes import _build_stats
+    evaluations = [
+        {"overall_score": 0.65, "has_critical_failures": False, "pass_threshold": 0.60},
+        {"overall_score": 0.65, "has_critical_failures": False, "pass_threshold": 0.70},
+        {"overall_score": None, "has_critical_failures": False, "pass_threshold": 0.60},
+    ]
+    stats = _build_stats(evaluations)
+    assert stats["passed"] == 1  # Only first passes (0.65 >= 0.60 but not >= 0.70)
+    assert stats["total"] == 3
+
+
+def test_build_stats_no_threshold_not_counted_as_pass():
+    """If no pass_threshold in scorecard, evaluation should not be counted as passed."""
+    from src.governiq.admin.routes import _build_stats
+    evaluations = [
+        {"overall_score": 0.95, "has_critical_failures": False},  # no pass_threshold key
+    ]
+    stats = _build_stats(evaluations)
+    assert stats["passed"] == 0  # Can't determine pass without threshold
+
+
+def test_load_all_evaluations_logs_corrupt_file(tmp_path, monkeypatch):
+    """_load_all_evaluations should log warnings for corrupt files, not swallow silently."""
+    from src.governiq.admin import routes as admin_routes
+    results_dir = tmp_path / "results"
+    results_dir.mkdir()
+    corrupt_file = results_dir / "scorecard_bad.json"
+    corrupt_file.write_text("not json{{{")
+    monkeypatch.setattr(admin_routes, "DATA_DIR", tmp_path)
+    # Capture logging
+    with patch("src.governiq.admin.routes.logger") as mock_logger:
+        monkeypatch.setattr(admin_routes, "DATA_DIR", tmp_path)
+        result = admin_routes._load_all_evaluations()
+    assert result == []
+    mock_logger.warning.assert_called_once()
