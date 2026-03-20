@@ -42,7 +42,14 @@ def test_submit_stub_has_all_required_fields(tmp_path):
         "manifest_id": "test-manifest-v1",
         "assessment_name": "Test Assessment",
         "assessment_type": "test",
-        "tasks": [],
+        "tasks": [
+            {
+                "task_id": "task1",
+                "task_name": "Test Task",
+                "pattern": "CREATE",
+                "dialog_name": "TestDialog",
+            }
+        ],
         "scoring_config": {
             "webhook_functional_weight": 0.80,
             "compliance_weight": 0.10,
