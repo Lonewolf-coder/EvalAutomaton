@@ -473,7 +473,7 @@ class KoreWebhookClient:
 
             # Primary: data[] array (standard Kore.ai webhook format)
             if "data" in data and isinstance(data["data"], list):
-                _texts, _raws = normalise_messages(data["data"])
+                _texts, _raws = normalise_messages(data["data"])  # _raws reserved for evidence storage (Task 19)
                 texts = [t for t in _texts if t]
                 if texts:
                     return "\n".join(texts)
@@ -489,7 +489,7 @@ class KoreWebhookClient:
                 return data["val"]
 
         if isinstance(data, list) and data:
-            _texts, _raws = normalise_messages(data)
+            _texts, _raws = normalise_messages(data)  # _raws reserved for evidence storage (Task 19)
             return "\n".join(t for t in _texts if t)
 
         return str(data)
