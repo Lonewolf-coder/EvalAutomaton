@@ -1,10 +1,16 @@
 # EvalAutomaton — GovernIQ Universal Evaluation Platform
 
-## What this project does
-EvalAutomaton is an automated chatbot evaluation platform that scores 
-candidate-built Kore.ai XO bot submissions for certification purposes.
-It replaces manual QA testing with a consistent, repeatable, auditable 
-process using a dual-pipeline architecture.
+## What the project does
+Automated Kore.ai XO bot evaluation platform for certification.
+Scores candidate-built bots via dual pipeline:
+- Webhook functional testing — LLM-powered conversation driver
+- FAQ semantic similarity — sentence-transformers
+- CBM structural compliance — always informational only
+Final score weights are declared per manifest in scoring_config and
+must be read from there at runtime. There are no default hardcoded
+weights — the manifest is always authoritative.
+Scoring logic lives in scoring.py only and must read from
+manifest.scoring_config, never from hardcoded literals.
 
 
 ## Tech stack
@@ -41,10 +47,14 @@ All domain knowledge lives in JSON manifests — never in code.
 2. Cross-task state via RuntimeContext only — no session bleed
 3. Plagiarism detection via SHA-256 fingerprinting (independent of CBM)
 4. CBM audit is always informational — scores come only from webhook results
-5. Scoring logic lives in scoring.py — it is intentionally modifiable
-6. Never hardcode score weights anywhere outside scoring.py
-7. Task weights declared in manifests must be respected by the engine
-8. Dead code (compute_weighted_score) should be flagged but not deleted without explicit     instruction — it may be repurposed
+5. Scoring logic only in scoring.py — reads weights from manifest.scoring_config
+6. Manifest scoring_config is always authoritative — webhook_functional_weight, faq_weight, compliance_weight, and pass_threshold all come from the manifest
+7. No hardcoded score weights anywhere — not in scoring.py, not in agents,
+   not in CLAUDE.md, not in tests
+8. Scoring logic lives in scoring.py — it is intentionally modifiable
+9. Never hardcode score weights anywhere outside scoring.py
+10. Task weights declared in manifests must be respected by the engine
+11. Dead code (compute_weighted_score) should be flagged but not deleted without explicit instruction — it may be repurposed
 
 ## Project structure
 - /tests — all test files
