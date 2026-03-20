@@ -20,6 +20,7 @@ from typing import Any, TYPE_CHECKING
 
 import httpx
 
+from ..core.exceptions import EvaluationHaltedError
 from ..core.manifest import TaskDefinition
 from .message_normaliser import normalise_messages
 
@@ -81,8 +82,6 @@ class LLMConversationDriver:
         self, system_prompt: str, user_prompt: str, task_id: str = "unknown"
     ) -> str | None:
         """Make an LLM API call with one retry. Raises EvaluationHaltedError on persistent failure."""
-        from ..core.exceptions import EvaluationHaltedError
-
         async def _attempt() -> str | None:
             client = await self._get_client()
             if self.api_format == "anthropic":
@@ -162,6 +161,8 @@ class LLMConversationDriver:
 
         try:
             llm_result = await self._llm_call(system, user, task_id=task.task_id)
+        except EvaluationHaltedError:
+            raise
         except Exception:
             llm_result = None
         if llm_result:
@@ -189,6 +190,8 @@ class LLMConversationDriver:
 
         try:
             llm_result = await self._llm_call(system, user)
+        except EvaluationHaltedError:
+            raise
         except Exception:
             llm_result = None
         if llm_result:
@@ -205,6 +208,8 @@ class LLMConversationDriver:
         )
         try:
             llm_result = await self._llm_call(system, result)
+        except EvaluationHaltedError:
+            raise
         except Exception:
             llm_result = None
         return llm_result or result
@@ -218,6 +223,8 @@ class LLMConversationDriver:
         )
         try:
             llm_result = await self._llm_call(system, f'Bot said: "{bot_message}"')
+        except EvaluationHaltedError:
+            raise
         except Exception:
             llm_result = None
         return llm_result or "Yes, that's correct."
@@ -234,6 +241,8 @@ class LLMConversationDriver:
         )
         try:
             llm_result = await self._llm_call(system, f'Bot message: "{bot_message}"')
+        except EvaluationHaltedError:
+            raise
         except Exception:
             llm_result = None
 
