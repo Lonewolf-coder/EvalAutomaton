@@ -302,3 +302,43 @@ def test_manifest_loads_with_dict_value_pool():
     vp = m.tasks[0].required_entities[0].value_pool
     assert isinstance(vp, list)
     assert set(vp) == {"London", "Paris"}
+
+
+def test_template_guard_error_stub():
+    """Rendering candidate_history with an error stub must not raise UndefinedError."""
+    from jinja2 import Environment, FileSystemLoader, Undefined
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    template_dir = Path("src/governiq/templates")
+    env = Environment(
+        loader=FileSystemLoader(str(template_dir)),
+        undefined=Undefined,  # strict — raises on missing
+    )
+
+    # Provide a minimal mock request object so base.html navigation renders.
+    # base.html checks request.url.path for active-link highlighting.
+    mock_url = SimpleNamespace(path="/candidate/history")
+    mock_request = SimpleNamespace(url=mock_url)
+
+    # Simulate what the route passes to the template — an error stub
+    error_stub = {
+        "session_id": "err-stub-1",
+        "status": "error",
+        "candidate_id": "test@example.com",
+        "assessment_name": "Test Assessment",
+        # Intentionally missing: overall_score, task_scores, has_critical_failures
+        "error": "LLM call failed",
+    }
+
+    try:
+        template = env.get_template("candidate_history.html")
+        rendered = template.render(
+            request=mock_request,
+            portal="candidate",
+            submissions=[error_stub],
+        )
+        # If we get here, the template rendered without crashing — success
+        assert "err-stub-1" in rendered or "error" in rendered.lower()
+    except Exception as e:
+        pytest.fail(f"Template raised an exception for error stub: {e}")

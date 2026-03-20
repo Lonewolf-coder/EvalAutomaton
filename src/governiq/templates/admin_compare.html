@@ -57,19 +57,29 @@
                         <tr>
                             <td class="text-small" style="font-family:monospace;">{{ sub.session_id }}</td>
                             <td>
+                                {# Guard: overall_score absent on running/error stubs #}
+                                {% if sub.overall_score is defined and sub.overall_score is not none %}
                                 <strong class="{% if sub.overall_score >= 0.7 %}text-pass{% elif sub.overall_score >= 0.5 %}text-warn{% else %}text-fail{% endif %}">
                                     {{ (sub.overall_score * 100) | round(1) }}%
                                 </strong>
+                                {% else %}
+                                <span class="badge badge-{{ sub.status | default('error') }}">{{ sub.status | default('error') | upper }}</span>
+                                {% endif %}
                             </td>
                             <td>
                                 {% if sub.any_webhook_tested %}<span class="badge badge-pass"><i data-lucide="check" class="icon icon-sm"></i> Tested</span>
                                 {% else %}<span class="badge badge-warn"><i data-lucide="file-code" class="icon icon-sm"></i> CBM Only</span>{% endif %}
                             </td>
                             <td>
-                                {% if sub.has_critical_failures %}<span class="badge badge-fail"><i data-lucide="shield-alert" class="icon icon-sm"></i> CRITICAL</span>
-                                {% elif sub.overall_score >= 0.7 %}<span class="badge badge-pass"><i data-lucide="shield-check" class="icon icon-sm"></i> PASS</span>
-                                {% elif sub.overall_score >= 0.5 %}<span class="badge badge-warn"><i data-lucide="eye" class="icon icon-sm"></i> REVIEW</span>
-                                {% else %}<span class="badge badge-fail"><i data-lucide="shield-x" class="icon icon-sm"></i> FAIL</span>{% endif %}
+                                {# Guard: verdict depends on overall_score #}
+                                {% if sub.overall_score is defined and sub.overall_score is not none %}
+                                    {% if sub.has_critical_failures is defined and sub.has_critical_failures %}<span class="badge badge-fail"><i data-lucide="shield-alert" class="icon icon-sm"></i> CRITICAL</span>
+                                    {% elif sub.overall_score >= 0.7 %}<span class="badge badge-pass"><i data-lucide="shield-check" class="icon icon-sm"></i> PASS</span>
+                                    {% elif sub.overall_score >= 0.5 %}<span class="badge badge-warn"><i data-lucide="eye" class="icon icon-sm"></i> REVIEW</span>
+                                    {% else %}<span class="badge badge-fail"><i data-lucide="shield-x" class="icon icon-sm"></i> FAIL</span>{% endif %}
+                                {% else %}
+                                    <span class="badge badge-{{ sub.status | default('error') }}">{{ sub.status | default('error') | upper }}</span>
+                                {% endif %}
                             </td>
                             <td>
                                 <a href="/admin/review/{{ sub.session_id }}" class="btn btn-outline btn-sm"><i data-lucide="clipboard-check" class="icon icon-sm"></i> Review</a>
@@ -99,7 +109,12 @@
                         <option value="">— Select —</option>
                         {% for ev in evaluations %}
                         <option value="{{ ev.session_id }}" {% if left_id == ev.session_id %}selected{% endif %}>
+                            {# Guard: show status label instead of score% when score is not yet available #}
+                            {% if ev.overall_score is defined and ev.overall_score is not none %}
                             {{ ev.candidate_id or 'N/A' }} — {{ ev.assessment_name }} ({{ (ev.overall_score * 100) | round(1) }}%)
+                            {% else %}
+                            {{ ev.candidate_id or 'N/A' }} — {{ ev.assessment_name }} [{{ ev.status | default('pending') | upper }}]
+                            {% endif %}
                         </option>
                         {% endfor %}
                     </select>
@@ -110,7 +125,12 @@
                         <option value="">— Select —</option>
                         {% for ev in evaluations %}
                         <option value="{{ ev.session_id }}" {% if right_id == ev.session_id %}selected{% endif %}>
+                            {# Guard: show status label instead of score% when score is not yet available #}
+                            {% if ev.overall_score is defined and ev.overall_score is not none %}
                             {{ ev.candidate_id or 'N/A' }} — {{ ev.assessment_name }} ({{ (ev.overall_score * 100) | round(1) }}%)
+                            {% else %}
+                            {{ ev.candidate_id or 'N/A' }} — {{ ev.assessment_name }} [{{ ev.status | default('pending') | upper }}]
+                            {% endif %}
                         </option>
                         {% endfor %}
                     </select>
@@ -135,9 +155,16 @@
                         <!-- h4 inside score card — card-title centres icon with candidate label -->
                         <h4 class="card-title" style="justify-content:center;"><i data-lucide="arrow-left-circle" class="icon icon-sm"></i> Left: {{ left.candidate_id or 'N/A' }}</h4>
                         <p class="text-small text-muted">{{ left.assessment_name }}</p>
+                        {# Guard: left may be a stub without overall_score if navigated to directly #}
+                        {% if left.overall_score is defined and left.overall_score is not none %}
                         <div class="score-ring score-ring--lg {% if left.overall_score >= 0.7 %}score-ring--pass{% elif left.overall_score >= 0.5 %}score-ring--warn{% else %}score-ring--fail{% endif %}" style="margin:1rem auto;">
                             {{ (left.overall_score * 100) | round(1) }}%
                         </div>
+                        {% else %}
+                        <div class="score-ring score-ring--lg" style="margin:1rem auto;">
+                            <span class="badge badge-{{ left.status | default('error') }}">{{ left.status | default('error') | upper }}</span>
+                        </div>
+                        {% endif %}
                         <p class="text-small" style="font-family:monospace;">{{ left.session_id }}</p>
                     </div>
                 </div>
@@ -146,9 +173,16 @@
                         <!-- h4 inside score card — card-title centres icon with candidate label -->
                         <h4 class="card-title" style="justify-content:center;"><i data-lucide="arrow-right-circle" class="icon icon-sm"></i> Right: {{ right.candidate_id or 'N/A' }}</h4>
                         <p class="text-small text-muted">{{ right.assessment_name }}</p>
+                        {# Guard: right may be a stub without overall_score if navigated to directly #}
+                        {% if right.overall_score is defined and right.overall_score is not none %}
                         <div class="score-ring score-ring--lg {% if right.overall_score >= 0.7 %}score-ring--pass{% elif right.overall_score >= 0.5 %}score-ring--warn{% else %}score-ring--fail{% endif %}" style="margin:1rem auto;">
                             {{ (right.overall_score * 100) | round(1) }}%
                         </div>
+                        {% else %}
+                        <div class="score-ring score-ring--lg" style="margin:1rem auto;">
+                            <span class="badge badge-{{ right.status | default('error') }}">{{ right.status | default('error') | upper }}</span>
+                        </div>
+                        {% endif %}
                         <p class="text-small" style="font-family:monospace;">{{ right.session_id }}</p>
                     </div>
                 </div>
@@ -160,13 +194,22 @@
                 <tbody>
                     <tr>
                         <td><strong><i data-lucide="percent" class="icon icon-sm"></i> Overall Score</strong></td>
-                        <td>{{ (left.overall_score * 100) | round(1) }}%</td>
-                        <td>{{ (right.overall_score * 100) | round(1) }}%</td>
                         <td>
+                            {# Guard: overall_score may be absent on stubs #}
+                            {% if left.overall_score is defined and left.overall_score is not none %}{{ (left.overall_score * 100) | round(1) }}%{% else %}<span class="text-muted">N/A</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if right.overall_score is defined and right.overall_score is not none %}{{ (right.overall_score * 100) | round(1) }}%{% else %}<span class="text-muted">N/A</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if left.overall_score is defined and left.overall_score is not none and right.overall_score is defined and right.overall_score is not none %}
                             {% set diff = ((left.overall_score - right.overall_score) * 100) | round(1) %}
                             <span class="{% if diff > 0 %}text-pass{% elif diff < 0 %}text-fail{% endif %}">
                                 {{ diff }}%
                             </span>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
                         </td>
                     </tr>
                     <tr>
@@ -177,8 +220,8 @@
                     </tr>
                     <tr>
                         <td><strong><i data-lucide="shield-alert" class="icon icon-sm"></i> Critical Failures</strong></td>
-                        <td>{% if left.has_critical_failures %}<span class="badge badge-fail">Yes</span>{% else %}<span class="badge badge-pass">No</span>{% endif %}</td>
-                        <td>{% if right.has_critical_failures %}<span class="badge badge-fail">Yes</span>{% else %}<span class="badge badge-pass">No</span>{% endif %}</td>
+                        <td>{% if left.has_critical_failures is defined and left.has_critical_failures %}<span class="badge badge-fail">Yes</span>{% else %}<span class="badge badge-pass">No</span>{% endif %}</td>
+                        <td>{% if right.has_critical_failures is defined and right.has_critical_failures %}<span class="badge badge-fail">Yes</span>{% else %}<span class="badge badge-pass">No</span>{% endif %}</td>
                         <td>—</td>
                     </tr>
                     <tr>

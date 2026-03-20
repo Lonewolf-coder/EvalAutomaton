@@ -33,19 +33,34 @@
                     <td><i data-lucide="file-text" class="icon icon-sm" style="margin-right:.3rem;"></i> {{ s.assessment_name }}</td>
                     <td>{{ s.candidate_id or 'N/A' }}</td>
                     <td>
+                        {# Guard: overall_score is absent on running/error stubs — show status badge instead #}
+                        {% if s.overall_score is defined and s.overall_score is not none %}
                         <strong class="{% if s.overall_score >= 0.7 %}text-pass{% else %}text-fail{% endif %}">
                             {{ (s.overall_score * 100) | round(1) }}%
                         </strong>
+                        {% else %}
+                        <span class="badge badge-{{ s.status | default('error') }}">{{ s.status | default('error') | upper }}</span>
+                        {% endif %}
                     </td>
                     <td>
-                        {% if s.has_critical_failures %}
-                            <span class="badge badge-fail"><i data-lucide="shield-alert" class="icon icon-sm"></i> CRITICAL FAILURE</span>
-                        {% elif s.overall_score >= 0.7 %}
-                            <span class="badge badge-pass"><i data-lucide="shield-check" class="icon icon-sm"></i> PASS</span>
-                        {% elif s.overall_score >= 0.5 %}
-                            <span class="badge badge-warn"><i data-lucide="eye" class="icon icon-sm"></i> NEEDS IMPROVEMENT</span>
+                        {# Guard: verdict also depends on overall_score — fall back to status badge for incomplete stubs #}
+                        {% if s.overall_score is defined and s.overall_score is not none %}
+                            {% if s.has_critical_failures is defined and s.has_critical_failures %}
+                                <span class="badge badge-fail"><i data-lucide="shield-alert" class="icon icon-sm"></i> CRITICAL FAILURE</span>
+                            {% elif s.overall_score >= 0.7 %}
+                                <span class="badge badge-pass"><i data-lucide="shield-check" class="icon icon-sm"></i> PASS</span>
+                            {% elif s.overall_score >= 0.5 %}
+                                <span class="badge badge-warn"><i data-lucide="eye" class="icon icon-sm"></i> NEEDS IMPROVEMENT</span>
+                            {% else %}
+                                <span class="badge badge-fail"><i data-lucide="shield-x" class="icon icon-sm"></i> FAIL</span>
+                            {% endif %}
                         {% else %}
-                            <span class="badge badge-fail"><i data-lucide="shield-x" class="icon icon-sm"></i> FAIL</span>
+                            {# Evaluation is still running or hit an error — show a neutral status indicator #}
+                            {% if s.status == 'running' %}
+                                <span class="badge badge-info"><i data-lucide="loader" class="icon icon-sm"></i> IN PROGRESS</span>
+                            {% else %}
+                                <span class="badge badge-fail"><i data-lucide="alert-circle" class="icon icon-sm"></i> {{ s.status | default('error') | upper }}</span>
+                            {% endif %}
                         {% endif %}
                     </td>
                     <td>

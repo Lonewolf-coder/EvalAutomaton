@@ -191,9 +191,14 @@
                     <td><i data-lucide="user" class="icon icon-sm" style="margin-right:.2rem;"></i> {{ ev.candidate_id or 'N/A' }}</td>
                     <td>{{ ev.assessment_name }}</td>
                     <td>
+                        {# Guard: overall_score is absent on running/error stubs — show status badge instead #}
+                        {% if ev.overall_score is defined and ev.overall_score is not none %}
                         <strong class="{% if ev.overall_score >= 0.7 %}text-pass{% elif ev.overall_score >= 0.5 %}text-warn{% else %}text-fail{% endif %}">
                             {{ (ev.overall_score * 100) | round(1) }}%
                         </strong>
+                        {% else %}
+                        <span class="badge badge-{{ ev.status | default('error') }}">{{ ev.status | default('error') | upper }}</span>
+                        {% endif %}
                     </td>
                     <td>
                         {% if ev.any_webhook_tested %}
@@ -203,9 +208,16 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if not ev.any_webhook_tested %}
+                        {# Guard: verdict logic depends on overall_score — fall back for incomplete stubs #}
+                        {% if ev.overall_score is not defined or ev.overall_score is none %}
+                            {% if ev.status == 'running' %}
+                                <span class="badge badge-info"><i data-lucide="loader" class="icon icon-sm"></i> IN PROGRESS</span>
+                            {% else %}
+                                <span class="badge badge-fail"><i data-lucide="alert-circle" class="icon icon-sm"></i> {{ ev.status | default('error') | upper }}</span>
+                            {% endif %}
+                        {% elif not ev.any_webhook_tested %}
                             <span class="badge badge-warn"><i data-lucide="clock" class="icon icon-sm"></i> UNTESTED</span>
-                        {% elif ev.has_critical_failures %}
+                        {% elif ev.has_critical_failures is defined and ev.has_critical_failures %}
                             <span class="badge badge-fail"><i data-lucide="shield-alert" class="icon icon-sm"></i> CRITICAL</span>
                         {% elif ev.overall_score >= 0.7 %}
                             <span class="badge badge-pass"><i data-lucide="shield-check" class="icon icon-sm"></i> PASS</span>
