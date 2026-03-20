@@ -132,3 +132,42 @@ def test_zip_cleanup_skips_active_lock(tmp_path):
 
     # Upload must still exist because of the lock
     assert (upload_dir / "bot_export.zip").exists()
+
+
+def test_lock_created_and_deleted(tmp_path):
+    """Lock file must exist during evaluation and be deleted after completion."""
+    from src.governiq.candidate.routes import _create_lock, _delete_lock, _is_lock_stale
+
+    locks_dir = tmp_path / "locks"
+    locks_dir.mkdir()
+    session_id = "lock-test-999"
+
+    _create_lock(session_id, locks_dir=locks_dir)
+    lock_path = locks_dir / f"{session_id}.lock"
+    assert lock_path.exists()
+
+    data = json.loads(lock_path.read_text())
+    assert "started_at" in data
+
+    _delete_lock(session_id, locks_dir=locks_dir)
+    assert not lock_path.exists()
+
+
+def test_stale_lock_detection(tmp_path):
+    """A lock older than 15 minutes is stale."""
+    from src.governiq.candidate.routes import _create_lock, _is_lock_stale
+    from datetime import datetime, timezone, timedelta
+
+    locks_dir = tmp_path / "locks"
+    locks_dir.mkdir()
+    session_id = "stale-lock-test"
+
+    # Write a lock with an old timestamp
+    old_time = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+    (locks_dir / f"{session_id}.lock").write_text(json.dumps({"started_at": old_time}))
+
+    assert _is_lock_stale(session_id, locks_dir=locks_dir) is True
+
+    # Fresh lock is not stale
+    _create_lock(session_id, locks_dir=locks_dir)
+    assert _is_lock_stale(session_id, locks_dir=locks_dir) is False

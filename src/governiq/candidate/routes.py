@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import shutil
 import uuid as _uuid_mod
 import zipfile
@@ -28,6 +29,42 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 MANIFESTS_DIR = Path("manifests")
 DATA_DIR = Path("data")
+
+
+def _create_lock(session_id: str, locks_dir: Path | None = None) -> None:
+    """Create a lock file for the given session with current timestamp and PID."""
+    locks_dir = locks_dir or (DATA_DIR / "locks")
+    locks_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = locks_dir / f"{session_id}.lock"
+    lock_path.write_text(json.dumps({
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "pid": os.getpid(),
+    }))
+
+
+def _delete_lock(session_id: str, locks_dir: Path | None = None) -> None:
+    """Delete the lock file for the given session."""
+    locks_dir = locks_dir or (DATA_DIR / "locks")
+    lock_path = locks_dir / f"{session_id}.lock"
+    try:
+        lock_path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _is_lock_stale(session_id: str, locks_dir: Path | None = None, stale_minutes: int = 15) -> bool:
+    """Returns True if no lock exists or the lock is older than stale_minutes."""
+    locks_dir = locks_dir or (DATA_DIR / "locks")
+    lock_path = locks_dir / f"{session_id}.lock"
+    if not lock_path.exists():
+        return True
+    try:
+        data = json.loads(lock_path.read_text())
+        started_at = datetime.fromisoformat(data["started_at"])
+        age = datetime.now(timezone.utc) - started_at
+        return age.total_seconds() > stale_minutes * 60
+    except Exception:
+        return True  # Corrupt lock = stale
 
 
 def cleanup_old_uploads(
@@ -236,6 +273,7 @@ async def _run_evaluation_background(
     results_dir = DATA_DIR / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
     stub_path = results_dir / f"scorecard_{session_id}.json"
+    _create_lock(session_id)
     try:
         engine = EvaluationEngine(
             manifest=manifest,
@@ -275,6 +313,8 @@ async def _run_evaluation_background(
         }
         with stub_path.open("w") as f:
             json.dump(error_data, f)
+    finally:
+        _delete_lock(session_id)
 
 
 @router.post("/submit")
