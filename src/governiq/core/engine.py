@@ -204,6 +204,13 @@ class EvaluationEngine:
                 logger.warning("Failed to fetch Kore.ai API insights: %s", e)
                 scorecard.kore_api_insights = {"error": str(e)}
 
+        # Step 7B: Embed conversation log entries into task evidence cards
+        _embed_log_as_evidence(
+            session_id=scorecard.session_id,
+            task_scores=scorecard.task_scores,
+            logs_dir=self.persist_dir / "logs",
+        )
+
         # Step 8: Persist context and results
         context.save(self.persist_dir / "runtime_contexts")
         self._save_scorecard(scorecard)
@@ -798,3 +805,54 @@ class EvaluationEngine:
         with path.open("w", encoding="utf-8") as f:
             json.dump(scorecard.to_dict(), f, indent=2)
         logger.info("Scorecard saved to %s", path)
+
+
+def _embed_log_as_evidence(
+    session_id: str,
+    task_scores: list,
+    logs_dir: Path | None = None,
+) -> None:
+    """Read JSONL log and append conversation transcript to each TaskScore's evidence_cards.
+
+    Reads the session's JSONL log file, groups entries by task_id, and appends
+    a single EvidenceCard per task containing the formatted conversation transcript.
+    Non-fatal: silently returns if the log file is absent or unreadable.
+    """
+    logs_dir = logs_dir or Path("./data/logs")
+    log_file = logs_dir / f"eval_{session_id}.jsonl"
+    if not log_file.exists():
+        return
+
+    # Group entries by task_id
+    by_task: dict[str, list[dict]] = {}
+    try:
+        for line in log_file.read_text(encoding="utf-8").strip().split("\n"):
+            if not line.strip():
+                continue
+            entry = json.loads(line)
+            tid = entry.get("task_id", "unknown")
+            by_task.setdefault(tid, []).append(entry)
+    except Exception:
+        return
+
+    ts_map = {ts.task_id: ts for ts in task_scores}
+    for task_id, entries in by_task.items():
+        ts = ts_map.get(task_id)
+        if not ts:
+            continue
+        # Build a conversation summary string from message events
+        lines = []
+        for e in entries:
+            if e.get("event") in ("bot_message", "user_message"):
+                prefix = "BOT" if e["event"] == "bot_message" else "USER"
+                lines.append(f"[{e['ts'][11:19]}] {prefix}: {e.get('detail', '')}")
+        if lines:
+            card = EvidenceCard(
+                card_id=f"log_{task_id}",
+                task_id=task_id,
+                title="Conversation Transcript",
+                content="\n".join(lines),
+                color=EvidenceCardColor.BLUE,
+                pipeline="webhook",
+            )
+            ts.evidence_cards.append(card)

@@ -753,3 +753,83 @@ def test_log_endpoint_done_when_terminal(tmp_path):
         api_routes.DATA_DIR = original
 
     assert result["done"] is True
+
+
+# ---------------------------------------------------------------------------
+# Task 19: Evidence Integration
+# ---------------------------------------------------------------------------
+
+def test_evidence_cards_populated_from_log(tmp_path):
+    """After evaluation, each TaskScore must have log entries embedded as evidence."""
+    import json
+    from src.governiq.core.eval_logger import EvalLogger
+    from src.governiq.core.engine import _embed_log_as_evidence
+    from src.governiq.core.scoring import TaskScore
+
+    # Write a JSONL log
+    logs_dir = tmp_path / "logs"
+    logs_dir.mkdir()
+    logger = EvalLogger(session_id="ev-test", log_dir=logs_dir)
+    logger.log("task1", "info", "bot_message", detail="Hello!", raw={"val": "Hello!"})
+    logger.log("task1", "info", "user_message", detail="Book a flight")
+    logger.log("task2", "info", "bot_message", detail="Where to?")
+
+    task_scores = [
+        TaskScore(task_id="task1", task_name="Welcome"),
+        TaskScore(task_id="task2", task_name="Booking"),
+    ]
+
+    _embed_log_as_evidence(
+        session_id="ev-test",
+        task_scores=task_scores,
+        logs_dir=logs_dir,
+    )
+
+    t1_events = [c.content for c in task_scores[0].evidence_cards]
+    assert any("Hello!" in e for e in t1_events)
+    t2_events = [c.content for c in task_scores[1].evidence_cards]
+    assert any("Where to?" in e for e in t2_events)
+
+
+# ---------------------------------------------------------------------------
+# Task 20: Health endpoint caching + 401 fix
+# ---------------------------------------------------------------------------
+
+def test_health_cache_hit():
+    """LLM provider must only be probed once within the TTL window."""
+    from unittest.mock import patch
+    import src.governiq.api.routes as api_routes
+
+    # Clear the cache
+    api_routes._health_cache.clear()
+
+    mock_result = {"status": "ok", "message": "Connected", "detail": "HTTP 200"}
+
+    with patch.object(api_routes, '_probe_llm_provider', return_value=mock_result) as mock_probe:
+        r1 = api_routes._check_ai_model()
+        r2 = api_routes._check_ai_model()  # Should hit cache
+
+    assert mock_probe.call_count == 1
+    assert r1["status"] == "ok"
+    assert r2["status"] == "ok"
+
+
+def test_health_401_is_failing():
+    """A 401 Unauthorized from the LLM provider must return status='failing'."""
+    import src.governiq.api.routes as api_routes
+    import httpx
+    from unittest.mock import patch, MagicMock
+
+    api_routes._health_cache.clear()
+
+    mock_response = MagicMock()
+    mock_response.status_code = 401
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "401", request=MagicMock(), response=mock_response
+    )
+
+    with patch('httpx.get', return_value=mock_response):
+        result = api_routes._check_ai_model()
+
+    assert result["status"] == "failing"
+    assert "401" in result["message"] or "invalid" in result["message"].lower()
