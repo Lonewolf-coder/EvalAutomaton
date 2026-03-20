@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.parse
 import uuid
 from datetime import datetime, timedelta, timezone
 import logging
@@ -22,6 +23,7 @@ from ..core.llm_config import (
     save_llm_config,
     PROVIDER_DEFAULTS,
 )
+from ..core.health import check_ai_model
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -311,7 +313,7 @@ async def save_admin_settings(
     temperature: str = Form("0.3"),
     azure_deployment: str = Form(""),
 ):
-    """Save AI provider settings."""
+    """Save AI provider settings, then probe the provider and embed result in redirect."""
     defaults = PROVIDER_DEFAULTS.get(provider, {})
     config = LLMConfig(
         provider=provider,
@@ -323,7 +325,13 @@ async def save_admin_settings(
         azure_deployment=azure_deployment,
     )
     save_llm_config(config)
-    return RedirectResponse(url="/admin/settings?saved=1", status_code=303)
+    probe_result = check_ai_model(config=config)
+    verified = "1" if probe_result.get("status") == "ok" else "0"
+    reason = probe_result.get("message", "")
+    return RedirectResponse(
+        url=f"/admin/settings?saved=1&verified={verified}&reason={urllib.parse.quote(reason)}",
+        status_code=303,
+    )
 
 
 @router.post("/llm-config")
@@ -981,6 +989,7 @@ async def compare_evaluations(request: Request):
 # Restart Endpoint
 # ---------------------------------------------------------------------------
 
+
 @router.post("/evaluation/{session_id}/restart")
 async def restart_evaluation(
     request: Request,
@@ -1192,4 +1201,3 @@ async def restart_evaluation(
         )
 
     return JSONResponse({"error": f"Unknown mode: {mode}"}, status_code=400)
-

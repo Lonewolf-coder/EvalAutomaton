@@ -66,6 +66,18 @@
   </div>
   {% endif %}
 
+  {% if request.query_params.get('verified') == '1' %}
+  <div class="alert alert-success" style="margin-bottom:1rem">
+    <i data-lucide="wifi" class="icon icon-sm"></i>
+    API key verified — provider connected successfully.
+  </div>
+  {% elif request.query_params.get('verified') == '0' %}
+  <div class="alert alert-danger" style="margin-bottom:1rem">
+    <i data-lucide="wifi-off" class="icon icon-sm"></i>
+    API key could not be verified: {{ request.query_params.get('reason', 'Unknown error') }}
+  </div>
+  {% endif %}
+
   <div class="card">
     <div class="card-body">
       <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:1rem;">
