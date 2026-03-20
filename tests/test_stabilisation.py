@@ -897,3 +897,51 @@ def test_scoring_legacy_defaults_unchanged():
     sc.task_scores = [ts]
     # With legacy weights, overall_score should still be > 0
     assert sc.overall_score > 0.0
+
+
+# ---------------------------------------------------------------------------
+# Task 22: Engine passes manifest.scoring_config to Scorecard constructor
+# ---------------------------------------------------------------------------
+
+
+def test_engine_passes_scoring_config_to_scorecard():
+    """Engine must pass manifest.scoring_config to Scorecard so custom weights are applied end-to-end."""
+    import asyncio
+    from src.governiq.core.engine import EvaluationEngine
+    from src.governiq.core.manifest import Manifest
+
+    custom_config = {
+        "webhook_functional_weight": 0.60,
+        "compliance_weight": 0.20,
+        "faq_weight": 0.20,
+        "pass_threshold": 0.75,
+    }
+    # Manifest requires at least one task -- use a minimal CBM_ONLY task (no entities needed)
+    manifest = Manifest(
+        manifest_id="weight-test-v1",
+        assessment_name="Weight Test",
+        assessment_type="test",
+        tasks=[
+            {
+                "task_id": "t1",
+                "task_name": "Weight Check Task",
+                "pattern": "CBM_ONLY",
+                "dialog_name": "WeightCheckDialog",
+            }
+        ],
+        scoring_config=custom_config,
+    )
+
+    engine = EvaluationEngine(manifest=manifest, llm_api_key="fake")
+
+    scorecard = asyncio.run(engine.run_cbm_only(
+        bot_export={"name": "TestBot"},
+        candidate_id="test@example.com",
+    ))
+
+    assert abs(scorecard._webhook_weight - 0.60) < 0.001, (
+        f"Expected _webhook_weight=0.60 but got {scorecard._webhook_weight}. "
+        "Engine is not passing scoring_config to Scorecard."
+    )
+    assert abs(scorecard._compliance_weight - 0.20) < 0.001
+    assert abs(scorecard._pass_threshold - 0.75) < 0.001

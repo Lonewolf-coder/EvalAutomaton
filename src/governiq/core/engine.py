@@ -145,6 +145,14 @@ class EvaluationEngine:
             # needing to re-load the manifest file at report-render time.
             tooltips=[{"node_type": t.node_type, "text": t.text}
                       for t in self.manifest.tooltips],
+            scoring_config=self.manifest.scoring_config.model_dump(),
+        )
+        logger.info(
+            "Scoring weights: webhook=%.0f%% compliance=%.0f%% faq=%.0f%% pass_threshold=%.0f%%",
+            scorecard._webhook_weight * 100,
+            scorecard._compliance_weight * 100,
+            scorecard._faq_weight * 100,
+            scorecard._pass_threshold * 100,
         )
 
         logger.info("=== Pipeline A: CBM Structural Evaluation ===")
@@ -247,6 +255,7 @@ class EvaluationEngine:
             candidate_id=candidate_id,
             manifest_id=self.manifest.manifest_id,
             assessment_name=self.manifest.assessment_name,
+            scoring_config=self.manifest.scoring_config.model_dump(),
         )
 
         for task in self.manifest.tasks:
@@ -452,6 +461,7 @@ class EvaluationEngine:
             state_seeded=saved_data.get("state_seeded", False),
             state_seed_tasks=saved_data.get("state_seed_tasks", []),
             faq_score=saved_data.get("faq_score", 0.0),
+            scoring_config=self.manifest.scoring_config.model_dump(),
         )
         # Restore task scores so we can extend them
         for ts_data in saved_data.get("task_scores", []):
