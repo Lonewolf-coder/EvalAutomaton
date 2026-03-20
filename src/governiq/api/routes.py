@@ -284,7 +284,7 @@ async def resume_evaluation(
     engine = EvaluationEngine(manifest=manifest_obj, llm_api_key=llm_api_key)
 
     try:
-        scorecard = await engine.resume_evaluation(session_id)
+        scorecard = await engine.resume_evaluation(source_session_id=session_id)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

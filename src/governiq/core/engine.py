@@ -370,7 +370,11 @@ class EvaluationEngine:
             "analytics_by_task": scorecard.analytics_by_task,
         }
 
-    async def resume_evaluation(self, session_id: str) -> Scorecard:
+    async def resume_evaluation(
+        self,
+        source_session_id: str,
+        new_session_id: str | None = None,
+    ) -> Scorecard:
         """Resume a partially-completed evaluation from its last checkpoint.
 
         Loads the saved RuntimeContext and Scorecard from disk, then re-runs
@@ -383,7 +387,10 @@ class EvaluationEngine:
         correct cross-task identifiers.
 
         Args:
-            session_id: The session_id of the interrupted evaluation run.
+            source_session_id: The session_id of the interrupted evaluation run
+                (used to locate the saved scorecard and RuntimeContext on disk).
+            new_session_id: Session ID to assign to the resumed run's output.
+                Defaults to source_session_id (in-place resume, backward compatible).
 
         Returns:
             Updated Scorecard with the newly-completed tasks merged in.
@@ -391,26 +398,32 @@ class EvaluationEngine:
         Raises:
             FileNotFoundError: If no saved scorecard or RuntimeContext can be found.
         """
+        # Backward-compatible: if no new_session_id provided, resume in-place
+        output_session_id = new_session_id if new_session_id else source_session_id
+
         # --- Load saved artefacts ---
         results_dir = self.persist_dir / "results"
-        scorecard_path = results_dir / f"scorecard_{session_id}.json"
+        scorecard_path = results_dir / f"scorecard_{source_session_id}.json"
         if not scorecard_path.exists():
-            raise FileNotFoundError(f"Scorecard not found for session '{session_id}'.")
+            raise FileNotFoundError(f"Scorecard not found for session '{source_session_id}'.")
 
         context_dir = self.persist_dir / "runtime_contexts"
-        context_path = context_dir / f"context_{session_id}.json"
+        context_path = context_dir / f"context_{source_session_id}.json"
         if not context_path.exists():
-            raise FileNotFoundError(f"RuntimeContext not found for session '{session_id}'.")
+            raise FileNotFoundError(f"RuntimeContext not found for session '{source_session_id}'.")
 
         with scorecard_path.open("r", encoding="utf-8") as f:
             saved_data = json.load(f)
 
         context = RuntimeContext.load(context_path)
+        # Redirect context output to new session
+        context.session_id = output_session_id
         already_done: set[str] = set(saved_data.get("completed_tasks", []))
 
         logger.info(
-            "Resuming evaluation '%s' — %d/%d tasks already completed: %s",
-            session_id,
+            "Resuming evaluation '%s' as '%s' — %d/%d tasks already completed: %s",
+            source_session_id,
+            output_session_id,
             len(already_done),
             len(self.manifest.tasks),
             sorted(already_done),
@@ -418,7 +431,7 @@ class EvaluationEngine:
 
         # Re-build a lightweight Scorecard that carries the completed results
         scorecard = Scorecard(
-            session_id=session_id,
+            session_id=output_session_id,
             candidate_id=saved_data.get("candidate_id", ""),
             manifest_id=saved_data.get("manifest_id", ""),
             assessment_name=saved_data.get("assessment_name", ""),
@@ -463,7 +476,7 @@ class EvaluationEngine:
 
         logger.info(
             "Resume complete for session '%s' — %d tasks now completed.",
-            session_id, len(scorecard.completed_tasks),
+            output_session_id, len(scorecard.completed_tasks),
         )
         return scorecard
 

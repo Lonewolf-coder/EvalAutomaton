@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
+import uuid
+from datetime import datetime, timezone
 import logging
 import shutil
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, BackgroundTasks, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ..core.llm_config import (
@@ -973,3 +975,217 @@ async def compare_evaluations(request: Request):
         "right_id": right_id,
         "task_diff": task_diff,
     })
+
+
+# ---------------------------------------------------------------------------
+# Restart Endpoint
+# ---------------------------------------------------------------------------
+
+@router.post("/evaluation/{session_id}/restart")
+async def restart_evaluation(
+    request: Request,
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    mode: str = Form(...),
+):
+    """Restart an evaluation.
+
+    mode='fresh'  — create a new session from the original upload.
+    mode='resume' — continue from the last saved RuntimeContext checkpoint.
+    """
+    from ..candidate.routes import _run_evaluation_background
+
+    results_dir = DATA_DIR / "results"
+    stub_path = results_dir / f"scorecard_{session_id}.json"
+
+    if not stub_path.exists():
+        return JSONResponse({"error": "Submission not found"}, status_code=404)
+    try:
+        original_stub = json.loads(stub_path.read_text())
+    except Exception:
+        return JSONResponse({"error": "Cannot read submission data"}, status_code=500)
+
+    # Guard: active lock
+    if not _is_lock_stale_admin(session_id):
+        return JSONResponse(
+            {"error": "Evaluation is currently running. Please wait before re-running."},
+            status_code=409,
+        )
+
+    if mode == "fresh":
+        upload_dir = DATA_DIR / "uploads" / session_id
+        try:
+            zip_available = upload_dir.exists() and any(upload_dir.iterdir())
+        except OSError:
+            zip_available = False
+        if not zip_available:
+            return JSONResponse(
+                {"error": "Original upload not found — re-upload required via candidate portal"},
+                status_code=400,
+            )
+
+        new_session_id = str(uuid.uuid4())
+        new_stub_path = results_dir / f"scorecard_{new_session_id}.json"
+        new_stub = {
+            **original_stub,
+            "session_id": new_session_id,
+            "status": "running",
+            "completed_tasks": [],
+            "halt_reason": None,
+            "halted_on_task": None,
+            "halted_at": None,
+            "parent_session_id": session_id,
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
+            "log_file": f"data/logs/eval_{new_session_id}.jsonl",
+            "error": None,
+        }
+        with new_stub_path.open("w") as f:
+            json.dump(new_stub, f, indent=2)
+
+        manifest_id = original_stub.get("manifest_id", "")
+        manifest_obj = None
+        for mf in MANIFESTS_DIR.glob("*.json"):
+            try:
+                mdata = json.loads(mf.read_text())
+                if mdata.get("manifest_id") == manifest_id:
+                    from ..core.manifest import Manifest
+                    manifest_obj = Manifest(**mdata)
+                    break
+            except Exception:
+                continue
+        if manifest_obj is None:
+            return JSONResponse(
+                {"error": f"Manifest '{manifest_id}' not found — cannot re-run"},
+                status_code=422,
+            )
+
+        from ..core.llm_config import load_llm_config as _load_llm_config
+        llm_config = _load_llm_config()
+
+        import io as _io_mod
+        import zipfile as _zf_mod
+        _upload_files = list(upload_dir.iterdir())
+        _upload_file = _upload_files[0]
+        _raw_bytes = _upload_file.read_bytes()
+        if _upload_file.suffix == ".zip" or _raw_bytes[:4] == b"PK\x03\x04":
+            try:
+                with _zf_mod.ZipFile(_io_mod.BytesIO(_raw_bytes)) as zf:
+                    _json_files = [
+                        n for n in zf.namelist()
+                        if n.endswith(".json") and not n.startswith("__MACOSX")
+                    ]
+                    if not _json_files:
+                        return JSONResponse({"error": "No JSON file found in saved ZIP"}, status_code=422)
+                    _json_files.sort(key=lambda n: zf.getinfo(n).file_size, reverse=True)
+                    with zf.open(_json_files[0]) as jf:
+                        _bot_export_data = json.loads(jf.read())
+            except Exception:
+                _bot_export_data = json.loads(_raw_bytes)
+        else:
+            _bot_export_data = json.loads(_raw_bytes)
+
+        background_tasks.add_task(
+            _run_evaluation_background,
+            session_id=new_session_id,
+            manifest=manifest_obj,
+            bot_export_data=_bot_export_data,
+            candidate_id=original_stub.get("candidate_id", ""),
+            webhook_url=original_stub.get("webhook_url", ""),
+            kore_creds=None,
+            llm_config=llm_config,
+            kore_bearer_token="",
+            plag_report=None,
+        )
+        return RedirectResponse(
+            url=f"/admin/?restarted={new_session_id}", status_code=303
+        )
+
+    elif mode == "resume":
+        ctx_path = DATA_DIR / "runtime_contexts" / f"context_{session_id}.json"
+        if not ctx_path.exists():
+            return JSONResponse(
+                {"error": "Checkpoint not found — use Start Fresh instead"},
+                status_code=400,
+            )
+        try:
+            ctx_data = json.loads(ctx_path.read_text())
+            if not ctx_data.get("session_id"):
+                raise ValueError("Empty context")
+        except Exception:
+            return JSONResponse(
+                {"error": "Checkpoint is corrupt — use Start Fresh instead"},
+                status_code=400,
+            )
+
+        new_session_id = str(uuid.uuid4())
+        new_stub_path = results_dir / f"scorecard_{new_session_id}.json"
+        new_stub = {
+            **original_stub,
+            "session_id": new_session_id,
+            "status": "running",
+            "completed_tasks": original_stub.get("completed_tasks", []),
+            "halt_reason": None,
+            "halted_on_task": None,
+            "halted_at": None,
+            "parent_session_id": session_id,
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
+            "log_file": f"data/logs/eval_{new_session_id}.jsonl",
+            "error": None,
+        }
+        with new_stub_path.open("w") as f:
+            json.dump(new_stub, f, indent=2)
+
+        manifest_id = original_stub.get("manifest_id", "")
+        manifest_obj = None
+        for mf in MANIFESTS_DIR.glob("*.json"):
+            try:
+                mdata = json.loads(mf.read_text())
+                if mdata.get("manifest_id") == manifest_id:
+                    from ..core.manifest import Manifest
+                    manifest_obj = Manifest(**mdata)
+                    break
+            except Exception:
+                continue
+        if manifest_obj is None:
+            return JSONResponse(
+                {"error": f"Manifest '{manifest_id}' not found — cannot resume"},
+                status_code=422,
+            )
+
+        from ..core.llm_config import load_llm_config as _load_llm_config
+        llm_config = _load_llm_config()
+
+        async def _do_resume():
+            from ..core.engine import EvaluationEngine
+            from ..core.eval_logger import EvalLogger
+            _log_dir = DATA_DIR / "logs"
+            _eval_logger = EvalLogger(session_id=new_session_id, log_dir=_log_dir)
+            engine = EvaluationEngine(
+                manifest=manifest_obj,
+                llm_api_key=llm_config.api_key,
+                llm_model=llm_config.model,
+                llm_base_url=llm_config.base_url,
+                llm_api_format=llm_config.api_format,
+                eval_logger=_eval_logger,
+            )
+            try:
+                scorecard = await engine.resume_evaluation(
+                    source_session_id=session_id,
+                    new_session_id=new_session_id,
+                )
+                with new_stub_path.open("w") as f:
+                    json.dump(scorecard.to_dict(), f, indent=2)
+            except Exception as exc:
+                logger.exception("Resume failed for new session %s", new_session_id)
+                existing = json.loads(new_stub_path.read_text()) if new_stub_path.exists() else {}
+                existing.update({"status": "error", "error": str(exc)})
+                with new_stub_path.open("w") as f:
+                    json.dump(existing, f, indent=2)
+
+        background_tasks.add_task(_do_resume)
+        return RedirectResponse(
+            url=f"/admin/?restarted={new_session_id}", status_code=303
+        )
+
+    return JSONResponse({"error": f"Unknown mode: {mode}"}, status_code=400)
+

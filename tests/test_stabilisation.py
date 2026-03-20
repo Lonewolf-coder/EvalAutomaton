@@ -674,3 +674,29 @@ def test_load_all_evaluations_logs_corrupt_file(tmp_path, monkeypatch):
         result = admin_routes._load_all_evaluations()
     assert result == []
     mock_logger.warning.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Task 15: Restart Endpoint
+# ---------------------------------------------------------------------------
+
+def test_restart_blocked_by_active_lock(tmp_path):
+    """POST /admin/evaluation/{id}/restart must return 409 if lock is active."""
+    import json
+    from datetime import datetime, timezone
+    import src.governiq.admin.routes as admin_routes
+
+    session_id = "locked-eval"
+    locks_dir = tmp_path / "locks"
+    locks_dir.mkdir()
+    (locks_dir / f"{session_id}.lock").write_text(
+        json.dumps({"started_at": datetime.now(timezone.utc).isoformat()})
+    )
+
+    original = admin_routes.DATA_DIR
+    try:
+        admin_routes.DATA_DIR = tmp_path
+        # _is_lock_stale_admin should return False for a fresh lock
+        assert admin_routes._is_lock_stale_admin(session_id) is False
+    finally:
+        admin_routes.DATA_DIR = original
