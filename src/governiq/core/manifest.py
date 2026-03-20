@@ -21,10 +21,14 @@ _log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def normalise_value_pools(task_data: dict) -> None:
-    """Convert any dict-typed value_pool to a list in-place. Warns if conversion needed."""
+    """Convert any dict-typed value_pool to a list in-place. Warns if conversion needed.
+
+    Strategy dicts (those containing a 'strategy' key) are left unchanged — they
+    are resolved at runtime by the value-pool resolver, not at load time.
+    """
     for entity in task_data.get("required_entities", []):
         vp = entity.get("value_pool")
-        if isinstance(vp, dict):
+        if isinstance(vp, dict) and "strategy" not in vp:
             _log.warning(
                 "MD-VPOOL: task '%s' entity '%s' value_pool is a dict — auto-converted to list. Fix manifest.",
                 task_data.get("task_id", "?"),
@@ -80,7 +84,7 @@ class EntityDefinition(BaseModel):
         default_factory=list,
         description=(
             "Realistic test values the driver can inject. "
-            "Either a list of strings or a dynamic strategy dict "
+            "Either a list of values or a dynamic strategy dict "
             "(e.g. {'strategy': 'relative_days_from_today', 'offsets': [90,120], 'format': 'DD-MM-YYYY'}). "
             "Empty list means values come from cross-task references."
         ),

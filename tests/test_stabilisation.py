@@ -248,7 +248,8 @@ def test_stale_lock_detection(tmp_path):
 
 
 def test_value_pool_dict_normalised_at_load():
-    """A value_pool authored as a JSON object must be converted to a list at load time."""
+    """A value_pool authored as a JSON object must be converted to a list at load time.
+    Strategy dicts (with 'strategy' key) must be preserved unchanged."""
     from src.governiq.core.manifest import normalise_value_pools
 
     task_data = {
@@ -256,6 +257,11 @@ def test_value_pool_dict_normalised_at_load():
         "required_entities": [
             {"entity_key": "city", "value_pool": {"0": "London", "1": "Paris", "2": "Rome"}},
             {"entity_key": "date", "value_pool": ["2026-01-01", "2026-02-01"]},  # already a list
+            {"entity_key": "dept_date", "value_pool": {
+                "strategy": "relative_days_from_today",
+                "offsets": [7, 14, 21],
+                "format": "DD-MM-YYYY",
+            }},  # strategy dict — must NOT be converted
         ],
     }
     normalise_value_pools(task_data)
@@ -264,3 +270,35 @@ def test_value_pool_dict_normalised_at_load():
     assert isinstance(entities[0]["value_pool"], list)
     assert set(entities[0]["value_pool"]) == {"London", "Paris", "Rome"}
     assert entities[1]["value_pool"] == ["2026-01-01", "2026-02-01"]  # unchanged
+    assert isinstance(entities[2]["value_pool"], dict)  # strategy dict preserved
+    assert entities[2]["value_pool"]["strategy"] == "relative_days_from_today"
+
+
+def test_manifest_loads_with_dict_value_pool():
+    """Manifest model validator must normalise dict value_pools at construction time."""
+    from src.governiq.core.manifest import Manifest
+
+    manifest_data = {
+        "manifest_id": "test-vpool",
+        "assessment_name": "Test",
+        "assessment_type": "test",
+        "tasks": [
+            {
+                "task_id": "t1",
+                "task_name": "Task 1",
+                "pattern": "CREATE",
+                "dialog_name": "TestDialog",
+                "required_entities": [
+                    {
+                        "entity_key": "city",
+                        "semantic_hint": "A city",
+                        "value_pool": {"0": "London", "1": "Paris"},
+                    }
+                ],
+            }
+        ],
+    }
+    m = Manifest(**manifest_data)
+    vp = m.tasks[0].required_entities[0].value_pool
+    assert isinstance(vp, list)
+    assert set(vp) == {"London", "Paris"}
