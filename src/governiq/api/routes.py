@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -426,10 +427,33 @@ async def get_evaluation_log(session_id: str, offset: int = 0):
 
 from ..core.health import check_ai_model as _check_ai_model_impl
 
+_health_cache: dict = {}
+_HEALTH_LLM_TTL = timedelta(seconds=25)
+
+
+def _probe_llm_provider(config=None) -> dict:
+    """Make a live call to the LLM provider. No caching. Testable."""
+    return _check_ai_model_impl(config=config)
+
 
 def _check_ai_model(url: str = "", api_key: str = "") -> dict:
-    """Thin wrapper — delegates to shared health.check_ai_model."""
-    return _check_ai_model_impl(url=url, api_key=api_key)
+    """Check AI provider with TTL caching to avoid burning rate-limit quota."""
+    # url/api_key overrides bypass cache (used by live test-ai endpoint)
+    if url or api_key:
+        return _check_ai_model_impl(url=url, api_key=api_key)
+
+    config = load_llm_config()
+    cache_key = f"{config.api_format}:{config.base_url}:{config.model}"
+
+    cached = _health_cache.get(cache_key)
+    if cached:
+        age = datetime.now(timezone.utc) - cached["cached_at"]
+        if age < _HEALTH_LLM_TTL:
+            return cached["result"]
+
+    result = _probe_llm_provider(config)
+    _health_cache[cache_key] = {"result": result, "cached_at": datetime.now(timezone.utc)}
+    return result
 
 
 def _check_storage() -> dict:

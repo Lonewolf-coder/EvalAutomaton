@@ -38,6 +38,12 @@ def check_ai_model(config=None, url: str = "", api_key: str = "") -> dict:
 
     try:
         r = httpx.get(models_url, headers=headers, timeout=4.0)
+        if r.status_code == 401:
+            return {
+                "status": "failing",
+                "message": "API key invalid or unauthorized. Check your key in Settings.",
+                "detail": "HTTP 401",
+            }
         if r.status_code < 500:
             return {
                 "status": "ok",
