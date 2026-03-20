@@ -89,6 +89,7 @@ Uploaded bot export files must be preserved for re-runs.
 
 - On submission: copy uploaded file to `data/uploads/{session_id}/bot_export.zip` (or `.json`)
 - Cleanup: remove uploads older than 7 days. Run cleanup at startup and on each submission.
+  - **Guard:** do NOT delete an upload if a lock file exists for that `session_id`, regardless of age — the evaluation may still be running after a long outage.
 - If ZIP missing at re-run time: return error "Original upload not found — re-upload required"
 
 **File:** `src/governiq/candidate/routes.py`
@@ -99,7 +100,9 @@ Prevents concurrent re-runs on the same session.
 
 - Create `data/locks/{session_id}.lock` at start of background task: `{"started_at": "ISO", "pid": int}`
 - Delete in `finally` block — always deleted on any terminal state (completed, halted, error, crash)
-- Stale lock: if `started_at` > 10 minutes ago, treat as abandoned and allow re-run
+- Stale lock: if `started_at` > **15 minutes** ago, treat as abandoned and allow re-run
+
+Note: the stale lock threshold (15 min) and the `display_status="stale"` threshold in `_enrich_submission` (Section 8.1) are intentionally aligned at 15 minutes so the UI reflects exactly when a re-run becomes unblocked.
 
 **File:** `src/governiq/candidate/routes.py`
 
@@ -167,7 +170,7 @@ normalise_messages(messages: list) -> tuple[list[str], list[dict]]
 
 ### 6.4 Manifest Save-Time Validation
 
-A new `validate_manifest(data: dict) -> dict` function checks:
+A new `validate_manifest_data(data: dict) -> dict` function checks:
 - All `value_pool` fields are lists (warning if dict)
 - `scoring_config` weights sum to ~1.0 within tolerance 0.01 (warning if not)
 - `pass_threshold` in [0.5, 1.0] (error if outside range)
@@ -175,7 +178,9 @@ A new `validate_manifest(data: dict) -> dict` function checks:
 
 Returns `{"valid": bool, "errors": [...], "warnings": [...]}`.
 
-The manifest save endpoint (`_save_manifest`) calls this before writing:
+**Naming note:** The existing `validate_manifest(manifest: Manifest)` function in `src/governiq/core/manifest_validator.py` accepts a parsed `Manifest` object. The new `validate_manifest_data(data: dict)` operates on raw JSON dicts (pre-parse). The save endpoint calls `validate_manifest_data` first; if it passes, it constructs the `Manifest` object and calls the existing `validate_manifest` for schema-level checks. This avoids duplicating validation logic.
+
+The manifest save endpoint (`_save_manifest`) calls `validate_manifest_data` before writing:
 - Errors → block save, return 400 with error list
 - Warnings only → save proceeds, warnings shown as flash messages in UI
 
@@ -247,7 +252,19 @@ On catch:
 
 ### 7.4 EvalLogger Wiring
 
-`EvalLogger` instance created in `_run_evaluation_background`, passed into engine and driver.
+`EvalLogger` instance created in `_run_evaluation_background` and injected via the `EvaluationEngine` constructor:
+
+```python
+EvaluationEngine.__init__(self, ..., eval_logger: EvalLogger | None = None)
+```
+
+The engine stores `self._eval_logger` and passes it to `LLMConversationDriver` at construction time (the driver is already instantiated inside `EvaluationEngine.__init__`):
+
+```python
+self._driver = LLMConversationDriver(..., eval_logger=self._eval_logger)
+```
+
+`EvalLogger` is optional (`None` by default) so existing call sites and tests that construct `EvaluationEngine` without a logger continue to work without modification.
 
 Engine logs: `task_start`, `task_complete`, `state_seeded`, `evaluation_halted`
 Driver logs: `warm_up`, `bot_message` (with raw payload), `user_message`, `intent_classified`, `check_pass`, `check_fail`
@@ -264,7 +281,8 @@ Driver logs: `warm_up`, `bot_message` (with raw payload), `user_message`, `inten
 
 New helper `_enrich_submission(data: dict) -> dict` adds computed display fields:
 - `display_status`: `"completed" | "running" | "halted" | "error" | "stale"`
-  Stale = status is `"running"` and `submitted_at` > 15 minutes ago
+  Stale = status is `"running"` and `submitted_at` > 15 minutes ago.
+  **Fallback for pre-sprint stubs without `submitted_at`:** if the field is absent, treat the record as stale unconditionally (these are legacy stuck stubs and should be re-run).
 - `can_resume`: `True` if status in `("halted", "error")` AND RuntimeContext file exists and is valid JSON AND no active lock
 - `can_start_fresh`: `True` for all non-running submissions AND ZIP exists in `data/uploads/{session_id}/`
 - `zip_available`: `True` if `data/uploads/{session_id}/` contains the export file
@@ -310,11 +328,14 @@ mode=fresh:
 - Launch background task from scratch
 
 mode=resume:
-- Generate new `session_id` (preserves evidence chain)
+- Generate new `session_id` for output (preserves evidence chain — original artefacts are not overwritten)
 - Write enriched stub with `parent_session_id=original_session_id` + `completed_tasks` from original
-- Launch background task with `resume=True` and original RuntimeContext loaded
+- Pass **both** `source_session_id` (original, for reading RuntimeContext and CBM results from disk) and the new `session_id` (for writing new scorecard and log) into the engine.
+- `engine.resume_evaluation(source_session_id, new_session_id, ...)` — the engine loads `RuntimeContext` from `context_{source_session_id}.json` and writes all output under `new_session_id`.
 
-**File:** `src/governiq/admin/routes.py`
+**File:** `src/governiq/admin/routes.py`, `src/governiq/core/engine.py` (extend `resume_evaluation` signature)
+
+**Existing API endpoint:** `src/governiq/api/routes.py` exposes a public `POST /api/v1/evaluations/{session_id}/resume` endpoint that calls `engine.resume_evaluation(session_id)` with the original single-argument signature. This endpoint must be updated in the same step to pass both `source_session_id` and a newly generated `new_session_id`, and return the new session ID in its response. The old single-argument signature of `resume_evaluation` is replaced entirely — it has no external callers beyond this one endpoint.
 
 ### 8.4 Inline API Key Verification
 
@@ -423,27 +444,41 @@ TTL: 25 seconds for LLM check, 300 seconds (5 minutes) for storage check.
 
 **401 fix:** `response.status_code == 401` → `status="failing"`, `message="API key invalid or unauthorized"`. Previously treated as "ok" because `< 500`.
 
+**Provider-specific probe endpoints:** The existing `_check_ai_model` function already handles two API formats. This must be preserved in the cached version:
+- OpenAI-compatible providers (Gemini, LM Studio, Azure, Mistral): `GET {base_url}/models`
+- Anthropic native API: a minimal `POST /v1/messages` stub (existing probe logic), NOT `/models` — the Anthropic API does not expose a `/models` health endpoint in the same way
+
+The cache key must therefore include the API format, not just the model name, to avoid serving a cached Anthropic result for an OpenAI-format key or vice versa.
+
 **File:** `src/governiq/api/routes.py`
 
 ### 10.2 Manifest Scoring Weights
 
 **Current problem:** `Scorecard.overall_score` uses hardcoded 80/10/10 weights regardless of manifest `scoring_config`.
 
-**Fix:** `Scorecard.__init__` accepts `scoring_config: dict | None = None`.
+**Fix:** `Scorecard` is a `@dataclass`. The `scoring_config` dict is consumed in `__post_init__`, **not** stored as a dataclass field. This means it does not appear in `to_dict()` serialisation and does not change the on-disk scorecard format.
 
-If provided:
-1. Extract `webhook_functional_weight`, `compliance_weight`, `faq_weight`, `pass_threshold`
+`__post_init__` derives and stores four weight attributes as regular instance fields:
+- `_webhook_weight: float`
+- `_compliance_weight: float`
+- `_faq_weight: float`
+- `_pass_threshold: float`
+
+These are set from `scoring_config` if provided, or from legacy hardcoded defaults if `scoring_config=None`.
+
+Steps in `__post_init__`:
+1. Extract `webhook_functional_weight`, `compliance_weight`, `faq_weight`, `pass_threshold` from `scoring_config` (or use hardcoded defaults if None)
 2. Validate: each weight in [0, 1], pass_threshold in [0.5, 1.0]
 3. Normalise: if weights don't sum to 1.0 (within tolerance 0.01), rescale proportionally
-4. Store as instance attributes
+4. Store as `_webhook_weight`, `_compliance_weight`, `_faq_weight`, `_pass_threshold`
 
-`overall_score` property uses instance weight attributes.
+`overall_score` property uses these instance weight attributes.
 
-If `scoring_config=None` (historical records loaded from disk): use legacy hardcoded weights — **historical scores are never re-computed**.
+If `scoring_config=None` (historical records loaded from disk, or tests that don't pass config): the defaults reproduce the current hardcoded 80/10/10 behaviour — **historical scores are never re-computed**.
 
-**Weight redistribution:** If a pipeline is unused (e.g., no FAQ tasks → `faq_score=None`), its weight is redistributed proportionally to the remaining pipelines. This logic lives in `engine.py` when constructing the Scorecard, not in `scoring.py`.
+**Weight redistribution:** If a pipeline is unused (e.g., no FAQ tasks → `faq_score=None`), its weight is redistributed proportionally to the remaining active pipelines. Per CLAUDE.md rule 6 ("Never hardcode score weights anywhere outside scoring.py"), this redistribution logic lives **entirely inside `Scorecard` in `scoring.py`**, not in `engine.py`. The engine signals which pipelines ran by passing `None` for unused pipeline scores; `Scorecard.overall_score` detects `None` values and redistributes weights internally.
 
-**File:** `src/governiq/core/scoring.py`, `src/governiq/core/engine.py`
+**File:** `src/governiq/core/scoring.py` (redistribution + weight reading); `src/governiq/core/engine.py` (pass `scoring_config` to Scorecard constructor only)
 
 ---
 
@@ -462,9 +497,9 @@ If `scoring_config=None` (historical records loaded from disk): use legacy hardc
 | File | Changes |
 |------|---------|
 | `src/governiq/candidate/routes.py` | Enrich stub, ZIP storage, lock file lifecycle, halt handler |
-| `src/governiq/core/engine.py` | Halt handler, EvalLogger wiring, scoring_config pass-through, weight redistribution, evidence embedding |
+| `src/governiq/core/engine.py` | Halt handler, EvalLogger injection via constructor, scoring_config pass-through to Scorecard, evidence embedding; extend `resume_evaluation(source_session_id, new_session_id, ...)` |
 | `src/governiq/webhook/driver.py` | Use message_normaliser, retry-once + raise EvaluationHaltedError, EvalLogger wiring |
-| `src/governiq/core/scoring.py` | scoring_config parameter, instance weight attributes, normalisation |
+| `src/governiq/core/scoring.py` | scoring_config parameter, instance weight attributes, normalisation, weight redistribution for unused pipelines |
 | `src/governiq/api/routes.py` | Health cache + 401 fix, GET /api/v1/logs/{session_id} endpoint |
 | `src/governiq/admin/routes.py` | Show all statuses, _enrich_submission, restart endpoint, inline key verify, manifest validation |
 | `src/governiq/templates/candidate_history.html` | Template guards for overall_score |
@@ -499,6 +534,18 @@ If `scoring_config=None` (historical records loaded from disk): use legacy hardc
 | 5 | test_scoring_manifest_weights | Scorecard uses manifest weights not hardcoded |
 | 5 | test_scoring_normalises_weights | Weights not summing to 1.0 → normalised |
 | 5 | test_manifest_validation_bad_threshold | pass_threshold=0.1 → error returned |
+| 5 | test_manifest_validation_valid | Well-formed manifest → valid=True, no errors |
+| 5 | test_manifest_validation_warnings_only | Dict value_pool → valid=True with warning, save proceeds |
+| 4 | test_evidence_cards_populated_from_log | JSONL log read + grouped → task evidence_cards contain conversation entries |
+| 3 | test_enrich_can_resume_corrupt_context | Valid-JSON-but-empty RuntimeContext file → can_resume=False |
+| 3 | test_enrich_stale_missing_submitted_at | Stub with no submitted_at field → display_status="stale" |
+| 0 | test_zip_cleanup_skips_active_lock | Upload older than 7 days with active lock → not deleted |
+
+---
+
+## 13a. Side Effects on Existing Features
+
+**`admin_compare` route (`_compute_task_diff`, line 785 of `admin/routes.py`):** After Layer 3 changes `_load_all_evaluations` to return all statuses, the compare page will receive stubs without `overall_score` or `task_scores`. The existing `.get("overall_score", 0)` fallback means halted/error submissions appear in similarity grouping with score=0. This is acceptable — zero-score stubs will not form false similarity matches with real submissions. No additional filter is needed on the compare route.
 
 ---
 
