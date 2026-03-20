@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -127,7 +127,7 @@ class KoreAPIClient:
 
         Returns conversation counts, user counts, success/failure rates.
         """
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days_back)
 
         endpoint = f"/api/public/bot/{self.credentials.bot_id}/getAnalytics"

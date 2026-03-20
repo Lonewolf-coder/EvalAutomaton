@@ -110,11 +110,6 @@ async def how_it_works(request: Request):
     })
 
 
-@app.get("/health")
-async def health():
-    return {"status": "ok", "service": "governiq", "version": "0.1.0"}
-
-
 def main():
     """CLI entry point."""
     import uvicorn

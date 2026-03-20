@@ -239,20 +239,18 @@ async def _run_evaluation_background(
             scorecard.plagiarism_message = plag_report.message
 
         # Write final scorecard (overwrites the stub)
-        import json as _json
         with stub_path.open("w") as f:
-            _json.dump(scorecard.to_dict(), f, indent=2)
+            json.dump(scorecard.to_dict(), f, indent=2)
 
     except Exception as exc:
         logger.exception("Background evaluation failed for session %s", session_id)
-        import json as _json
         error_data = {
             "session_id": session_id,
             "status": "error",
             "error": str(exc),
         }
         with stub_path.open("w") as f:
-            _json.dump(error_data, f)
+            json.dump(error_data, f)
 
 
 @router.post("/submit")
@@ -386,9 +384,8 @@ async def candidate_submit(
     results_dir = DATA_DIR / "results"
     results_dir.mkdir(parents=True, exist_ok=True)
     stub_path = results_dir / f"scorecard_{session_id}.json"
-    import json as _json
     with stub_path.open("w") as f:
-        _json.dump({
+        json.dump({
             "session_id": session_id,
             "status": "running",
             "candidate_id": candidate_id,

@@ -234,14 +234,13 @@ async def resume_evaluation(
         webhook_url: Optional webhook URL override (uses saved value if not provided).
         llm_api_key: Optional LLM API key for the conversation driver.
     """
-    import json as _json
     results_dir = Path("./data/results")
     scorecard_path = results_dir / f"scorecard_{session_id}.json"
     if not scorecard_path.exists():
         raise HTTPException(status_code=404, detail=f"Scorecard '{session_id}' not found.")
 
     with scorecard_path.open("r") as f:
-        saved_data = _json.load(f)
+        saved_data = json.load(f)
 
     completed = saved_data.get("completed_tasks", [])
     total_tasks = len(saved_data.get("task_scores", []))
@@ -262,7 +261,7 @@ async def resume_evaluation(
     for mf in manifests_dir.glob("*.json"):
         try:
             with mf.open("r") as f:
-                mdata = _json.load(f)
+                mdata = json.load(f)
             if mdata.get("manifest_id") == manifest_id:
                 from ..core.manifest import Manifest
                 manifest_obj = Manifest(**mdata)
@@ -484,8 +483,6 @@ async def system_health():
     advisories: list[str] = []
     if any(s["status"] == "failing" for s in subsystems.values()):
         overall = "error"
-    elif advisories:
-        overall = "warning"
     else:
         overall = "ok"
 
