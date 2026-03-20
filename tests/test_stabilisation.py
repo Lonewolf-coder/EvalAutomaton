@@ -261,7 +261,7 @@ def test_value_pool_dict_normalised_at_load():
                 "strategy": "relative_days_from_today",
                 "offsets": [7, 14, 21],
                 "format": "DD-MM-YYYY",
-            }},  # strategy dict — must NOT be converted
+            }},  # strategy dict -- must NOT be converted
         ],
     }
     normalise_value_pools(task_data)
@@ -313,7 +313,7 @@ def test_template_guard_error_stub():
     template_dir = Path("src/governiq/templates")
     env = Environment(
         loader=FileSystemLoader(str(template_dir)),
-        undefined=StrictUndefined,  # strict — raises on missing
+        undefined=StrictUndefined,  # strict -- raises on missing
     )
 
     # Provide a minimal mock request object so base.html navigation renders.
@@ -321,7 +321,7 @@ def test_template_guard_error_stub():
     mock_url = SimpleNamespace(path="/candidate/history")
     mock_request = SimpleNamespace(url=mock_url)
 
-    # Simulate what the route passes to the template — an error stub
+    # Simulate what the route passes to the template -- an error stub
     error_stub = {
         "session_id": "err-stub-1",
         "status": "error",
@@ -338,7 +338,7 @@ def test_template_guard_error_stub():
             portal="candidate",
             submissions=[error_stub],
         )
-        # If we get here, the template rendered without crashing — success
+        # If we get here, the template rendered without crashing -- success
         assert "err-stub-1" in rendered or "error" in rendered.lower()
     except Exception as e:
         pytest.fail(f"Template raised an exception for error stub: {e}")
@@ -372,7 +372,7 @@ def test_validate_manifest_data_bad_threshold():
             "webhook_functional_weight": 0.80,
             "compliance_weight": 0.10,
             "faq_weight": 0.10,
-            "pass_threshold": 0.10,  # Invalid — below 0.5
+            "pass_threshold": 0.10,  # Invalid -- below 0.5
         },
     }
     result = validate_manifest_data(data)
@@ -544,3 +544,89 @@ def test_halt_writes_checkpoint(tmp_path):
     assert updated["halt_reason"] == "429 rate limit"
     assert updated["halted_on_task"] == "task2"
     assert updated["halted_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Task 13: Show All Submissions + _enrich_submission
+# ---------------------------------------------------------------------------
+
+def test_admin_shows_all_statuses(tmp_path):
+    """_load_all_evaluations must return records of every status."""
+    import json
+    from pathlib import Path
+
+    statuses = ["completed", "running", "halted", "error"]
+    results = tmp_path / "results"
+    results.mkdir()
+    for i, s in enumerate(statuses):
+        path = results / f"scorecard_stub-{i}.json"
+        path.write_text(json.dumps({"session_id": f"stub-{i}", "status": s,
+                                     "overall_score": 0.8 if s == "completed" else None}))
+
+    import src.governiq.admin.routes as admin_routes
+    original = admin_routes.DATA_DIR
+    try:
+        admin_routes.DATA_DIR = tmp_path
+        evals = admin_routes._load_all_evaluations()
+    finally:
+        admin_routes.DATA_DIR = original
+
+    found_statuses = {e["status"] for e in evals}
+    assert found_statuses == set(statuses)
+
+
+def test_enrich_submission_can_resume(tmp_path):
+    """can_resume=True only when RuntimeContext exists and is valid JSON."""
+    import json
+    import src.governiq.admin.routes as admin_routes
+
+    session_id = "enrich-test"
+    ctx_dir = tmp_path / "runtime_contexts"
+    ctx_dir.mkdir()
+    (ctx_dir / f"context_{session_id}.json").write_text(json.dumps({"session_id": session_id}))
+
+    original = admin_routes.DATA_DIR
+    try:
+        admin_routes.DATA_DIR = tmp_path
+        stub = {"session_id": session_id, "status": "halted", "submitted_at": "2026-01-01T00:00:00+00:00"}
+        enriched = admin_routes._enrich_submission(stub)
+    finally:
+        admin_routes.DATA_DIR = original
+
+    assert enriched["can_resume"] is True
+
+
+def test_enrich_submission_missing_submitted_at_is_stale(tmp_path):
+    """Stubs without submitted_at must be treated as stale."""
+    import src.governiq.admin.routes as admin_routes
+
+    original = admin_routes.DATA_DIR
+    try:
+        admin_routes.DATA_DIR = tmp_path
+        stub = {"session_id": "old-stub", "status": "running"}  # no submitted_at
+        enriched = admin_routes._enrich_submission(stub)
+    finally:
+        admin_routes.DATA_DIR = original
+
+    assert enriched["display_status"] == "stale"
+
+
+def test_enrich_can_resume_corrupt_context(tmp_path):
+    """A valid-JSON-but-empty RuntimeContext must result in can_resume=False."""
+    import json
+    import src.governiq.admin.routes as admin_routes
+
+    session_id = "corrupt-ctx"
+    ctx_dir = tmp_path / "runtime_contexts"
+    ctx_dir.mkdir()
+    (ctx_dir / f"context_{session_id}.json").write_text("{}")  # empty object
+
+    original = admin_routes.DATA_DIR
+    try:
+        admin_routes.DATA_DIR = tmp_path
+        stub = {"session_id": session_id, "status": "halted", "submitted_at": "2026-01-01T00:00:00+00:00"}
+        enriched = admin_routes._enrich_submission(stub)
+    finally:
+        admin_routes.DATA_DIR = original
+
+    assert enriched["can_resume"] is False

@@ -1,4 +1,4 @@
-"""Admin / Evaluator Portal Routes â€” Dashboard, review, manifest management, LLM config."""
+"""Admin / Evaluator Portal Routes - Dashboard, review, manifest management, LLM config."""
 
 from __future__ import annotations
 
@@ -33,6 +33,77 @@ DATA_DIR = Path("data")
 DATA_MANIFESTS_DIR = DATA_DIR / "manifests"
 
 
+def _is_lock_stale_admin(session_id: str, stale_minutes: int = 15) -> bool:
+    """Admin-side stale lock check (mirrors candidate/routes.py version)."""
+    from datetime import datetime, timezone, timedelta
+    lock_path = DATA_DIR / "locks" / f"{session_id}.lock"
+    if not lock_path.exists():
+        return True
+    try:
+        data = json.loads(lock_path.read_text())
+        started_at = datetime.fromisoformat(data["started_at"])
+        return (datetime.now(timezone.utc) - started_at) > timedelta(minutes=stale_minutes)
+    except Exception:
+        return True
+
+
+def _enrich_submission(data: dict[str, Any]) -> dict[str, Any]:
+    """Add computed display fields to a raw scorecard/stub dict."""
+    from datetime import datetime, timezone, timedelta
+
+    session_id = data.get("session_id", "")
+    status = data.get("status", "error")
+
+    # Stale detection -- running submissions older than 15 minutes
+    display_status = status
+    if status == "running":
+        submitted_at_str = data.get("submitted_at")
+        if not submitted_at_str:
+            display_status = "stale"  # Legacy stub without submitted_at
+        else:
+            try:
+                submitted_at = datetime.fromisoformat(submitted_at_str)
+                age = datetime.now(timezone.utc) - submitted_at
+                if age > timedelta(minutes=15):
+                    display_status = "stale"
+            except Exception:
+                display_status = "stale"
+
+    # Lock check
+    lock_path = DATA_DIR / "locks" / f"{session_id}.lock"
+    has_active_lock = lock_path.exists() and not _is_lock_stale_admin(session_id)
+
+    # ZIP availability
+    upload_dir = DATA_DIR / "uploads" / session_id
+    zip_available = upload_dir.exists() and any(upload_dir.iterdir())
+
+    # Resume check -- RuntimeContext must exist, be valid JSON, and have session_id
+    can_resume = False
+    if status in ("halted", "error") and not has_active_lock:
+        ctx_path = DATA_DIR / "runtime_contexts" / f"context_{session_id}.json"
+        if ctx_path.exists():
+            try:
+                ctx_data = json.loads(ctx_path.read_text())
+                can_resume = bool(ctx_data.get("session_id"))
+            except Exception:
+                pass
+
+    return {
+        **data,
+        "overall_score": data.get("overall_score"),
+        "candidate_id": data.get("candidate_id", "unknown"),
+        "manifest_id": data.get("manifest_id", "unknown"),
+        "assessment_name": data.get("assessment_name", "Unknown Assessment"),
+        "submitted_at": data.get("submitted_at"),
+        "halt_reason": data.get("halt_reason"),
+        "display_status": display_status,
+        "has_active_lock": has_active_lock,
+        "zip_available": zip_available,
+        "can_resume": can_resume,
+        "can_start_fresh": status not in ("running",) and not has_active_lock,
+    }
+
+
 def _load_all_evaluations() -> list[dict[str, Any]]:
     results_dir = DATA_DIR / "results"
     if not results_dir.exists():
@@ -42,10 +113,7 @@ def _load_all_evaluations() -> list[dict[str, Any]]:
         try:
             with f.open("r") as fh:
                 data = json.load(fh)
-            # Skip in-progress stubs and error records â€” they lack overall_score
-            if data.get("status") in ("running", "error"):
-                continue
-            evals.append(data)
+            evals.append(_enrich_submission(data))
         except Exception:
             pass
     return evals
@@ -132,7 +200,7 @@ def validate_manifest_data(data: dict) -> dict:
         )
         if abs(w_sum - 1.0) > 0.01:
             warnings.append(
-                f"scoring_config weights sum to {w_sum:.3f} instead of 1.0 — will be normalised at evaluation time"
+                f"scoring_config weights sum to {w_sum:.3f} instead of 1.0 -- will be normalised at evaluation time"
             )
 
     # value_pool type check
@@ -142,7 +210,7 @@ def validate_manifest_data(data: dict) -> dict:
             if isinstance(vp, dict) and "strategy" not in vp:
                 warnings.append(
                     f"Task '{task.get('task_id')}' entity '{entity.get('entity_key')}': "
-                    f"value_pool is a JSON object — convert to array in manifest editor"
+                    f"value_pool is a JSON object -- convert to array in manifest editor"
                 )
 
     return {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
@@ -313,7 +381,7 @@ async def manifest_list(request: Request):
 _SAMPLE_MANIFEST: dict = {
     "manifest_id": "my_bot_assessment_v1",
     "manifest_version": "1.0",
-    "assessment_name": "My Bot Assessment â€” Basic",
+    "assessment_name": "My Bot Assessment - Basic",
     "assessment_type": "custom",
     "description": "Evaluates a bot for Create, Retrieve, Modify, Delete, and FAQ capabilities.",
     "webhook_url": "",
@@ -356,7 +424,7 @@ _SAMPLE_MANIFEST: dict = {
     "tasks": [
         {
             "task_id": "task_create",
-            "task_name": "Create Record â€” Happy Path",
+            "task_name": "Create Record - Happy Path",
             "pattern": "CREATE",
             "dialog_name": "Create Record",
             "dialog_name_policy": "contains",
@@ -392,7 +460,7 @@ _SAMPLE_MANIFEST: dict = {
         },
         {
             "task_id": "task_create_amend",
-            "task_name": "Create Record â€” Amendment Test",
+            "task_name": "Create Record - Amendment Test",
             "pattern": "CREATE_WITH_AMENDMENT",
             "dialog_name": "Create Record",
             "dialog_name_policy": "contains",
@@ -443,7 +511,7 @@ _SAMPLE_MANIFEST: dict = {
         },
         {
             "task_id": "task_edge_case",
-            "task_name": "Retrieve â€” Invalid Input Edge Case",
+            "task_name": "Retrieve - Invalid Input Edge Case",
             "pattern": "EDGE_CASE",
             "dialog_name": "Get Record",
             "dialog_name_policy": "contains",
@@ -509,12 +577,12 @@ _SAMPLE_MANIFEST: dict = {
     ],
     "state_seeding_config": {"enabled": True, "schema_validation": True, "seed_endpoint": ""},
     "tooltips": [
-        {"node_type": "aiassist", "text": "Agent Node â€” enables LLM-powered entity handling and amendment support."},
-        {"node_type": "service", "text": "Service Node â€” makes API calls (GET, POST, PUT, DELETE)."},
-        {"node_type": "entity", "text": "Entity Node â€” collects a specific piece of information from the user."},
-        {"node_type": "message", "text": "Message Node â€” displays a message to the user."},
-        {"node_type": "form", "text": "Form Node â€” collects multiple fields in a structured form."},
-        {"node_type": "script", "text": "Script Node â€” runs a JavaScript function for custom logic."},
+        {"node_type": "aiassist", "text": "Agent Node - enables LLM-powered entity handling and amendment support."},
+        {"node_type": "service", "text": "Service Node - makes API calls (GET, POST, PUT, DELETE)."},
+        {"node_type": "entity", "text": "Entity Node - collects a specific piece of information from the user."},
+        {"node_type": "message", "text": "Message Node - displays a message to the user."},
+        {"node_type": "form", "text": "Form Node - collects multiple fields in a structured form."},
+        {"node_type": "script", "text": "Script Node - runs a JavaScript function for custom logic."},
     ],
     "assignment_brief": {
         "scenario_title": "My Bot Assessment",
@@ -556,7 +624,7 @@ _SAMPLE_MANIFEST: dict = {
 
 @router.get("/manifest/new", response_class=HTMLResponse)
 async def manifest_new(request: Request):
-    """Create a new manifest â€” pre-populated with a comprehensive sample."""
+    """Create a new manifest - pre-populated with a comprehensive sample."""
     error = request.query_params.get("error", "")
     sample = _SAMPLE_MANIFEST
     return templates.TemplateResponse("admin_manifest_editor.html", {
@@ -754,7 +822,7 @@ async def manifest_restore(request: Request, manifest_id: str):
 
 @router.post("/manifest/validate", response_class=HTMLResponse)
 async def manifest_validate(request: Request, manifest_json: str = Form("{}")):
-    """Validate manifest JSON against MD-01â€“MD-12 rules. Returns an HTML fragment."""
+    """Validate manifest JSON against MD-01-MD-12 rules. Returns an HTML fragment."""
     from ..core.manifest import Manifest
     from ..core.manifest_validator import Severity, validate_manifest
 
@@ -768,7 +836,7 @@ async def manifest_validate(request: Request, manifest_json: str = Form("{}")):
         )
 
     if result.valid:
-        html = '<div class="alert alert-success"><strong>âœ“ Valid manifest</strong> â€” no defects found.</div>'
+        html = '<div class="alert alert-success"><strong>Valid manifest</strong> - no defects found.</div>'
     else:
         rows = ""
         for d in result.defects:
@@ -841,7 +909,7 @@ def _compute_task_diff(left_sc: dict | None, right_sc: dict | None) -> list[dict
 
 @router.get("/compare", response_class=HTMLResponse)
 async def compare_evaluations(request: Request):
-    """Compare evaluations â€” detect duplicates and compare submissions."""
+    """Compare evaluations - detect duplicates and compare submissions."""
     evaluations = _load_all_evaluations()
 
     # Build comparison data: group by candidate + assessment
@@ -858,7 +926,7 @@ async def compare_evaluations(request: Request):
     for key, group in duplicates.items():
         candidate_id, manifest_id = key.split("|", 1)
         # Sort by score descending
-        group.sort(key=lambda x: x.get("overall_score", 0), reverse=True)
+        group.sort(key=lambda x: (x.get("overall_score") or 0), reverse=True)
         similarity_groups.append({
             "candidate_id": candidate_id,
             "manifest_id": manifest_id,
@@ -866,8 +934,8 @@ async def compare_evaluations(request: Request):
             "count": len(group),
             "submissions": group,
             "score_range": {
-                "min": min(e.get("overall_score", 0) for e in group),
-                "max": max(e.get("overall_score", 0) for e in group),
+                "min": min((e.get("overall_score") or 0) for e in group),
+                "max": max((e.get("overall_score") or 0) for e in group),
             },
         })
 
