@@ -310,3 +310,165 @@ Table columns:
 | `src/governiq/core/engine.py` | Post-eval getSessions lookup, KoreAPIClient from registration |
 | `src/governiq/webhook/kore_api.py` | Add `get_sessions_by_user` method |
 | `src/governiq/webhook/jwt_auth.py` | Update `KoreCredentials.validate()` to enforce `bot_name` non-empty; update `platform_url` default from `"https://bots.kore.ai"` to `"https://platform.kore.ai/"` to match the registration form pre-fill |
+
+---
+
+## Restart + Review Bug Fixes
+
+### Problem
+
+The admin restart endpoint writes the new stub to disk **before** doing the manifest lookup. When the lookup fails (e.g. because `manifest_id` is absent on an old or restart-chain stub), the handler returns an error — but the new stub already exists on disk with `status: "running"` and no evaluation ever launched. That zombie stub appears in the dashboard as a permanently-running evaluation with no log.
+
+Additionally, restarting a session that was itself the product of a previous restart can propagate missing fields indefinitely — each restart spreads `{**original_stub}`, so any field absent in generation N is absent in generation N+1.
+
+The review endpoint crashes with a 500 when a stub has only minimal fields (e.g. just `session_id`, `status`, `log_file`), because the template or Scorecard construction expects fields like `assessment_name`, `task_scores`, and `candidate_id`.
+
+### Fixes
+
+**Restart handler — both `mode=fresh` and `mode=resume`:**
+
+1. **Manifest lookup happens first** — before any new stub is written.
+   - Extract `manifest_id = original_stub.get("manifest_id", "").strip()`.
+   - If empty, attempt fallback: `assessment_name = original_stub.get("assessment_name", "").strip()`. Only attempt this search if `assessment_name` is non-empty — an empty string must not be matched against manifest files (risk of false-positive on any manifest with a missing or empty `assessment_name`). If `assessment_name` is also empty, skip the search entirely and go directly to the 422 response.
+   - If still not found, return `JSONResponse({"error": "..."}, status_code=422)` **without** creating any new stub file.
+2. **New stub written after successful manifest lookup**, with `manifest_id` and `assessment_name` injected **explicitly** from the found `manifest_obj` (not just via spread). Spread is still used for other fields, but manifest identity fields are always overwritten from the live manifest object.
+3. **No orphaned stubs on the synchronous path** — if any error occurs in the synchronous path after stub creation but before `background_tasks.add_task()`, the new stub is deleted before returning the error response. This covers unexpected exceptions between stub write and task dispatch. It does **not** cover failures inside the background task itself (`_run_evaluation_background` / `_do_resume`) — those failures happen after `add_task()` has already been called and there is no response to return. Background task failures set `status: "error"` on the stub via the existing error-handling path in `_run_evaluation_background` (this is existing behaviour; the spec does not change it).
+
+**Review endpoint (`GET /admin/review/{session_id}`):**
+
+The route handler must unpack all stub fields into explicitly safe-defaulted local variables before building the template context — it must not pass the raw stub dict to the template and rely on Jinja2 attribute access. Jinja2 raises `UndefinedError` on missing keys depending on the `undefined` setting; accessing `.get()` is not available in templates for dicts passed via `{{ sc.field }}` syntax.
+
+The handler builds an explicit context dict with safe defaults, e.g.:
+```python
+context = {
+    "session_id": stub.get("session_id", ""),
+    "candidate_id": stub.get("candidate_id", "N/A"),
+    "assessment_name": stub.get("assessment_name", "N/A"),
+    "overall_score": stub.get("overall_score", None),
+    "task_scores": stub.get("task_scores", []),
+    "compliance_results": stub.get("compliance_results", []),
+    ...
+}
+```
+`admin_review.html` is updated to use these context variables (not dict attribute access). The page renders "Not available" for missing data instead of raising a 500.
+
+---
+
+## Eval Observability — Live Conversation Log
+
+### Problem
+
+When an evaluation is running, the admin has no visibility into what is happening. When it fails or halts, the only debug signal is `halt_reason` in the stub — a single string with no surrounding context. There is no way to see what the bot said, what the LLM decided, or at which step things went wrong.
+
+### Goals
+
+- Admin can open a per-evaluation conversation page and watch the webhook exchange in real time as it happens.
+- The same page shows the full log for completed or failed evaluations (persistent — the JSONL file is already written per session).
+- All event types are shown: user messages sent to the bot, bot responses received, LLM intent classifications, entity injections, task boundaries, errors, and halt events.
+- Multiple evaluations can be watched simultaneously by opening multiple browser tabs.
+- No new Python packages required.
+- Auth note: the admin portal currently has no session/cookie auth guard. The `/stream`, `/log`, and `/conversation` endpoints are under `/admin/` and are admin-only by convention only — formal auth is deferred. All three endpoints must validate that `session_id` is a well-formed UUID (same pattern as the restart endpoint: `re.fullmatch(r'[0-9a-f]{8}-...')`) to prevent path traversal. Streaming eval content to unauthenticated callers is an accepted risk for this on-prem internal platform.
+
+### Data Model — Structured Eval Events (additions to existing JSONL log)
+
+Each line in `data/logs/eval_{session_id}.jsonl` is a JSON object. New event types added alongside any existing event types:
+
+```json
+{"type": "webhook_turn_sent",    "ts": "<ISO>", "task_id": "T1", "step": 2, "content": "I'd like to book a flight"}
+{"type": "webhook_turn_received","ts": "<ISO>", "task_id": "T1", "step": 2, "content": "Sure! What's your destination?"}
+{"type": "intent_classified",    "ts": "<ISO>", "task_id": "T1", "step": 2, "intent": "entity_request", "method": "llm"|"rule_based"}
+{"type": "entity_injected",      "ts": "<ISO>", "task_id": "T1", "step": 2, "entity_key": "destination", "value": "London"}
+{"type": "task_started",         "ts": "<ISO>", "task_id": "T1", "task_name": "Book a Flight"}
+{"type": "task_completed",       "ts": "<ISO>", "task_id": "T1", "task_name": "Book a Flight", "passed": true}
+{"type": "task_failed",          "ts": "<ISO>", "task_id": "T1", "task_name": "Book a Flight", "reason": "..."}
+{"type": "llm_call",             "ts": "<ISO>", "task_id": "T1", "purpose": "classification"|"generation", "result": "..."}
+{"type": "engine_error",         "ts": "<ISO>", "task_id": "T1", "error": "...", "halt_reason": "..."}
+{"type": "eval_started",         "ts": "<ISO>", "session_id": "..."}
+{"type": "eval_completed",       "ts": "<ISO>", "session_id": "...", "final_score": 82.5}
+```
+
+**Schema compatibility:** The existing `EvalLogger.log()` method writes entries with the schema `{"ts", "task_id", "level", "event", "detail", "raw"}`. The new structured event types use a different top-level key (`type` instead of `event`). New methods write directly to the JSONL file (bypassing the existing `log()` method) so as not to pollute old-schema entries with new fields. Historical JSONL files therefore contain a **mixed schema** — old entries have `event`, new entries have `type`. The conversation page JavaScript must handle both: render old-schema lines as plain log entries (show `detail` field as a gray system chip), and new-schema lines as typed events (render per the table below). The discriminator is presence of `"type"` key.
+
+For the `llm_call` event: only the `result` field (the LLM text output) is logged — not the system prompt or user prompt. This is intentional: prompts contain bot response text which could be lengthy and is already visible as `webhook_turn_received` events.
+
+`eval_started` is emitted by `engine.py` at the top of `run_full_evaluation`, before the first task begins. `EvalLogger` gets one new method per event type (e.g. `log_webhook_turn_sent(task_id, step, content)`). Engine and driver call these at each conversation step.
+
+### New Route — SSE Stream
+
+```
+GET /admin/evaluation/{session_id}/stream
+```
+
+- Returns `Content-Type: text/event-stream` (SSE).
+- Opens `data/logs/eval_{session_id}.jsonl`. Emits each existing line immediately as `data: <json>\n\n`.
+- Polls for new lines every 500 ms while the stub's `status` field is `"running"`.
+- When status transitions to anything other than `"running"`, emits a final `event: done\ndata: {}\n\n` and closes.
+- If the log file does not exist yet (eval just started), polls at 500 ms intervals for up to 10 s. As soon as the file appears during the wait, immediately stop waiting and enter the main tail loop — do not wait the full 10 s. If the file never appears within 10 s, emit only the `done` event and close.
+- No new packages: uses FastAPI's `StreamingResponse` with an async generator and `asyncio.sleep(0.5)` for the tail loop.
+- Admin-only: protected by the same session/auth guard as all `/admin/` routes.
+
+### New Route — Conversation Page
+
+```
+GET /admin/evaluation/{session_id}/conversation
+```
+
+- Renders `admin_conversation.html` — a new Jinja2 template.
+- Template receives: `session_id`, `candidate_id`, `assessment_name`, `status`, `halt_reason` (all from the stub; safe defaults if missing).
+- JavaScript opens `EventSource("/admin/evaluation/{session_id}/stream")` on page load.
+- Renders events as a chat-style timeline:
+
+| Event type | Rendering |
+|-----------|-----------|
+| `webhook_turn_sent` | Right-aligned bubble (blue) — "Simulated User" |
+| `webhook_turn_received` | Left-aligned bubble (gray) — "Bot" |
+| `intent_classified` | Center chip — `intent: entity_request (llm)` |
+| `entity_injected` | Center chip — `→ destination = "London"` |
+| `task_started` | Section header divider — `── Task 1: Book a Flight ──` |
+| `task_completed` | Green banner — `✓ Task 1 passed` |
+| `task_failed` | Amber banner — `✗ Task 1 failed: <reason>` |
+| `llm_call` | Collapsed detail row — expandable on click |
+| `engine_error` | Red banner — `⚠ Halted: <halt_reason>` |
+| `eval_completed` | Final green banner with score |
+
+- When `event: done` received: stop EventSource, show "Evaluation complete" banner if not already shown from `eval_completed` event.
+- When status is not `"running"` on page load: JS skips EventSource and renders all log lines from a single `GET /admin/evaluation/{session_id}/log` JSON endpoint (returns array of all JSONL lines). This avoids SSE overhead for historical views.
+- Auto-scrolls to bottom while live; stops auto-scroll when user manually scrolls up.
+
+### New Route — Log JSON (for completed evals)
+
+```
+GET /admin/evaluation/{session_id}/log
+```
+
+- Returns `{"events": [...]}` — all lines from the JSONL file as a JSON array.
+- Used by the conversation page JavaScript for historical (non-running) evals.
+- Returns `{"events": []}` if the log file does not exist.
+
+### Admin Dashboard Changes
+
+**Per-row additions to `admin_dashboard.html`:**
+
+- **"Watch Live" button** — shown only when the enriched `display_status == "running"` (not raw `status`) — this excludes stale/zombie stubs that show `status: "running"` in the raw stub but are detected as stale by `_enrich_submission`. Opens `/admin/evaluation/{session_id}/conversation` in a new tab (`target="_blank"`).
+- **"View Log" button** — shown for all evals. Opens the same conversation page (shows historical log for completed evals, live stream for running ones).
+- **Inline error/halt surface** — below the status badge, show `halt_reason` or `error` if present and non-null. Truncated to 80 chars with a tooltip for the full text. This gives the admin instant debug context without opening the conversation page.
+
+---
+
+## Updated Files Affected (additions for observability + bug fixes)
+
+### New files (additions)
+| File | Responsibility |
+|------|---------------|
+| `src/governiq/templates/admin_conversation.html` | Per-evaluation conversation/log page with live SSE rendering |
+
+### Modified files (additions)
+| File | What changes |
+|------|-------------|
+| `src/governiq/core/eval_logger.py` | Add `log_webhook_turn_sent`, `log_webhook_turn_received`, `log_intent_classified`, `log_entity_injected`, `log_task_started`, `log_task_completed`, `log_task_failed`, `log_llm_call`, `log_engine_error`, `log_eval_started`, `log_eval_completed` methods |
+| `src/governiq/core/engine.py` | Call new EvalLogger methods at each conversation step and task boundary |
+| `src/governiq/webhook/driver.py` | Pass `task_id` and `step` context through to logging call sites |
+| `src/governiq/admin/routes.py` | Fix restart handler (manifest-first ordering, no orphan stubs); fix review endpoint (explicit safe-defaulted context dict); add `/admin/evaluation/{id}/stream`, `/admin/evaluation/{id}/conversation`, `/admin/evaluation/{id}/log` routes (all with UUID validation on session_id) |
+| `src/governiq/templates/admin_review.html` | Replace direct stub attribute access with context variables supplied by the updated route handler; render "Not available" for missing fields |
+| `src/governiq/templates/admin_dashboard.html` | Add "Watch Live" + "View Log" buttons per row; inline `halt_reason`/`error` surface |
+| `tests/test_bot_registration.py` | Add tests for bug fixes: restart with missing manifest_id (fallback to assessment_name), no orphan stub on manifest lookup failure, review endpoint defensive rendering |
