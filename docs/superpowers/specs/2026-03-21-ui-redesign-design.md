@@ -105,7 +105,7 @@ New variables are **added alongside** existing ones. Old variables are **kept as
 |---|---|---|
 | `--card` | → `--card-bg` | alias |
 | `--border` | → `--card-border` | alias |
-| `--nav-bg` | → use `rgba(15,15,26,.95)` directly in nav rule | remove |
+| `--nav-bg` | Keep as alias `var(--bg)` this sprint; update `.topnav` in `base.html` (line ~160) to use `.nav` class instead. Only remove `--nav-bg` from variables after `.topnav` references are gone | keep as alias then remove |
 | `--bg-subtle` | → `--bg-surface` | alias |
 | `--shadow-sm`, `--shadow-md`, `--shadow-lg` | kept as-is (not replaced this sprint) | keep |
 | `--radius-xs` | kept as-is | keep |
@@ -129,6 +129,7 @@ html[data-theme="dark"], html:not([data-theme="light"]) {
   --card:        var(--card-bg);
   --border:      var(--card-border);
   --bg-subtle:   var(--bg-surface);
+  --nav-bg:      var(--bg);   /* kept until .topnav is migrated to .nav */
 }
 html[data-theme="light"] {
   --bg:          #f8fafc;
@@ -147,6 +148,7 @@ html[data-theme="light"] {
   --card:        var(--card-bg);
   --border:      var(--card-border);
   --bg-subtle:   var(--bg-surface);
+  --nav-bg:      var(--bg);
 }
 ```
 
@@ -393,7 +395,7 @@ Every template that extends `base.html` is updated to use the new component clas
 
 ### Pages updated
 
-All 14 templates that extend `base.html` are listed. Templates not requiring structural changes still inherit the updated CSS variables and component classes automatically — they are listed with scope "CSS only" so the implementer knows they were consciously evaluated and require no markup changes.
+All 16 templates (13 existing + 3 new) plus `base.html` itself are listed below (17 rows total). Templates not requiring structural changes still inherit the updated CSS variables and component classes automatically — they are listed with scope "CSS only" so the implementer knows they were consciously evaluated and require no markup changes.
 
 | Template | Scope | Key changes |
 |----------|-------|-------------|
@@ -440,9 +442,12 @@ Setting `platform_url: str = ""` in `jwt_auth.py` means every call site that con
 
 | File | Current | Fix |
 |------|---------|-----|
-| `candidate/routes.py` submit handler (line ~445) | Uses dataclass default (will become `""`) | Read `platform_url` from submitted form field; fallback to `get_kore_platform_url()` if blank |
-| `admin/routes.py` restart handler | Reads from form override or bot registration | Fallback to `get_kore_platform_url()` if both are empty |
-| `api/routes.py` (line ~329) | `os.environ.get("KORE_PLATFORM_URL", "https://bots.kore.ai")` | Replace with `get_kore_platform_url()` |
+| `candidate/routes.py` submit handler (line ~445) | Constructs `KoreCredentials(bot_id, client_id, client_secret, bot_name)` — no `platform_url`, relies on dataclass default (will become `""`) | Read `platform_url` from the submitted form field; fallback to `get_kore_platform_url()` if blank |
+| `api/routes.py` (line ~329) | `os.environ.get("KORE_PLATFORM_URL", "https://bots.kore.ai")` hardcoded env-var call | Replace with `get_kore_platform_url()` |
+
+Note: `admin/routes.py` restart handler passes `kore_creds=None` to `_run_evaluation_background` — it does **not** construct `KoreCredentials` itself. The bot pre-registration spec adds credential loading there from the bot registration record (which already includes `platform_url`). No additional change is needed in `admin/routes.py` for this spec.
+
+`platform_url` validation (non-empty check) is enforced **at the route level only** in `POST /admin/settings/platform`. `KoreCredentials.validate()` is not touched — it does not validate `platform_url` and must not be changed to do so, as some callers construct `KoreCredentials` before a platform URL is available.
 
 ### Tests
 | File | What's tested |
