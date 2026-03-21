@@ -14,9 +14,34 @@ import json
 import os
 import random
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+
+def resolve_strategy_pool(pool: dict) -> str:
+    """Convert a strategy-based value_pool dict to a concrete string value.
+
+    Supported strategies:
+    - relative_days_from_today: picks a random offset and formats as a date.
+
+    Raises ValueError for unknown strategies so callers fail loudly instead
+    of silently producing a wrong value.
+    """
+    strategy = pool.get("strategy", "")
+    if strategy == "relative_days_from_today":
+        offsets: list[int] = pool.get("offsets", [90])
+        fmt: str = pool.get("format", "DD-MM-YYYY")
+        offset = random.choice(offsets)
+        target = date.today() + timedelta(days=offset)
+        if fmt == "DD-MM-YYYY":
+            return target.strftime("%d-%m-%Y")
+        if fmt == "MM-DD-YYYY":
+            return target.strftime("%m-%d-%Y")
+        if fmt == "YYYY-MM-DD":
+            return target.strftime("%Y-%m-%d")
+        return target.isoformat()
+    raise ValueError(f"Unknown value_pool strategy: '{strategy}'")
 
 
 @dataclass
@@ -101,12 +126,19 @@ class RuntimeContext:
     # Entity value selection
     # ---------------------------------------------------------------------------
 
-    def select_value(self, task_id: str, entity_key: str, value_pool: list[str]) -> str:
-        """Select a value from the pool for this entity. Cache the selection."""
+    def select_value(self, task_id: str, entity_key: str, value_pool: list | dict) -> str:
+        """Select a value from the pool for this entity. Cache the selection.
+
+        Handles both list pools (random.choice) and strategy-based dict pools
+        (e.g. relative_days_from_today). Raises ValueError for unknown strategies.
+        """
         key = f"{task_id}.{entity_key}"
         if key in self.selected_values:
             return self.selected_values[key]
-        value = random.choice(value_pool)
+        if isinstance(value_pool, dict):
+            value = resolve_strategy_pool(value_pool)
+        else:
+            value = random.choice(value_pool)
         self.selected_values[key] = value
         return value
 

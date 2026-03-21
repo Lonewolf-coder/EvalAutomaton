@@ -98,17 +98,23 @@ class EvaluationEngine:
         self,
         bot_export: dict[str, Any] | str | Path,
         candidate_id: str = "",
+        session_id: str | None = None,
     ) -> Scorecard:
         """Run the complete dual-pipeline evaluation.
 
         Args:
             bot_export: Bot export JSON data, or path to the JSON file.
             candidate_id: Candidate identifier.
+            session_id: Caller-supplied session ID (full UUID from the outer handler).
+                If not provided, a new UUID is generated — this should only happen
+                in tests; production callers must always supply the ID so that the
+                scorecard, log, and RuntimeContext files all share the same name.
 
         Returns:
             Complete Scorecard with all results.
         """
-        session_id = str(uuid.uuid4())[:8]
+        if session_id is None:
+            session_id = str(uuid.uuid4())
 
         # Step 0: Validate manifest (pre-flight)
         validation = validate_manifest(self.manifest)
@@ -234,9 +240,11 @@ class EvaluationEngine:
         self,
         bot_export: dict[str, Any] | str | Path,
         candidate_id: str = "",
+        session_id: str | None = None,
     ) -> Scorecard:
         """Run CBM pipeline only (Phase 1 — no webhook needed)."""
-        session_id = str(uuid.uuid4())[:8]
+        if session_id is None:
+            session_id = str(uuid.uuid4())
 
         validation = validate_manifest(self.manifest)
         if not validation.valid:
@@ -797,17 +805,9 @@ class EvaluationEngine:
         # Build synthetic record from manifest entity definitions
         synthetic_fields: dict[str, str] = {}
         for entity in task.required_entities:
-            pool = entity.value_pool
-            if isinstance(pool, dict):
-                # Strategy-based pool (e.g. relative_days_from_today) — generate a value
-                value = _resolve_strategy_pool(pool)
-                if value is None:
-                    continue  # Unknown strategy — skip this entity
-                context.selected_values[f"{task.task_id}.{entity.entity_key}"] = value
-            elif not pool:
-                continue  # No values available — skip
-            else:
-                value = context.select_value(task.task_id, entity.entity_key, pool)
+            if not entity.value_pool:
+                continue
+            value = context.select_value(task.task_id, entity.entity_key, entity.value_pool)
             synthetic_fields[entity.entity_key] = value
 
         success = await self.state_inspector.seed_state(seed_endpoint, synthetic_fields)
@@ -831,33 +831,6 @@ class EvaluationEngine:
         with path.open("w", encoding="utf-8") as f:
             json.dump(scorecard.to_dict(), f, indent=2)
         logger.info("Scorecard saved to %s", path)
-
-
-def _resolve_strategy_pool(pool: dict) -> str | None:
-    """Convert a strategy-based value_pool dict to a concrete string value.
-
-    Supported strategies:
-    - relative_days_from_today: picks a random offset and formats as a date.
-
-    Returns None for unknown strategies (caller should skip the entity).
-    """
-    import random as _random
-    from datetime import date, timedelta
-
-    strategy = pool.get("strategy", "")
-    if strategy == "relative_days_from_today":
-        offsets: list[int] = pool.get("offsets", [90])
-        fmt: str = pool.get("format", "DD-MM-YYYY")
-        offset = _random.choice(offsets)
-        target = date.today() + timedelta(days=offset)
-        if fmt == "DD-MM-YYYY":
-            return target.strftime("%d-%m-%Y")
-        if fmt == "MM-DD-YYYY":
-            return target.strftime("%m-%d-%Y")
-        if fmt == "YYYY-MM-DD":
-            return target.strftime("%Y-%m-%d")
-        return target.isoformat()
-    return None
 
 
 def _embed_log_as_evidence(

@@ -294,11 +294,13 @@ async def _run_evaluation_background(
             scorecard = await engine.run_full_evaluation(
                 bot_export=bot_export_data,
                 candidate_id=candidate_id,
+                session_id=session_id,
             )
         else:
             scorecard = await engine.run_cbm_only(
                 bot_export=bot_export_data,
                 candidate_id=candidate_id,
+                session_id=session_id,
             )
 
         # Apply plagiarism flag
@@ -327,13 +329,16 @@ async def _run_evaluation_background(
 
     except Exception as exc:
         logger.exception("Background evaluation failed for session %s", session_id)
-        error_data = {
-            "session_id": session_id,
-            "status": "error",
-            "error": str(exc),
-        }
+        # Merge error status into the existing stub — preserves manifest_id,
+        # candidate_id, webhook_url, submitted_at, and all other original metadata.
+        try:
+            existing = json.loads(stub_path.read_text()) if stub_path.exists() else {}
+        except Exception:
+            existing = {}
+        existing["status"] = "error"
+        existing["error"] = str(exc)
         with stub_path.open("w") as f:
-            json.dump(error_data, f)
+            json.dump(existing, f, indent=2)
     finally:
         _delete_lock(session_id)
 

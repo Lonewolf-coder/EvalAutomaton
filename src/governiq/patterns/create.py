@@ -27,6 +27,7 @@ class CreatePattern(PatternExecutor):
         entities_provided: dict[str, str] = {}
         entities_needed = {e.entity_key for e in self.task.required_entities}
         confirmation_sent = False
+        menu_navigation_sent = False  # True once we've sent a dialog trigger to exit a main menu
 
         try:
             # Start session and warm up webhook connection
@@ -90,14 +91,29 @@ class CreatePattern(PatternExecutor):
                     confirmation_sent = True
 
                 elif intent == "information":
-                    # Bot is providing information — booking likely complete
                     if confirmation_sent:
+                        # Task complete — bot gave a final information response after confirm
                         break
-                    # May need to continue
-                    user_msg = await self.driver.generate_confirmation(bot_response)
-                    bot_response = await self.webhook.send_message(user_msg)
-                    self._record_turn(result, "driver", user_msg)
-                    self._record_turn(result, "bot", bot_response)
+                    if not entities_provided and not menu_navigation_sent:
+                        # No entities collected yet: bot is showing the main menu rather than
+                        # engaging with this dialog. Send the dialog name as a direct trigger
+                        # so the bot enters the right task flow.
+                        nav_msg = self.task.dialog_name or self.task.task_name
+                        bot_response = await self.webhook.send_message(nav_msg)
+                        self._record_turn(result, "driver", nav_msg)
+                        self._record_turn(result, "bot", bot_response)
+                        menu_navigation_sent = True
+                    elif menu_navigation_sent and not entities_provided:
+                        # Navigation trigger sent but bot still hasn't asked for entities —
+                        # the dialog didn't engage. Nothing more we can do.
+                        result.error = "Bot did not enter dialog after menu navigation trigger."
+                        break
+                    else:
+                        # Some entities collected — bot is providing intermediate info
+                        user_msg = await self.driver.generate_confirmation(bot_response)
+                        bot_response = await self.webhook.send_message(user_msg)
+                        self._record_turn(result, "driver", user_msg)
+                        self._record_turn(result, "bot", bot_response)
 
                 elif intent == "error":
                     result.error = f"Bot returned error: {bot_response}"
