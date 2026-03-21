@@ -34,7 +34,7 @@ class KoreCredentials:
     client_secret: str
     bot_name: str = ""
     account_id: str = ""
-    platform_url: str = "https://bots.kore.ai"
+    platform_url: str = "https://platform.kore.ai/"
 
     def validate(self) -> list[str]:
         """Return list of validation errors (empty = valid)."""

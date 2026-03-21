@@ -450,11 +450,14 @@ class KoreWebhookClient:
         if self.kore_credentials:
             payload["to"] = {"id": self.kore_credentials.bot_id}
 
-        # Session: new on first call, pinned session ID after
+        # Session: new=True on first call, new=False on all subsequent calls.
+        # Kore.ai webhook v2: session continuity is maintained by from.id,
+        # not by re-sending session.id. Always sending new=False (not absent)
+        # prevents the platform from treating each subsequent turn as a new session.
         if self._is_new_session:
             payload["session"] = {"new": True}
-        elif self._kore_session_id:
-            payload["session"] = {"id": self._kore_session_id}
+        else:
+            payload["session"] = {"new": False}
 
         async def _do_send() -> httpx.Response:
             headers = self._build_auth_headers()

@@ -112,8 +112,13 @@
                         <div class="form-group">
                             <!-- Bug 2 fix: changed badge from grey/Optional to warn/Required, updated hint text -->
                             <label class="form-label"><i data-lucide="webhook" class="icon icon-sm"></i> Bot Webhook URL <span class="badge badge-warn">Required for Live Testing</span></label>
-                            <input type="url" name="webhook_url" class="form-input" placeholder="e.g. https://bots.kore.ai/hooks/...">
+                            <input type="url" name="webhook_url" class="form-input" placeholder="e.g. https://platform.kore.ai/hooks/...">
                             <div class="form-hint">Required for live bot testing. Without a Webhook URL, only the structural CBM audit runs — no conversation testing, no score.</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label"><i data-lucide="globe" class="icon icon-sm"></i> Platform URL <span class="badge badge-grey">Optional</span></label>
+                            <input type="url" name="platform_url" class="form-input" value="https://platform.kore.ai/" placeholder="https://platform.kore.ai/">
+                            <div class="form-hint">The Kore.ai platform hostname. Used for API authentication. Leave as default unless your account uses a different URL.</div>
                         </div>
                     </div>
                 </div>

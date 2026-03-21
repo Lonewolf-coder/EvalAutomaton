@@ -348,6 +348,7 @@ async def candidate_submit(
     mock_api_url: str = Form(""),
     mock_api_schema: str = Form(""),
     webhook_url: str = Form(""),
+    platform_url: str = Form(""),
     bot_id: str = Form(""),
     bot_name: str = Form(""),
     client_id: str = Form(""),
@@ -447,6 +448,7 @@ async def candidate_submit(
             client_id=client_id,
             client_secret=client_secret,
             bot_name=bot_name,
+            platform_url=platform_url.strip() or "https://platform.kore.ai/",
         )
         # Try to get admin bearer token for Kore public APIs (non-fatal if fails)
         try:
