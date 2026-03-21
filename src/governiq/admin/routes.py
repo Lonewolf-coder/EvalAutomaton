@@ -365,7 +365,38 @@ async def admin_review(request: Request, session_id: str):
         return HTMLResponse("<h1>Evaluation not found</h1>", status_code=404)
 
     with path.open("r") as f:
-        scorecard = json.load(f)
+        raw = json.load(f)
+
+    # Merge safe defaults so the template never crashes on minimal stubs (error/running)
+    scorecard: dict[str, Any] = {
+        "overall_score": 0.0,
+        "pass_threshold": None,
+        "has_critical_failures": False,
+        "any_webhook_tested": False,
+        "state_seeded": False,
+        "task_scores": [],
+        "compliance_results": [],
+        "faq_score": None,
+        "plagiarism_flag": False,
+        "plagiarism_message": "",
+        "kore_api_insights": {},
+        "analytics_by_task": {},
+        "tooltips": [],
+        "completed_tasks": [],
+        "task_sessions": {},
+        "eval_window": {},
+        "analytics_status": "pending",
+        "analytics_last_checked_at": None,
+        "candidate_id": "Unknown",
+        "manifest_id": "Unknown",
+        "assessment_name": "Unknown Assessment",
+        "submitted_at": None,
+        "halt_reason": None,
+        "halted_on_task": None,
+        "error": None,
+        "status": "unknown",
+        **raw,
+    }
 
     task_summary = _build_task_summary(scorecard)
     compliance_summary = _build_compliance_summary(scorecard)

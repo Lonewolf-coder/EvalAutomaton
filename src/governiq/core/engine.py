@@ -631,7 +631,13 @@ class EvaluationEngine:
             # State seeding check for CREATE tasks
             if task.pattern in (EnginePattern.CREATE, EnginePattern.CREATE_WITH_AMENDMENT):
                 if not pattern_result.success and task.record_alias:
-                    await self._attempt_state_seeding(task, context, scorecard)
+                    try:
+                        await self._attempt_state_seeding(task, context, scorecard)
+                    except Exception as seed_err:
+                        logger.warning(
+                            "State seeding failed for task '%s' (non-fatal): %s",
+                            task.task_id, seed_err,
+                        )
 
         context.save(self.persist_dir / "runtime_contexts")
         return task_sessions
@@ -791,7 +797,17 @@ class EvaluationEngine:
         # Build synthetic record from manifest entity definitions
         synthetic_fields: dict[str, str] = {}
         for entity in task.required_entities:
-            value = context.select_value(task.task_id, entity.entity_key, entity.value_pool)
+            pool = entity.value_pool
+            if isinstance(pool, dict):
+                # Strategy-based pool (e.g. relative_days_from_today) — generate a value
+                value = _resolve_strategy_pool(pool)
+                if value is None:
+                    continue  # Unknown strategy — skip this entity
+                context.selected_values[f"{task.task_id}.{entity.entity_key}"] = value
+            elif not pool:
+                continue  # No values available — skip
+            else:
+                value = context.select_value(task.task_id, entity.entity_key, pool)
             synthetic_fields[entity.entity_key] = value
 
         success = await self.state_inspector.seed_state(seed_endpoint, synthetic_fields)
@@ -815,6 +831,33 @@ class EvaluationEngine:
         with path.open("w", encoding="utf-8") as f:
             json.dump(scorecard.to_dict(), f, indent=2)
         logger.info("Scorecard saved to %s", path)
+
+
+def _resolve_strategy_pool(pool: dict) -> str | None:
+    """Convert a strategy-based value_pool dict to a concrete string value.
+
+    Supported strategies:
+    - relative_days_from_today: picks a random offset and formats as a date.
+
+    Returns None for unknown strategies (caller should skip the entity).
+    """
+    import random as _random
+    from datetime import date, timedelta
+
+    strategy = pool.get("strategy", "")
+    if strategy == "relative_days_from_today":
+        offsets: list[int] = pool.get("offsets", [90])
+        fmt: str = pool.get("format", "DD-MM-YYYY")
+        offset = _random.choice(offsets)
+        target = date.today() + timedelta(days=offset)
+        if fmt == "DD-MM-YYYY":
+            return target.strftime("%d-%m-%Y")
+        if fmt == "MM-DD-YYYY":
+            return target.strftime("%m-%d-%Y")
+        if fmt == "YYYY-MM-DD":
+            return target.strftime("%Y-%m-%d")
+        return target.isoformat()
+    return None
 
 
 def _embed_log_as_evidence(
