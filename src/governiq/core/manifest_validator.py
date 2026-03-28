@@ -1,4 +1,4 @@
-"""Manifest Defect Detection — Rules MD-01 through MD-12.
+"""Manifest Defect Detection — Rules MD-01 through MD-13.
 
 These rules run at manifest save time (builder UI) and at evaluation start
 time (pre-flight check). Errors block evaluation. Warnings are shown but
@@ -62,6 +62,7 @@ def validate_manifest(manifest: Manifest) -> ValidationResult:
     defects.extend(_md10_duplicate_task_ids(manifest))
     defects.extend(_md11_scoring_weights_exceed_one(manifest))
     defects.extend(_md12_edge_case_missing_negative_tests(manifest))
+    defects.extend(_md13_faq_task_empty_fields(manifest))
 
     has_errors = any(d.severity == Severity.ERROR for d in defects)
     return ValidationResult(valid=not has_errors, defects=defects)
@@ -328,5 +329,34 @@ def _md12_edge_case_missing_negative_tests(manifest: Manifest) -> list[ManifestD
                 ),
                 task_id=task.task_id,
                 field_path="negative_tests",
+            ))
+    return defects
+
+
+def _md13_faq_task_empty_fields(manifest: Manifest) -> list[ManifestDefect]:
+    """MD-13: FAQ task has empty question or expected_answer."""
+    defects = []
+    for faq in manifest.faq_tasks:
+        if not faq.question.strip():
+            defects.append(ManifestDefect(
+                rule_id="MD-13",
+                severity=Severity.ERROR,
+                message=(
+                    f"FAQ task '{faq.task_id}' has an empty question. "
+                    "The question field is required for live FAQ evaluation."
+                ),
+                task_id=faq.task_id,
+                field_path="question",
+            ))
+        if not faq.expected_answer.strip():
+            defects.append(ManifestDefect(
+                rule_id="MD-13",
+                severity=Severity.ERROR,
+                message=(
+                    f"FAQ task '{faq.task_id}' has an empty expected_answer. "
+                    "Provide the canonical answer so semantic similarity can be computed."
+                ),
+                task_id=faq.task_id,
+                field_path="expected_answer",
             ))
     return defects
