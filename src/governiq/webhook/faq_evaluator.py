@@ -13,15 +13,11 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
 
 from ..core.manifest import FAQTask
-from .model_cache import get_shared_model, _MODEL_NAME
-
-if TYPE_CHECKING:
-    pass
+from .model_cache import get_shared_model
 
 logger = logging.getLogger(__name__)
 

@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     import asyncio
     logger = logging.getLogger(__name__)
     logger.info("Pre-warming sentence-transformers model at startup...")
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     from .webhook.model_cache import get_shared_model
     await loop.run_in_executor(None, get_shared_model)
     logger.info("Sentence-transformers model ready.")

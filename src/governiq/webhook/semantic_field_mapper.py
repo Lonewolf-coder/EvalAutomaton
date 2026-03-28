@@ -14,8 +14,6 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from .model_cache import _MODEL_NAME
-
 logger = logging.getLogger(__name__)
 
 

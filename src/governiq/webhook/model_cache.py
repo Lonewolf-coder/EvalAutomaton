@@ -7,6 +7,7 @@ across FAQEvaluator and SemanticFieldMapper. Pre-warmed at server startup.
 from __future__ import annotations
 
 import logging
+import threading
 
 from sentence_transformers import SentenceTransformer
 
@@ -14,15 +15,18 @@ logger = logging.getLogger(__name__)
 
 _MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"
 _model: SentenceTransformer | None = None
+_lock = threading.Lock()
 
 
 def get_shared_model(model_name: str = _MODEL_NAME) -> SentenceTransformer:
     """Return the cached model instance, loading it on first call."""
     global _model
     if _model is None:
-        logger.info("Loading sentence-transformers model: %s (first load)", model_name)
-        _model = SentenceTransformer(model_name)
-        logger.info("Model loaded and cached.")
+        with _lock:
+            if _model is None:
+                logger.info("Loading sentence-transformers model: %s (first load)", model_name)
+                _model = SentenceTransformer(model_name)
+                logger.info("Model loaded and cached.")
     return _model
 
 
