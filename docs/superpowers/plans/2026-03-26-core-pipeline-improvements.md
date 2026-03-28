@@ -2487,6 +2487,180 @@ git commit -m "feat: FAQ CBM structural check — verify FAQ nodes, alternatives
 
 ---
 
+## Task 11: Gate 0 — Distinct Failure Status in Candidate Portal
+
+**Files:**
+- Modify: `src/governiq/core/gate0.py`
+- Modify: `src/governiq/core/engine.py`
+- Modify: `src/governiq/api/routes/submissions.py` (or wherever submission status is written)
+- Modify: `src/governiq/templates/candidate_result.html` (or equivalent)
+- Test: `tests/test_gate0_status.py`
+
+**Context:** Currently, when Gate 0 fails, the submission status is set to the generic `error` state. This means candidates see a confusing "error" message instead of a clear explanation that their bot's web channel is unavailable or credentials are invalid.
+
+- [ ] **Step 11.1: Write failing tests**
+
+```python
+# tests/test_gate0_status.py
+from governiq.core.gate0 import Gate0Result, Gate0CheckStatus
+
+def test_gate0_failed_status_is_distinct():
+    result = Gate0Result(status=Gate0CheckStatus.FAILED, reason="web_channel_unavailable")
+    assert result.status == Gate0CheckStatus.FAILED
+    assert result.status != "error"
+
+def test_gate0_failed_surfaces_reason():
+    result = Gate0Result(status=Gate0CheckStatus.FAILED, reason="invalid_credentials")
+    assert result.reason == "invalid_credentials"
+```
+
+- [ ] **Step 11.2: Run tests to verify they fail**
+
+```bash
+python -m pytest tests/test_gate0_status.py -v
+```
+
+- [ ] **Step 11.3: Add `gate0_failed` to submission status enum**
+
+In the submission status model (wherever `SubmissionStatus` or equivalent is defined), add `gate0_failed` as a distinct value alongside `pending`, `running`, `pass`, `fail`, `error`.
+
+- [ ] **Step 11.4: Write `gate0_failed` status when Gate 0 fails in engine**
+
+In `engine.py`, when `Gate0Checker` returns `FAILED`, write `status = "gate0_failed"` (not `"error"`) to the submission record. Include the Gate 0 failure reason in the submission's `error_detail` field.
+
+- [ ] **Step 11.5: Surface `gate0_failed` in candidate portal template**
+
+In the candidate result template, add a distinct UI block for `gate0_failed`:
+- Heading: "Evaluation could not start"
+- Body: display the `error_detail` (e.g. "Web channel is not enabled on your bot" or "Bot credentials could not be verified")
+- Do NOT show a score or pass/fail banner
+
+- [ ] **Step 11.6: Run tests**
+
+```bash
+python -m pytest tests/test_gate0_status.py -v
+```
+
+- [ ] **Step 11.7: Commit**
+
+```bash
+git add src/governiq/core/gate0.py src/governiq/core/engine.py tests/test_gate0_status.py
+git commit -m "fix: surface gate0_failed status in candidate portal instead of generic error"
+```
+
+---
+
+## Task 12: FAQ Driver — Warn on Template Response
+
+**Files:**
+- Modify: `src/governiq/webhook/driver.py`
+- Test: `tests/test_faq_driver_template_warning.py`
+
+**Context:** When an FAQ turn is sent to the bot and the bot replies with a generic template/fallback message instead of a real answer, the current code silently scores it as low-similarity. This makes it hard to debug why FAQ scores are low. A warning log at the point of detection would surface the issue immediately.
+
+- [ ] **Step 12.1: Write failing test**
+
+```python
+# tests/test_faq_driver_template_warning.py
+import logging
+from unittest.mock import AsyncMock, patch
+
+async def test_warn_logged_when_faq_turn_returns_template(caplog):
+    # driver.run_faq_turn should log a WARNING when the bot's reply
+    # matches a known template/deflection pattern
+    from governiq.webhook.driver import LLMConversationDriver
+    # ... set up driver with mocked send_message returning a template response
+    with caplog.at_level(logging.WARNING, logger="governiq.webhook.driver"):
+        # call run_faq_turn with a question that returns "I didn't get that. Could you rephrase?"
+        ...
+    assert any("template" in r.message.lower() or "deflection" in r.message.lower()
+               for r in caplog.records)
+```
+
+- [ ] **Step 12.2: Run test to verify it fails**
+
+```bash
+python -m pytest tests/test_faq_driver_template_warning.py -v
+```
+
+- [ ] **Step 12.3: Add template detection + warning log in `run_faq_turn`**
+
+In `driver.py`, after receiving the FAQ response, check if the response text matches any known generic deflection patterns (e.g. "I didn't get that", "Could you rephrase", "I'm not sure I understand"). If matched, log:
+
+```python
+logger.warning("FAQ turn returned template/deflection response for question %r — bot may not have a configured answer", question)
+```
+
+- [ ] **Step 12.4: Run tests**
+
+```bash
+python -m pytest tests/test_faq_driver_template_warning.py -v
+```
+
+- [ ] **Step 12.5: Commit**
+
+```bash
+git add src/governiq/webhook/driver.py tests/test_faq_driver_template_warning.py
+git commit -m "fix: log warning when FAQ turn returns template/deflection response"
+```
+
+---
+
+## Task 13: Fix Starlette TemplateResponse Deprecation Warning
+
+**Files:**
+- Modify: `tests/test_compare.py`
+- Modify: any route handler that constructs `TemplateResponse` with positional `request` arg
+
+**Context:** Starlette changed the `TemplateResponse` signature — `request` must now be passed as a keyword argument or via the `context` dict, not positionally. The current code triggers a deprecation warning in pytest output.
+
+- [ ] **Step 13.1: Locate all `TemplateResponse` calls**
+
+```bash
+grep -rn "TemplateResponse" src/ tests/
+```
+
+- [ ] **Step 13.2: Write failing test that asserts no deprecation warning**
+
+```python
+# add to tests/test_compare.py or a new test
+import warnings
+
+def test_no_starlette_deprecation_warnings():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        # trigger the route that was producing the warning
+        ...
+```
+
+- [ ] **Step 13.3: Fix each `TemplateResponse` call**
+
+Change:
+```python
+# old — positional request
+return TemplateResponse("template.html", {"request": request, ...})
+```
+To:
+```python
+# new — keyword request
+return TemplateResponse(request=request, name="template.html", context={...})
+```
+
+- [ ] **Step 13.4: Run test suite and confirm no deprecation warnings**
+
+```bash
+python -m pytest tests/test_compare.py -v -W error::DeprecationWarning
+```
+
+- [ ] **Step 13.5: Commit**
+
+```bash
+git add src/ tests/test_compare.py
+git commit -m "fix: pass request as keyword arg to TemplateResponse — resolve deprecation warning"
+```
+
+---
+
 ## What comes next
 
 **Plan 2 — Web Driver:** `KoreWebDriver` (Playwright + Kore.ai Web SDK), GovernIQ host page, JWT session token endpoint. Depends on this plan's `UIPolicy` enum and `uiPolicy` field on `TaskDefinition`.
