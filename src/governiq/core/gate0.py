@@ -186,6 +186,8 @@ class Gate0Checker:
             return Gate0CheckStatus.FAIL, "Cannot reach webhook URL. Check the URL and try again."
         except httpx.TimeoutException:
             return Gate0CheckStatus.FAIL, "Webhook URL timed out. Is the bot published?"
+        except httpx.RequestError as e:
+            return Gate0CheckStatus.FAIL, f"Webhook URL error: {e}"
 
     async def _check_backend_api(self, url: str) -> tuple[Gate0CheckStatus, str]:
         """GET probe to the backend API URL — any response = reachable."""
@@ -197,3 +199,5 @@ class Gate0Checker:
             return Gate0CheckStatus.PASS, "Backend API reachable."
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             return Gate0CheckStatus.FAIL, f"Cannot reach backend API URL: {e}"
+        except httpx.RequestError as e:
+            return Gate0CheckStatus.FAIL, f"Backend API error: {e}"
