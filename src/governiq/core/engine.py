@@ -254,12 +254,12 @@ class EvaluationEngine:
             # Store in faq_scores for separate weighted scoring
             scorecard.faq_scores = faq_results
             # Compute faq_score from live results — overwrites the structural value from Step 5
-            faq_weight = scorecard._faq_weight
             if faq_results:
                 faq_pass_count = sum(1 for r in faq_results if r.passed)
                 faq_score_raw = faq_pass_count / len(faq_results)
                 scorecard.faq_score = faq_score_raw
             else:
+                faq_weight = scorecard._faq_weight
                 if faq_weight > 0:
                     logger.warning(
                         "Manifest declares faq_weight=%.2f but no FAQ tasks ran. "

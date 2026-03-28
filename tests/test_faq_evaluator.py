@@ -97,3 +97,38 @@ class TestFAQEvaluatorWebhook:
             result = await evaluator.evaluate_task(task)
         assert result.passed is False
         assert result.similarity == 0.22
+
+    @pytest.mark.asyncio
+    async def test_evaluate_all_handles_error_gracefully(self):
+        """evaluate_all catches per-task errors and returns zero-similarity result."""
+        task = make_faq_task(threshold=0.70)
+        mock_driver = AsyncMock()
+        mock_driver.run_faq_turn = AsyncMock(side_effect=RuntimeError("connection lost"))
+        evaluator = FAQEvaluator(webhook_driver=mock_driver, submission_id="SUB-001")
+        results = await evaluator.evaluate_all([task])
+        assert len(results) == 1
+        assert results[0].similarity == 0.0
+        assert results[0].passed is False
+        assert "[ERROR:" in results[0].bot_response
+
+    @pytest.mark.asyncio
+    async def test_evaluate_all_empty_returns_empty(self):
+        """evaluate_all with empty list returns empty list."""
+        mock_driver = AsyncMock()
+        evaluator = FAQEvaluator(webhook_driver=mock_driver, submission_id="SUB-001")
+        results = await evaluator.evaluate_all([])
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_evaluate_task_uses_correct_session_id(self):
+        """evaluate_task calls run_faq_turn with session_id = eval-{submission_id}-{task_id}."""
+        task = make_faq_task()
+        mock_driver = AsyncMock()
+        mock_driver.run_faq_turn = AsyncMock(return_value="9 AM to 5 PM")
+        evaluator = FAQEvaluator(webhook_driver=mock_driver, submission_id="SUB-001")
+        with patch.object(evaluator, "_compute_similarity", return_value=0.85):
+            await evaluator.evaluate_task(task)
+        mock_driver.run_faq_turn.assert_called_once_with(
+            question=task.question,
+            session_id="eval-SUB-001-FAQ-HOURS",
+        )

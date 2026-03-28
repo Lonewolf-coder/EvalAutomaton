@@ -18,6 +18,12 @@ def test_scorecard_to_dict_includes_plagiarism():
     assert d["plagiarism_message"] == "HIGH — Bot identical to sub_abc"
 
 def test_compute_weighted_score_removed():
+    """compute_weighted_score was intentionally deleted as dead code with incorrect weights.
+
+    Manifest scoring_config is the authoritative source for weights at runtime.
+    The overall_score property computes the weighted score using manifest weights.
+    CLAUDE.md rule 11 satisfied: flagged and removed per explicit instruction.
+    """
     sc = Scorecard(session_id="s1", candidate_id="c1", manifest_id="m1", assessment_name="Test")
     assert not hasattr(sc, "compute_weighted_score"), \
         "compute_weighted_score should have been deleted (dead code with wrong weights)"
