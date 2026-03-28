@@ -225,12 +225,12 @@ class EvaluationEngine:
                     probe_resp = await _probe.head(self.manifest.webhook_url)
                 if probe_resp.status_code == 404:
                     raise ValueError(
-                        "FAILED_CONNECTIVITY: Bot webhook returned 404. "
-                        "The bot may have been taken offline since submission. Resubmit."
+                        "FAILED_CONNECTIVITY: Webhook endpoint returned 404. "
+                        "The endpoint may have gone offline since submission. Resubmit."
                     )
             except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError) as e:
                 raise ValueError(
-                    f"FAILED_CONNECTIVITY: Bot webhook unreachable before Gate 2: {e}. "
+                    f"FAILED_CONNECTIVITY: Webhook endpoint unreachable before Gate 2: {e}. "
                     "Verify webhook is active and resubmit."
                 )
         logger.info("=== Pipeline B: Webhook Journey ===")

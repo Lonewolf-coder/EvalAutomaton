@@ -276,6 +276,7 @@ async def _run_evaluation_background(
     results_dir.mkdir(parents=True, exist_ok=True)
     stub_path = results_dir / f"scorecard_{session_id}.json"
     _create_lock(session_id)
+    engine = None
     try:
         _log_dir = DATA_DIR / "logs"
         _eval_logger = EvalLogger(session_id=session_id, log_dir=_log_dir)
@@ -327,9 +328,20 @@ async def _run_evaluation_background(
             scorecard.plagiarism_flag = True
             scorecard.plagiarism_message = plag_report.message
 
+        # Preserve gate0_report in final scorecard (to_dict() does not include it)
+        final_data = scorecard.to_dict()
+        if engine is not None and engine.gate0_result is not None:
+            _g0_final = engine.gate0_result
+            final_data["gate0_report"] = {
+                "checks": {k: v.value for k, v in _g0_final.checks.items()},
+                "messages": _g0_final.messages,
+                "can_proceed": _g0_final.can_proceed,
+                "candidate_confirmed_deployment": False,
+                "flagged_for_manual_review": False,
+            }
         # Write final scorecard (overwrites the stub)
         with stub_path.open("w") as f:
-            json.dump(scorecard.to_dict(), f, indent=2)
+            json.dump(final_data, f, indent=2)
 
     except EvaluationHaltedError as halt_err:
         logger.warning("Evaluation halted for session %s: %s", session_id, halt_err.reason)
@@ -357,7 +369,7 @@ async def _run_evaluation_background(
         existing["status"] = "error"
         existing["error"] = str(exc)
         # Surface Gate 0 report if available (e.g. Gate 0 raised ValueError)
-        if "engine" in dir() and getattr(engine, "gate0_result", None) is not None:
+        if engine is not None and engine.gate0_result is not None:
             _g0 = engine.gate0_result
             existing.setdefault("gate0_report", {
                 "checks": {k: v.value for k, v in _g0.checks.items()},
