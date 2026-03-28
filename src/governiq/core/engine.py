@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import httpx
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -23,7 +24,8 @@ from typing import Any
 
 from .eval_logger import EvalLogger
 from .exceptions import EvaluationHaltedError
-from .manifest import EnginePattern, Manifest
+from .gate0 import Gate0Checker, Gate0CheckStatus, Gate0Result
+from .manifest import EnginePattern, Manifest, UIPolicy
 from .manifest_validator import ValidationResult, validate_manifest
 from .runtime_context import RuntimeContext, TaskRecord
 from .scoring import (
@@ -93,6 +95,34 @@ class EvaluationEngine:
         self.kore_api_client: KoreAPIClient | None = None
         if kore_credentials and kore_bearer_token:
             self.kore_api_client = KoreAPIClient(kore_credentials)
+        self.gate0_result: Gate0Result | None = None
+
+    async def run_gate0(self) -> Gate0Result:
+        """Run Gate 0 connectivity checks. Must be called before run_full_evaluation().
+
+        Raises ValueError with actionable messages if any check fails.
+        Stores result in self.gate0_result for downstream use (e.g. web channel skipping).
+        """
+        checker = Gate0Checker(
+            webhook_url=self.manifest.webhook_url,
+            bot_id=getattr(self.kore_credentials, "bot_id", ""),
+            backend_api_url=self.manifest.mock_api_base_url,
+            kore_api_client=self.kore_api_client,
+        )
+        result = await checker.run()
+        self.gate0_result = result
+
+        if not result.can_proceed:
+            failed = [
+                f"[{check}] {msg}"
+                for check, status in result.checks.items()
+                if status == Gate0CheckStatus.FAIL
+                for msg in [result.messages.get(check, "")]
+            ]
+            raise ValueError(
+                "Gate 0 failed — evaluation cannot start:\n" + "\n".join(failed)
+            )
+        return result
 
     async def run_full_evaluation(
         self,
@@ -188,6 +218,21 @@ class EvaluationEngine:
         await self._run_nlp_preflight(cbm, scorecard)
 
         # Step 6: Run Webhook Pipeline (Pipeline B) — all tasks
+        # Pre-Gate 2: re-check webhook connectivity (bot may have gone offline after submission)
+        if self.manifest.webhook_url:
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as _probe:
+                    probe_resp = await _probe.head(self.manifest.webhook_url)
+                if probe_resp.status_code == 404:
+                    raise ValueError(
+                        "FAILED_CONNECTIVITY: Bot webhook returned 404. "
+                        "The bot may have been taken offline since submission. Resubmit."
+                    )
+            except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError) as e:
+                raise ValueError(
+                    f"FAILED_CONNECTIVITY: Bot webhook unreachable before Gate 2: {e}. "
+                    "Verify webhook is active and resubmit."
+                )
         logger.info("=== Pipeline B: Webhook Journey ===")
         eval_start_time = datetime.now(timezone.utc)
         if self.manifest.webhook_url or self.kore_bearer_token:
@@ -529,6 +574,18 @@ class EvaluationEngine:
             if task.task_id in _skip:
                 logger.info(
                     "Webhook: skipping already-completed task '%s'", task.task_id
+                )
+                continue
+
+            # Skip web_driver tasks when web channel is not available (Gate 0 WARN/FAIL)
+            if (
+                task.ui_policy == UIPolicy.WEB_DRIVER
+                and self.gate0_result is not None
+                and not self.gate0_result.web_channel_available
+            ):
+                logger.warning(
+                    "Task %s requires web driver but web channel not enabled — skipping.",
+                    task.task_id,
                 )
                 continue
 

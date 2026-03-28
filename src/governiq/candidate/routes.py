@@ -291,6 +291,25 @@ async def _run_evaluation_background(
             eval_logger=_eval_logger,
         )
         if webhook_url or kore_creds:
+            # Gate 0: connectivity and credential pre-checks
+            await engine.run_gate0()
+            # Surface Gate 0 report to stub immediately (before full evaluation)
+            if engine.gate0_result is not None:
+                _g0 = engine.gate0_result
+                _gate0_report = {
+                    "checks": {k: v.value for k, v in _g0.checks.items()},
+                    "messages": _g0.messages,
+                    "can_proceed": _g0.can_proceed,
+                    "candidate_confirmed_deployment": False,
+                    "flagged_for_manual_review": False,
+                }
+                try:
+                    _stub_data = json.loads(stub_path.read_text()) if stub_path.exists() else {}
+                except Exception:
+                    _stub_data = {}
+                _stub_data["gate0_report"] = _gate0_report
+                with stub_path.open("w") as f:
+                    json.dump(_stub_data, f, indent=2)
             scorecard = await engine.run_full_evaluation(
                 bot_export=bot_export_data,
                 candidate_id=candidate_id,
@@ -337,6 +356,16 @@ async def _run_evaluation_background(
             existing = {}
         existing["status"] = "error"
         existing["error"] = str(exc)
+        # Surface Gate 0 report if available (e.g. Gate 0 raised ValueError)
+        if "engine" in dir() and getattr(engine, "gate0_result", None) is not None:
+            _g0 = engine.gate0_result
+            existing.setdefault("gate0_report", {
+                "checks": {k: v.value for k, v in _g0.checks.items()},
+                "messages": _g0.messages,
+                "can_proceed": _g0.can_proceed,
+                "candidate_confirmed_deployment": False,
+                "flagged_for_manual_review": False,
+            })
         with stub_path.open("w") as f:
             json.dump(existing, f, indent=2)
     finally:
