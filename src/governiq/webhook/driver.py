@@ -497,6 +497,21 @@ class KoreWebhookClient:
             logger.error("Webhook error: %s", e)
             raise
 
+    async def run_faq_turn(self, question: str, session_id: str) -> str:
+        """Send a single FAQ question in an isolated session, return bot's text response.
+
+        Resets session state via start_session() so each FAQ question gets its own
+        from_id. Does not use the LLM conversation driver.
+        """
+        # start_session sets self._from_id = "eval-req-post-{session_id}"
+        # and resets _kore_session_id so each FAQ turn is isolated
+        await self.start_session(submission_id=session_id)
+        bot_response = await self.send_message(question)
+        # Filter out template-only responses
+        if bot_response and bot_response != "[template message]":
+            return bot_response
+        return bot_response or ""
+
     @property
     def last_end_of_task(self) -> bool:
         """Whether the last response indicated end of task."""

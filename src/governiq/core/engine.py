@@ -242,6 +242,31 @@ class EvaluationEngine:
             task_sessions = {}
         eval_end_time = datetime.now(timezone.utc)
 
+        # Step 6b: FAQ live evaluation (after webhook tasks complete)
+        if self.manifest.faq_tasks:
+            logger.info("=== FAQ Live Evaluation (%d tasks) ===", len(self.manifest.faq_tasks))
+            from ..webhook.faq_evaluator import FAQEvaluator
+            faq_evaluator = FAQEvaluator(
+                webhook_driver=self.webhook_client,
+                submission_id=session_id,
+            )
+            faq_results = await faq_evaluator.evaluate_all(self.manifest.faq_tasks)
+            # Store in faq_scores for separate weighted scoring
+            scorecard.faq_scores = faq_results
+            # Compute faq_score from live results — overwrites the structural value from Step 5
+            faq_weight = scorecard._faq_weight
+            if faq_results:
+                faq_pass_count = sum(1 for r in faq_results if r.passed)
+                faq_score_raw = faq_pass_count / len(faq_results)
+                scorecard.faq_score = faq_score_raw
+            else:
+                if faq_weight > 0:
+                    logger.warning(
+                        "Manifest declares faq_weight=%.2f but no FAQ tasks ran. "
+                        "FAQ score contribution will be 0.",
+                        faq_weight,
+                    )
+
         # Step 7A: Persist session IDs + eval window for deferred analytics refresh.
         # Analytics are NOT fetched now — Kore.ai can take up to 10 hours to process data.
         # Use POST /api/v1/evaluations/{session_id}/refresh-analytics to fetch when ready.

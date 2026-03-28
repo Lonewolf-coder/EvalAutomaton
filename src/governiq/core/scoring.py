@@ -141,6 +141,12 @@ class Scorecard:
     compliance_results: list[ComplianceResult] = field(default_factory=list)
     faq_score: float = 0.0
 
+    # Live FAQ evaluation results — list[FAQEvalResult] from faq_evaluator.
+    # Typed as list to avoid circular import; populated by engine after webhook pipeline.
+    # When populated, engine computes faq_score from these and overwrites the
+    # structural faq_score set in Step 5.
+    faq_scores: list = field(default_factory=list)
+
     # Flags
     state_seeded: bool = False
     state_seed_tasks: list[str] = field(default_factory=list)
@@ -324,6 +330,7 @@ class Scorecard:
                 for cr in self.compliance_results
             ],
             "faq_score": round(self.faq_score, 4) if self.faq_score is not None else None,
+            "faq_scores": [r.to_evidence_dict() for r in self.faq_scores],
             "kore_api_insights": self.kore_api_insights,
             "analytics_by_task": self.analytics_by_task,
             "tooltips": self.tooltips,
