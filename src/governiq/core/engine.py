@@ -42,6 +42,7 @@ from ..cbm.evaluator import (
     evaluate_faqs_structural,
     evaluate_task_cbm,
 )
+from .cbm_checker import check_faq_cbm_coverage
 from ..cbm.parser import CBMObject, parse_bot_export, parse_bot_export_file
 from ..patterns import get_pattern_executor
 from ..webhook.driver import KoreWebhookClient, LLMConversationDriver
@@ -213,6 +214,35 @@ class EvaluationEngine:
             if scored:
                 total_w = sum(c.weight for c in scored)
                 scorecard.faq_score = sum(c.score * c.weight for c in scored) / total_w if total_w else 0.0
+
+        # Step 5A: FAQ CBM coverage check — verify faq_tasks are configured in the bot's CBM
+        if self.manifest.faq_tasks and cbm.faqs is not None:
+            cbm_faq_dicts = [
+                {
+                    "question": f.question,
+                    "alternatives": list(f.alternate_questions),
+                    "answer": f.answer,
+                }
+                for f in cbm.faqs
+            ]
+            faq_coverage_defects = check_faq_cbm_coverage(
+                self.manifest.faq_tasks,
+                cbm_faq_dicts,
+                min_alternatives=self.manifest.faq_config.min_alternate_questions,
+            )
+            if faq_coverage_defects:
+                faq_coverage_score = TaskScore(task_id="faq_coverage", task_name="FAQ Coverage")
+                for defect in faq_coverage_defects:
+                    faq_coverage_score.cbm_checks.append(CheckResult(
+                        check_id=defect["check_id"],
+                        task_id=defect["task_id"],
+                        pipeline="cbm",
+                        label=f"FAQ Coverage: {defect['task_id']}",
+                        status=CheckStatus.WARNING,
+                        details=defect["message"],
+                    ))
+                scorecard.task_scores.append(faq_coverage_score)
+                logger.info("FAQ CBM coverage: %d authoring gap(s) found.", len(faq_coverage_defects))
 
         # Step 5B: NLP pre-flight checks (gated internally on kore_api_client)
         await self._run_nlp_preflight(cbm, scorecard)
