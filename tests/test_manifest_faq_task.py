@@ -133,9 +133,9 @@ class TestRichUIFields:
             pattern=EnginePattern.CREATE,
             dialog_name="Book",
             expected_response_type="buttons",
-            rich_ui_action={"entity_key": "appointmentType", "strategy": "semantic"},
+            rich_ui_action={"entity_key": "target_entity", "strategy": "semantic"},
         )
-        assert td.rich_ui_action["entity_key"] == "appointmentType"
+        assert td.rich_ui_action["entity_key"] == "target_entity"
 
 
 class TestManifestFAQTasks:
