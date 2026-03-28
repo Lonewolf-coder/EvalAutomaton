@@ -25,21 +25,27 @@ Both depend on this plan (uiPolicy enum, FAQTask schema) being complete first.
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/governiq/core/manifest.py` | Modify | Add `UIPolicy` enum, `FAQTask` model; add `ui_policy` to `TaskDefinition`; add `faq_tasks` to `Manifest` |
-| `src/governiq/core/manifest_validator.py` | Modify | Add MD-13 rule: FAQ task missing `similarity_threshold` |
+| `src/governiq/core/manifest.py` | Modify | Add `UIPolicy` enum, `FAQTask` model; add `ui_policy`, `expected_response_type`, `rich_ui_action` to `TaskDefinition`; add `faq_tasks` to `Manifest` |
+| `src/governiq/core/manifest_validator.py` | Modify | Add MD-13 rule: FAQ task empty question or expected_answer |
 | `src/governiq/webhook/kore_api.py` | Modify | Add `get_bot_details(bot_id)` method |
 | `src/governiq/core/gate0.py` | Create | `Gate0Checker` — runs the four pre-evaluation checks; returns `Gate0Result` |
-| `src/governiq/core/engine.py` | Modify | Call `Gate0Checker` before Gate 1; add FAILED_CONNECTIVITY handling; call FAQ evaluator after webhook tasks |
+| `src/governiq/core/engine.py` | Modify | Call `Gate0Checker` before Gate 1; surface WARN/FAIL messages to submission; skip web_driver tasks if web channel absent; call FAQ evaluator after webhook tasks |
+| `src/governiq/core/scoring.py` | Modify | Add `faq_scores` field to `Scorecard`; apply `faq_weight` separately from `webhook_functional_weight` |
 | `src/governiq/webhook/faq_evaluator.py` | Create | `FAQEvaluator` — sends FAQ questions via webhook driver, scores responses with sentence-transformers |
+| `src/governiq/webhook/model_cache.py` | Create | Shared `paraphrase-multilingual-mpnet-base-v2` singleton; `get_shared_model()` used by both `FAQEvaluator` and `SemanticFieldMapper` |
 | `src/governiq/webhook/response_type_detector.py` | Create | `detect_response_type(messages)` — classifies webhook `data[]` as `text`, `buttons`, `inline_form`, `carousel`, or `external_url` |
 | `src/governiq/webhook/semantic_field_mapper.py` | Create | `SemanticFieldMapper` — maps detected UI elements to manifest entities; returns the webhook payload to send |
-| `src/governiq/webhook/driver.py` | Modify | Integrate Response Type Detector; route non-text responses to Semantic Field Mapper |
-| `tests/test_manifest_faq_task.py` | Create | FAQTask model + UIPolicy enum |
+| `src/governiq/webhook/driver.py` | Modify | Integrate Response Type Detector; use `expected_response_type` + `rich_ui_action` from task manifest to route responses to SemanticFieldMapper |
+| `src/governiq/api/main.py` | Modify | Add FastAPI startup event to pre-warm sentence-transformers model before accepting submissions |
+| `src/governiq/core/cbm_checker.py` | Modify | Add FAQ CBM structural check: verify each `faq_task` has a matching FAQ node, alternative questions, and non-empty answer in the bot's CBM |
+| `tests/test_manifest_faq_task.py` | Create | FAQTask model, UIPolicy enum, expected_response_type + rich_ui_action fields |
 | `tests/test_manifest_validator_faq.py` | Create | MD-13 rule |
 | `tests/test_gate0.py` | Create | Gate0Checker unit tests |
 | `tests/test_faq_evaluator.py` | Create | FAQEvaluator unit + integration tests |
 | `tests/test_response_type_detector.py` | Create | Response type classification tests |
 | `tests/test_semantic_field_mapper.py` | Create | Entity mapping tests |
+| `tests/test_model_cache.py` | Create | Model singleton loads once |
+| `tests/test_cbm_faq_checker.py` | Create | FAQ CBM structural check tests |
 
 ---
 
@@ -220,7 +226,7 @@ class FAQTask(BaseModel):
     )
 ```
 
-- [ ] **Step 1.5: Add ui_policy to TaskDefinition**
+- [ ] **Step 1.5: Add ui_policy, expected_response_type, and rich_ui_action to TaskDefinition**
 
 In `TaskDefinition`, after the `weight` field:
 
@@ -229,6 +235,28 @@ In `TaskDefinition`, after the `weight` field:
 ui_policy: UIPolicy = Field(
     default=UIPolicy.PREFER_WEBHOOK,
     description="Determines which driver evaluates this task's UI interaction.",
+)
+
+# Rich UI interaction — declared per task in the manifest
+expected_response_type: str | None = Field(
+    default=None,
+    description=(
+        "Expected UI response type for this task's key interaction step. "
+        "Values: 'text' | 'buttons' | 'inline_form' | 'carousel' | 'external_url'. "
+        "If set, the webhook driver uses SemanticFieldMapper instead of the LLM actor "
+        "when the bot returns a structured response matching this type. "
+        "If None, the LLM actor handles all responses."
+    ),
+)
+rich_ui_action: dict[str, Any] = Field(
+    default_factory=dict,
+    description=(
+        "How to handle the expected rich UI response. Keyed by response type:\n"
+        "  buttons:      {'entity_key': 'appointmentType', 'strategy': 'semantic'}\n"
+        "  inline_form:  {'entity_map': {'comp_key': {'entity_key': 'x', 'label_hints': ['...']}}}\n"
+        "  carousel:     {'entity_key': 'doctorName', 'strategy': 'semantic'}\n"
+        "Empty dict means no mapping is defined — LLM actor handles this task normally."
+    ),
 )
 ```
 
@@ -858,17 +886,127 @@ except (httpx.ConnectError, httpx.TimeoutException) as e:
 
 Also add `import httpx` if not already at the top of `engine.py`.
 
-- [ ] **Step 4.5: Run existing engine tests — no regressions**
+- [ ] **Step 4.5: Surface Gate 0 results to the submission record**
+
+Gate 0 FAIL and WARN messages must be visible to candidates and admins — not just logged. Find the `Submission` model (check `src/governiq/core/submission.py` or the routes file). Add fields:
+
+```python
+# In Submission model:
+gate0_report: dict[str, Any] = Field(
+    default_factory=dict,
+    description=(
+        "Gate 0 check results. Structure:\n"
+        "  {'checks': {'webhook_reachability': 'pass', ...},\n"
+        "   'messages': {'bot_published': 'Your bot is not published...'},\n"
+        "   'can_proceed': bool,\n"
+        "   'candidate_confirmed_deployment': bool,\n"
+        "   'flagged_for_manual_review': bool}"
+    ),
+)
+```
+
+In the engine (or the background task / API route that calls `run_gate0()`), catch the `ValueError` and update the submission:
+
+```python
+try:
+    gate0 = await engine.run_gate0()
+except ValueError as e:
+    submission.state = "FAILED_CONNECTIVITY"
+    submission.gate0_report = {
+        "checks": {k: v.value for k, v in engine.gate0_result.checks.items()},
+        "messages": engine.gate0_result.messages,
+        "can_proceed": False,
+        "candidate_confirmed_deployment": False,
+        "flagged_for_manual_review": False,
+    }
+    submission.save()  # or db.commit() depending on storage layer
+    return  # abort evaluation
+```
+
+If Gate 0 has only WARNs (can_proceed is True), still write the report so the portal can display them:
+
+```python
+if engine.gate0_result:
+    submission.gate0_report = {
+        "checks": {k: v.value for k, v in engine.gate0_result.checks.items()},
+        "messages": engine.gate0_result.messages,
+        "can_proceed": True,
+        "candidate_confirmed_deployment": False,
+        "flagged_for_manual_review": False,
+    }
+    submission.save()
+```
+
+- [ ] **Step 4.6: Add candidate escalation path — "I've confirmed my deployment" + manual review flag**
+
+Add a new API endpoint (or extend the existing submission endpoint):
+
+```
+POST /api/submissions/{submission_id}/confirm-deployment
+```
+
+This endpoint:
+1. Sets `submission.gate0_report["candidate_confirmed_deployment"] = True`
+2. If the submission is currently in `FAILED_CONNECTIVITY`, re-runs Gate 0 once
+3. If Gate 0 still fails after confirmation, sets `submission.gate0_report["flagged_for_manual_review"] = True` and transitions state to `PENDING_MANUAL_REVIEW`
+4. Returns the updated gate0_report so the portal can update its UI
+
+The candidate portal shows this flow:
+- Gate 0 FAIL → show actionable error messages → "I've verified my deployment and credentials" button
+- On confirm → show spinner → if still failing: "We've flagged this for manual evaluator review. You'll be notified within 24 hours."
+- Admin portal shows a badge on submissions in `PENDING_MANUAL_REVIEW` state
+
+Add `PENDING_MANUAL_REVIEW` to the submission state enum.
+
+- [ ] **Step 4.7: Use gate0_result.web_channel_available to skip web_driver tasks**
+
+In `run_full_evaluation`, before processing each task, add:
+
+```python
+# Skip web_driver tasks if Gate 0 found no web channel
+if (
+    task.ui_policy == UIPolicy.WEB_DRIVER
+    and self.gate0_result is not None
+    and not self.gate0_result.web_channel_available
+):
+    logger.warning(
+        "Task %s requires web driver but web channel is not enabled — skipping. "
+        "Gate 0 message: %s",
+        task.task_id,
+        self.gate0_result.messages.get("web_channel", ""),
+    )
+    # Add a SKIP check result so it shows in the scorecard
+    skip_check = CheckResult(
+        check_id=f"{task.task_id}.web_driver_skipped",
+        task_id=task.task_id,
+        pipeline="webhook",
+        label=f"Web driver skipped — web channel not enabled",
+        status=CheckStatus.SKIP,
+        details=(
+            "This task requires the Kore.ai Web/Mobile Client channel, which was not "
+            "enabled on your bot at evaluation time. "
+            "Enable it in XO Platform → Channels → Web/Mobile Client and resubmit."
+        ),
+        score=0.0,
+        weight=task.weight,
+    )
+    task_score.webhook_checks.append(skip_check)
+    continue
+```
+
+Add `UIPolicy` to the imports in `engine.py`.
+
+- [ ] **Step 4.8: Run existing engine tests — no regressions**
 
 ```bash
 venv/Scripts/python -m pytest tests/ -v --ignore=tests/test_integration_real_bots.py -k "engine or startup or scorecard" 2>&1 | tail -15
 ```
 
-- [ ] **Step 4.6: Commit**
+- [ ] **Step 4.9: Commit**
 
 ```bash
 git add src/governiq/core/engine.py
-git commit -m "feat: wire Gate0Checker into engine, add pre-Gate2 FAILED_CONNECTIVITY check"
+git commit -m "feat: wire Gate0Checker into engine — surface FAIL/WARN to submission, escalation path, skip web_driver tasks when web channel absent"
 ```
 
 ---
@@ -1227,7 +1365,55 @@ if self.manifest.faq_tasks:
         faq_task_score.evidence_cards.append(result.to_evidence_card())
 ```
 
-- [ ] **Step 5.6: Run FAQ evaluator tests**
+- [ ] **Step 5.6: Fix FAQ scoring — separate faq_scores bucket in scoring.py**
+
+FAQ results must not be folded into `webhook_functional_weight`. They have their own weight (`manifest.scoring_config.faq_weight`). Open `src/governiq/core/scoring.py`.
+
+First, find the `Scorecard` (or `EvaluationResult`) model and add a `faq_scores` field:
+
+```python
+# In Scorecard / EvaluationResult:
+faq_scores: list[Any] = Field(
+    default_factory=list,
+    description="FAQEvalResult objects — scored separately using manifest.scoring_config.faq_weight",
+)
+```
+
+Then, find the final score computation (look for where `webhook_functional_weight` is applied). Add FAQ scoring alongside it:
+
+```python
+# FAQ score — weighted separately from webhook tasks
+faq_weight = manifest.scoring_config.faq_weight
+if scorecard.faq_scores:
+    faq_pass_count = sum(1 for r in scorecard.faq_scores if r.passed)
+    faq_score_raw = faq_pass_count / len(scorecard.faq_scores)
+    faq_contribution = faq_score_raw * faq_weight
+else:
+    faq_contribution = 0.0
+    faq_weight = 0.0  # no FAQ tasks — don't count against total
+
+# Adjust webhook weight if no FAQ tasks (weights must sum to 1.0 approximately)
+# The manifest's scoring_config is authoritative — don't renormalize silently.
+# Instead, log a warning if faq_tasks is empty but faq_weight > 0.
+if not scorecard.faq_scores and manifest.scoring_config.faq_weight > 0:
+    logger.warning(
+        "Manifest declares faq_weight=%.2f but no FAQ tasks ran. "
+        "FAQ score contribution will be 0.",
+        manifest.scoring_config.faq_weight,
+    )
+```
+
+Update the engine's Task 5 integration (Step 5.5) to append FAQ results to `scorecard.faq_scores` instead of `faq_task_score.webhook_checks`:
+
+```python
+# Replace the faq_task_score block in engine.py with:
+for result in faq_results:
+    scorecard.faq_scores.append(result)
+    # Still add evidence card to a dedicated faq task slot for portal display
+    faq_task_score.evidence_cards.append(result.to_evidence_card())
+```
+
+- [ ] **Step 5.7: Run FAQ evaluator tests**
 
 ```bash
 venv/Scripts/python -m pytest tests/test_faq_evaluator.py -v
@@ -1235,17 +1421,17 @@ venv/Scripts/python -m pytest tests/test_faq_evaluator.py -v
 
 Note: `TestFAQEvaluatorSimilarity` tests download the model on first run (~400 MB). Run with network access. They will be slow (model download + inference). Expected: all PASS.
 
-- [ ] **Step 5.7: Run full test suite**
+- [ ] **Step 5.8: Run full test suite**
 
 ```bash
 venv/Scripts/python -m pytest tests/ -v --ignore=tests/test_integration_real_bots.py 2>&1 | tail -10
 ```
 
-- [ ] **Step 5.8: Commit**
+- [ ] **Step 5.9: Commit**
 
 ```bash
-git add src/governiq/webhook/faq_evaluator.py src/governiq/webhook/driver.py src/governiq/core/engine.py tests/test_faq_evaluator.py
-git commit -m "feat: add FAQEvaluator with multilingual semantic similarity scoring"
+git add src/governiq/webhook/faq_evaluator.py src/governiq/webhook/driver.py src/governiq/core/engine.py src/governiq/core/scoring.py tests/test_faq_evaluator.py
+git commit -m "feat: add FAQEvaluator with multilingual semantic similarity scoring, separate faq_scores bucket"
 ```
 
 ---
@@ -1749,29 +1935,94 @@ venv/Scripts/python -m pytest tests/test_semantic_field_mapper.py -v
 
 Note: Tests load the sentence-transformers model. First run downloads it (~400 MB). Expected: all PASS.
 
-- [ ] **Step 7.5: Integrate into driver.py**
+- [ ] **Step 7.5: Integrate into driver.py — use manifest expected_response_type to route responses**
 
-In `src/governiq/webhook/driver.py`, import the new modules and update the response handling in the conversation loop. Find where `normalise_messages` is called to get text, and after it, add a type-detection branch:
+The driver's conversation loop receives the current `task: TaskDefinition` (or can look it up from context). When the bot responds, check the task's `expected_response_type` and `rich_ui_action` to decide how to handle it.
+
+In `src/governiq/webhook/driver.py`, add imports and update the turn loop:
 
 ```python
 from .response_type_detector import detect_response_type, ResponseType
 from .semantic_field_mapper import SemanticFieldMapper
+from .model_cache import get_shared_model
 
 # In the turn loop, after getting messages from the webhook:
 texts, raws = normalise_messages(messages or [])
 response_type, structured_payload = detect_response_type(raws)
 
-if response_type == ResponseType.TEXT:
-    # Existing LLM Actor path — no change
-    pass
-elif response_type in (ResponseType.BUTTONS, ResponseType.CAROUSEL, ResponseType.INLINE_FORM):
-    # Semantic Field Mapper path — no LLM needed for structured UI
-    # Handled by the pattern executor via the structured payload
-    pass
-# EXTERNAL_URL is handled separately by pattern executors that check for it
+# If the manifest declares what to expect and it matches — use SemanticFieldMapper
+expected = getattr(current_task, "expected_response_type", None)
+rich_ui_action = getattr(current_task, "rich_ui_action", {})
+
+if (
+    expected
+    and structured_payload is not None
+    and response_type.value == expected
+    and rich_ui_action
+):
+    mapper = SemanticFieldMapper()
+    mapper._model = get_shared_model()  # inject shared model — no second download
+
+    if response_type == ResponseType.BUTTONS:
+        elements = structured_payload.get("elements", [])
+        target_value = persona_state.get(rich_ui_action["entity_key"], "")
+        mapping = mapper.map_buttons(elements, target_value)
+        # Send the matched button label back as a text message
+        reply_text = mapping.matched_label or target_value
+        logger.info(
+            "Rich UI [buttons]: matched '%s' via %s (confidence=%.2f)",
+            mapping.matched_label, mapping.strategy, mapping.confidence,
+        )
+        return reply_text  # driver sends this as the next turn message
+
+    elif response_type == ResponseType.INLINE_FORM:
+        form_def = structured_payload.get("formDef", {})
+        components = form_def.get("components", [])
+        entity_map = rich_ui_action.get("entity_map", {})
+        # Substitute actual persona values into the entity_map
+        for entity_key, config in entity_map.items():
+            config["value"] = persona_state.get(config.get("entity_key", entity_key), "")
+        form_data = mapper.map_form(components, entity_map)
+        logger.info("Rich UI [form]: mapped %d components", len(form_data))
+        return form_data  # driver submits this as a form response payload
+
+    elif response_type == ResponseType.CAROUSEL:
+        cards = structured_payload.get("elements", [])
+        target_value = persona_state.get(rich_ui_action["entity_key"], "")
+        strategy = rich_ui_action.get("strategy", "semantic")
+        mapping = mapper.map_carousel(cards, target_value, strategy)
+        logger.info(
+            "Rich UI [carousel]: selected '%s' via %s (confidence=%.2f)",
+            mapping.matched_label, mapping.strategy, mapping.confidence,
+        )
+        return mapping.matched_label or target_value
+
+    elif response_type == ResponseType.EXTERNAL_URL:
+        # External URL: log and flag — cannot interact without web driver
+        url = structured_payload.get("url", "")
+        logger.warning(
+            "Task %s: bot returned external_url (%s) but task ui_policy is prefer_webhook. "
+            "This interaction requires web driver (Plan 2). Sending acknowledgement.",
+            current_task.task_id, url,
+        )
+        return "ok"  # send a neutral acknowledgement; evaluator reviews evidence
+
+# Default: existing LLM Actor path handles text responses
+# EXTERNAL_URL with no rich_ui_action also falls through here
 ```
 
-The full integration into the pattern executor flow requires pattern-level changes that go beyond this task. The imports and detection call are wired here; patterns pick up `response_type` and `structured_payload` from the turn result in a follow-on task.
+**How this works end-to-end:** A manifest author adds to any task:
+```json
+{
+  "task_id": "task2_booking1",
+  "expected_response_type": "buttons",
+  "rich_ui_action": {
+    "entity_key": "appointmentType",
+    "strategy": "semantic"
+  }
+}
+```
+When the bot sends a button template, the driver detects it, maps the persona's `appointmentType` value to the closest button, and sends the selection — no LLM needed, no browser needed. Tasks without `expected_response_type` work exactly as before.
 
 - [ ] **Step 7.6: Run full test suite**
 
@@ -1859,6 +2110,379 @@ Expected: `can_proceed: False` (webhook unreachable + no kore_api_client → SKI
 ```bash
 git add .
 git commit -m "chore: core pipeline improvements sprint complete — Gate0, FAQ semantic eval, Response Type Detector, Semantic Field Mapper"
+```
+
+---
+
+---
+
+## Task 9: Model Singleton + Startup Pre-warm
+
+**Files:**
+- Create: `src/governiq/webhook/model_cache.py`
+- Modify: `src/governiq/webhook/faq_evaluator.py`
+- Modify: `src/governiq/webhook/semantic_field_mapper.py`
+- Modify: `src/governiq/api/main.py`
+- Create: `tests/test_model_cache.py`
+
+### What it does
+
+Both `FAQEvaluator` and `SemanticFieldMapper` need `paraphrase-multilingual-mpnet-base-v2`. Without a singleton, two loads happen per evaluation run (~800 MB RAM, ~2× startup time). The model is also downloaded lazily — first evaluation silently stalls for minutes while the model downloads. This task fixes both: one shared model instance, pre-loaded at server startup before any submissions are accepted.
+
+- [ ] **Step 9.1: Write the failing test**
+
+```python
+# tests/test_model_cache.py
+from unittest.mock import patch, MagicMock
+from governiq.webhook.model_cache import get_shared_model, reset_model_cache
+
+
+class TestModelCache:
+    def setup_method(self):
+        reset_model_cache()  # ensure clean state between tests
+
+    def test_returns_same_instance_on_second_call(self):
+        with patch("governiq.webhook.model_cache.SentenceTransformer") as mock_cls:
+            mock_cls.return_value = MagicMock()
+            m1 = get_shared_model()
+            m2 = get_shared_model()
+        assert m1 is m2
+        assert mock_cls.call_count == 1  # loaded only once
+
+    def test_uses_correct_model_name(self):
+        with patch("governiq.webhook.model_cache.SentenceTransformer") as mock_cls:
+            mock_cls.return_value = MagicMock()
+            get_shared_model()
+        mock_cls.assert_called_once_with("paraphrase-multilingual-mpnet-base-v2")
+```
+
+- [ ] **Step 9.2: Run test — verify it fails**
+
+```bash
+venv/Scripts/python -m pytest tests/test_model_cache.py -v 2>&1 | head -10
+```
+
+Expected: `ImportError: cannot import name 'get_shared_model'`
+
+- [ ] **Step 9.3: Create `src/governiq/webhook/model_cache.py`**
+
+```python
+"""Shared sentence-transformers model cache.
+
+Loads paraphrase-multilingual-mpnet-base-v2 once per process and reuses it
+across FAQEvaluator and SemanticFieldMapper. Pre-warmed at server startup.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
+
+logger = logging.getLogger(__name__)
+
+_MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"
+_model: "SentenceTransformer | None" = None
+
+
+def get_shared_model(model_name: str = _MODEL_NAME) -> "SentenceTransformer":
+    """Return the cached model instance, loading it on first call."""
+    global _model
+    if _model is None:
+        from sentence_transformers import SentenceTransformer
+        logger.info("Loading sentence-transformers model: %s (first load)", model_name)
+        _model = SentenceTransformer(model_name)
+        logger.info("Model loaded and cached.")
+    return _model
+
+
+def reset_model_cache() -> None:
+    """Reset the cache — for testing only."""
+    global _model
+    _model = None
+```
+
+- [ ] **Step 9.4: Update FAQEvaluator to use the shared model**
+
+In `src/governiq/webhook/faq_evaluator.py`, replace the `_get_model` method:
+
+```python
+# Remove the existing _get_model method and _model_name attribute.
+# Replace with:
+from .model_cache import get_shared_model
+
+def _compute_similarity(self, text_a: str, text_b: str) -> float:
+    """Cosine similarity using the shared multilingual model."""
+    import numpy as np
+    model = get_shared_model()
+    embeddings = model.encode([text_a, text_b], convert_to_numpy=True)
+    a = embeddings[0] / (np.linalg.norm(embeddings[0]) + 1e-9)
+    b = embeddings[1] / (np.linalg.norm(embeddings[1]) + 1e-9)
+    return float(np.dot(a, b))
+```
+
+Also remove `self._model: SentenceTransformer | None = None` and `model_name: str = _MODEL_NAME` from `__init__`.
+
+- [ ] **Step 9.5: Update SemanticFieldMapper to use the shared model**
+
+In `src/governiq/webhook/semantic_field_mapper.py`, replace `_get_model`:
+
+```python
+# Replace:
+def _get_model(self):
+    if self._model is None:
+        from sentence_transformers import SentenceTransformer
+        self._model = SentenceTransformer("paraphrase-multilingual-mpnet-base-v2")
+    return self._model
+
+# With:
+def _get_model(self):
+    from .model_cache import get_shared_model
+    return get_shared_model()
+```
+
+Also remove `self._model = None` from `__init__`.
+
+- [ ] **Step 9.6: Add startup pre-warm to FastAPI app**
+
+In `src/governiq/api/main.py`, find the FastAPI app definition and add:
+
+```python
+@app.on_event("startup")
+async def preload_sentence_transformers():
+    """Pre-warm the multilingual model before accepting submissions.
+
+    Prevents the first evaluation from silently stalling for minutes during model download.
+    Model is ~420 MB on first run. Subsequent startups load from cache (~2-3 seconds).
+    """
+    import asyncio
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("Pre-warming sentence-transformers model at startup...")
+    loop = asyncio.get_event_loop()
+    # Run in thread pool to avoid blocking the event loop during download
+    from ..webhook.model_cache import get_shared_model
+    await loop.run_in_executor(None, get_shared_model)
+    logger.info("Sentence-transformers model ready.")
+```
+
+- [ ] **Step 9.7: Run tests — verify they pass**
+
+```bash
+venv/Scripts/python -m pytest tests/test_model_cache.py tests/test_faq_evaluator.py tests/test_semantic_field_mapper.py -v 2>&1 | tail -15
+```
+
+Expected: all PASS
+
+- [ ] **Step 9.8: Commit**
+
+```bash
+git add src/governiq/webhook/model_cache.py src/governiq/webhook/faq_evaluator.py src/governiq/webhook/semantic_field_mapper.py src/governiq/api/main.py tests/test_model_cache.py
+git commit -m "feat: shared model singleton + startup pre-warm — prevents double load and silent first-eval stall"
+```
+
+---
+
+## Task 10: FAQ CBM Structural Check
+
+**Files:**
+- Modify: `src/governiq/core/cbm_checker.py` (or wherever CBM audit checks live)
+- Create: `tests/test_cbm_faq_checker.py`
+
+### What it does
+
+At manifest creation time (or during the CBM audit phase of evaluation), verify that every `faq_task` in the manifest is properly configured in the bot's CBM — the FAQ node exists, alternative questions are present (≥ `faq_config.min_alternate_questions`), and the answer is non-empty. This is a structural check (informational, like all CBM checks) — it flags authoring gaps before live evaluation runs.
+
+The check uses the FAQ task's `question` as the primary lookup and semantic similarity to match it against the bot's configured FAQ nodes (threshold: 0.85).
+
+- [ ] **Step 10.1: Write the failing tests**
+
+```python
+# tests/test_cbm_faq_checker.py
+import pytest
+from unittest.mock import MagicMock
+from governiq.core.cbm_checker import check_faq_cbm_coverage
+from governiq.core.manifest import FAQTask
+
+
+def make_faq_task(task_id="FAQ-HOURS", question="What are your opening hours?"):
+    return FAQTask(
+        task_id=task_id,
+        question=question,
+        expected_answer="Open 9 AM to 5 PM.",
+        similarity_threshold=0.80,
+    )
+
+
+class TestFAQCBMCoverage:
+    def test_pass_when_faq_node_found_with_alternatives(self):
+        faq_tasks = [make_faq_task()]
+        # Simulated CBM FAQs: list of dicts with question, alternatives, answer
+        cbm_faqs = [{
+            "question": "What are your opening hours?",
+            "alternatives": ["When are you open?", "What time do you open?"],
+            "answer": "We are open Monday to Saturday, 9 AM to 5 PM.",
+        }]
+        result = check_faq_cbm_coverage(faq_tasks, cbm_faqs, min_alternatives=2)
+        assert result == []  # no defects
+
+    def test_warn_when_no_matching_faq_node(self):
+        faq_tasks = [make_faq_task()]
+        cbm_faqs = []  # bot has no FAQ configured at all
+        result = check_faq_cbm_coverage(faq_tasks, cbm_faqs, min_alternatives=2)
+        assert len(result) == 1
+        assert result[0]["task_id"] == "FAQ-HOURS"
+        assert "not found" in result[0]["message"].lower()
+
+    def test_warn_when_insufficient_alternatives(self):
+        faq_tasks = [make_faq_task()]
+        cbm_faqs = [{
+            "question": "What are your opening hours?",
+            "alternatives": ["When are you open?"],  # only 1, need 2
+            "answer": "Open 9 AM to 5 PM.",
+        }]
+        result = check_faq_cbm_coverage(faq_tasks, cbm_faqs, min_alternatives=2)
+        assert len(result) == 1
+        assert "alternative" in result[0]["message"].lower()
+
+    def test_warn_when_answer_empty(self):
+        faq_tasks = [make_faq_task()]
+        cbm_faqs = [{
+            "question": "What are your opening hours?",
+            "alternatives": ["When are you open?", "Are you open weekends?"],
+            "answer": "",  # empty answer
+        }]
+        result = check_faq_cbm_coverage(faq_tasks, cbm_faqs, min_alternatives=2)
+        assert len(result) == 1
+        assert "answer" in result[0]["message"].lower()
+```
+
+- [ ] **Step 10.2: Run tests — verify they fail**
+
+```bash
+venv/Scripts/python -m pytest tests/test_cbm_faq_checker.py -v 2>&1 | head -10
+```
+
+Expected: `ImportError: cannot import name 'check_faq_cbm_coverage'`
+
+- [ ] **Step 10.3: Implement `check_faq_cbm_coverage` in cbm_checker.py**
+
+Find where CBM check functions are defined and add:
+
+```python
+def check_faq_cbm_coverage(
+    faq_tasks: list,         # list[FAQTask]
+    cbm_faqs: list[dict],    # extracted from bot CBM — [{question, alternatives, answer}]
+    min_alternatives: int = 2,
+    match_threshold: float = 0.85,
+) -> list[dict]:
+    """Check each faq_task has a matching, fully-configured FAQ node in the bot's CBM.
+
+    Returns a list of defect dicts: [{task_id, check_id, message, severity}]
+    All defects are WARN (informational — CBM checks never block evaluation).
+    """
+    from .model_cache import get_shared_model
+    import numpy as np
+
+    defects = []
+    if not cbm_faqs:
+        for task in faq_tasks:
+            defects.append({
+                "task_id": task.task_id,
+                "check_id": "cbm.faq.node_missing",
+                "message": (
+                    f"FAQ task '{task.task_id}': no FAQ nodes found in bot CBM. "
+                    "Add FAQ responses in XO Platform → Natural Language → Knowledge Graph."
+                ),
+                "severity": "warn",
+            })
+        return defects
+
+    model = get_shared_model()
+
+    for task in faq_tasks:
+        # Find best matching CBM FAQ by question similarity
+        task_emb = model.encode([task.question], convert_to_numpy=True)[0]
+        task_emb = task_emb / (np.linalg.norm(task_emb) + 1e-9)
+
+        best_match, best_sim = None, 0.0
+        cbm_questions = [faq.get("question", "") for faq in cbm_faqs]
+        cbm_embs = model.encode(cbm_questions, convert_to_numpy=True)
+
+        for i, emb in enumerate(cbm_embs):
+            norm_emb = emb / (np.linalg.norm(emb) + 1e-9)
+            sim = float(np.dot(task_emb, norm_emb))
+            if sim > best_sim:
+                best_sim = sim
+                best_match = cbm_faqs[i]
+
+        if best_sim < match_threshold or best_match is None:
+            defects.append({
+                "task_id": task.task_id,
+                "check_id": "cbm.faq.node_missing",
+                "message": (
+                    f"FAQ task '{task.task_id}' (question: '{task.question}') "
+                    f"not found in bot CBM (best similarity: {best_sim:.2f}, "
+                    f"threshold: {match_threshold}). "
+                    "Add this FAQ to your bot's Knowledge Graph."
+                ),
+                "severity": "warn",
+            })
+            continue
+
+        # Check alternative questions
+        alternatives = best_match.get("alternatives", [])
+        if len(alternatives) < min_alternatives:
+            defects.append({
+                "task_id": task.task_id,
+                "check_id": "cbm.faq.insufficient_alternatives",
+                "message": (
+                    f"FAQ task '{task.task_id}': found {len(alternatives)} alternative question(s), "
+                    f"need at least {min_alternatives}. "
+                    "Add more alternative phrasings in XO Platform → Knowledge Graph → FAQ."
+                ),
+                "severity": "warn",
+            })
+
+        # Check answer non-empty
+        answer = best_match.get("answer", "").strip()
+        if not answer:
+            defects.append({
+                "task_id": task.task_id,
+                "check_id": "cbm.faq.empty_answer",
+                "message": (
+                    f"FAQ task '{task.task_id}': matched FAQ node has an empty answer. "
+                    "Add the answer in XO Platform → Knowledge Graph."
+                ),
+                "severity": "warn",
+            })
+
+    return defects
+```
+
+Wire into the CBM audit phase: after extracting FAQ nodes from the bot's CBM, call `check_faq_cbm_coverage(manifest.faq_tasks, extracted_cbm_faqs, manifest.faq_config.min_alternate_questions)` and append results to the CBM audit report.
+
+- [ ] **Step 10.4: Run tests — verify they pass**
+
+```bash
+venv/Scripts/python -m pytest tests/test_cbm_faq_checker.py -v
+```
+
+Note: these tests use the shared model — model download on first run if not already cached.
+
+- [ ] **Step 10.5: Run full test suite**
+
+```bash
+venv/Scripts/python -m pytest tests/ -v --ignore=tests/test_integration_real_bots.py 2>&1 | tail -10
+```
+
+- [ ] **Step 10.6: Commit**
+
+```bash
+git add src/governiq/core/cbm_checker.py tests/test_cbm_faq_checker.py
+git commit -m "feat: FAQ CBM structural check — verify FAQ nodes, alternatives, and answers in bot CBM"
 ```
 
 ---
