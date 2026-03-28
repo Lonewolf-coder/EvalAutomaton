@@ -16,16 +16,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from ..core.manifest import FAQTask
+from .model_cache import get_shared_model, _MODEL_NAME
 
 if TYPE_CHECKING:
     pass
 
 logger = logging.getLogger(__name__)
-
-_MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"
 
 
 @dataclass
@@ -59,22 +57,13 @@ class FAQEvaluator:
         self,
         webhook_driver: object,  # KoreWebhookClient — imported at call site to avoid circular
         submission_id: str,
-        model_name: str = _MODEL_NAME,
     ):
         self._driver = webhook_driver
         self._submission_id = submission_id
-        self._model: SentenceTransformer | None = None
-        self._model_name = model_name
-
-    def _get_model(self) -> SentenceTransformer:
-        if self._model is None:
-            logger.info("Loading sentence-transformers model: %s", self._model_name)
-            self._model = SentenceTransformer(self._model_name)
-        return self._model
 
     def _compute_similarity(self, text_a: str, text_b: str) -> float:
         """Cosine similarity between two strings using the multilingual model."""
-        model = self._get_model()
+        model = get_shared_model()
         embeddings = model.encode([text_a, text_b], convert_to_numpy=True)
         a = embeddings[0] / (np.linalg.norm(embeddings[0]) + 1e-9)
         b = embeddings[1] / (np.linalg.norm(embeddings[1]) + 1e-9)

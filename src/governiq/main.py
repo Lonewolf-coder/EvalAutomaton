@@ -37,6 +37,18 @@ async def lifespan(app: FastAPI):
     for d in ["data", "data/results", "data/runtime_contexts",
               "data/manifests", "data/fingerprints"]:
         Path(d).mkdir(parents=True, exist_ok=True)
+
+    # Pre-warm the multilingual sentence-transformers model before accepting submissions.
+    # Prevents the first evaluation from silently stalling for minutes during model download.
+    # Model is ~420 MB on first run. Subsequent startups load from cache (~2-3 seconds).
+    import asyncio
+    logger = logging.getLogger(__name__)
+    logger.info("Pre-warming sentence-transformers model at startup...")
+    loop = asyncio.get_event_loop()
+    from .webhook.model_cache import get_shared_model
+    await loop.run_in_executor(None, get_shared_model)
+    logger.info("Sentence-transformers model ready.")
+
     yield
     # Shutdown: nothing needed
 

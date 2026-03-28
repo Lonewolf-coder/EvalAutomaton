@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from .faq_evaluator import _MODEL_NAME
+from .model_cache import _MODEL_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +32,10 @@ class SemanticFieldMapper:
 
     def __init__(self, similarity_threshold: float = 0.60):
         self._similarity_threshold = similarity_threshold
-        self._model = None  # Loaded lazily
 
     def _get_model(self):
-        if self._model is None:
-            from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer(_MODEL_NAME)
-        return self._model
+        from .model_cache import get_shared_model
+        return get_shared_model()
 
     def _semantic_best_match(
         self, target: str, candidates: list[str]

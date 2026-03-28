@@ -38,10 +38,15 @@ class TestFAQEvalResult:
 class TestFAQEvaluatorSimilarity:
     """Unit tests for semantic similarity — no network calls."""
 
+    def setup_method(self):
+        # Ensure the shared model cache is populated with the real model before tests run.
+        # This prevents reset_model_cache() in test_model_cache from causing a reload
+        # mid-test when these tests run in the same session.
+        from governiq.webhook.model_cache import get_shared_model
+        get_shared_model()
+
     def test_compute_similarity_identical_strings(self):
         evaluator = FAQEvaluator.__new__(FAQEvaluator)
-        from sentence_transformers import SentenceTransformer
-        evaluator._model = SentenceTransformer("paraphrase-multilingual-mpnet-base-v2")
         sim = evaluator._compute_similarity(
             "The service is open from 9 AM to 5 PM.",
             "The service is open from 9 AM to 5 PM.",
@@ -50,8 +55,6 @@ class TestFAQEvaluatorSimilarity:
 
     def test_compute_similarity_paraphrase(self):
         evaluator = FAQEvaluator.__new__(FAQEvaluator)
-        from sentence_transformers import SentenceTransformer
-        evaluator._model = SentenceTransformer("paraphrase-multilingual-mpnet-base-v2")
         sim = evaluator._compute_similarity(
             "We are open Monday to Saturday, 9 AM to 5 PM.",
             "The service is open from 9 AM to 5 PM, Monday to Saturday.",
@@ -60,8 +63,6 @@ class TestFAQEvaluatorSimilarity:
 
     def test_compute_similarity_unrelated(self):
         evaluator = FAQEvaluator.__new__(FAQEvaluator)
-        from sentence_transformers import SentenceTransformer
-        evaluator._model = SentenceTransformer("paraphrase-multilingual-mpnet-base-v2")
         sim = evaluator._compute_similarity(
             "Please contact our front desk.",
             "The service is open from 9 AM to 5 PM, Monday to Saturday.",
