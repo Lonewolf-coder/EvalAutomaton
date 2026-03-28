@@ -73,6 +73,17 @@ class TestCarouselMapping:
     def setup_method(self):
         self.mapper = SemanticFieldMapper()
 
+    def test_semantic_match(self):
+        cards = [
+            {"title": "Option A — Category 1"},
+            {"title": "Option B — Category 2"},
+            {"title": "Option C — Category 3"},
+        ]
+        # "Category 2" should semantically match "Option B — Category 2"
+        result = self.mapper.map_carousel(cards, target_value="Category 2", strategy="semantic")
+        assert result.matched_label == "Option B — Category 2"
+        assert result.strategy == "semantic"
+
     def test_exact_carousel_match(self):
         cards = [{"title": "Option A"}, {"title": "Option B"}]
         result = self.mapper.map_carousel(cards, target_value="Option A", strategy="exact")
