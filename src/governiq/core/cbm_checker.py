@@ -33,7 +33,7 @@ def check_faq_cbm_coverage(
                 "check_id": "cbm.faq.node_missing",
                 "message": (
                     f"FAQ task '{task.task_id}': not found — no FAQ nodes configured in bot CBM. "
-                    "Add FAQ responses in XO Platform → Natural Language → Knowledge Graph."
+                    "Configure FAQ responses in the bot platform's knowledge base."
                 ),
                 "severity": "warn",
             })
@@ -41,16 +41,17 @@ def check_faq_cbm_coverage(
 
     model = get_shared_model()
 
+    cbm_questions = [faq.get("question", "") for faq in cbm_faqs]
+    cbm_embs = model.encode(cbm_questions, convert_to_numpy=True)
+    cbm_norm_embs = [e / (np.linalg.norm(e) + 1e-9) for e in cbm_embs]
+
     for task in faq_tasks:
         task_emb = model.encode([task.question], convert_to_numpy=True)[0]
         task_emb = task_emb / (np.linalg.norm(task_emb) + 1e-9)
 
         best_match, best_sim = None, 0.0
-        cbm_questions = [faq.get("question", "") for faq in cbm_faqs]
-        cbm_embs = model.encode(cbm_questions, convert_to_numpy=True)
 
-        for i, emb in enumerate(cbm_embs):
-            norm_emb = emb / (np.linalg.norm(emb) + 1e-9)
+        for i, norm_emb in enumerate(cbm_norm_embs):
             sim = float(np.dot(task_emb, norm_emb))
             if sim > best_sim:
                 best_sim = sim
@@ -64,7 +65,7 @@ def check_faq_cbm_coverage(
                     f"FAQ task '{task.task_id}' (question: '{task.question}') "
                     f"not found in bot CBM (best similarity: {best_sim:.2f}, "
                     f"threshold: {match_threshold}). "
-                    "Add this FAQ to your bot's Knowledge Graph."
+                    "Add this FAQ to the bot's knowledge base."
                 ),
                 "severity": "warn",
             })
@@ -78,7 +79,7 @@ def check_faq_cbm_coverage(
                 "message": (
                     f"FAQ task '{task.task_id}': found {len(alternatives)} alternative question(s), "
                     f"need at least {min_alternatives}. "
-                    "Add more alternative phrasings in XO Platform → Knowledge Graph → FAQ."
+                    "Add more alternative phrasings for this FAQ in the bot platform."
                 ),
                 "severity": "warn",
             })
@@ -90,7 +91,7 @@ def check_faq_cbm_coverage(
                 "check_id": "cbm.faq.empty_answer",
                 "message": (
                     f"FAQ task '{task.task_id}': matched FAQ node has an empty answer. "
-                    "Add the answer in XO Platform → Knowledge Graph."
+                    "Provide an answer for this FAQ in the bot platform."
                 ),
                 "severity": "warn",
             })

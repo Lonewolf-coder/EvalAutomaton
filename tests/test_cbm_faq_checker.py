@@ -1,5 +1,6 @@
-import pytest
-from unittest.mock import MagicMock
+import numpy as np
+from unittest.mock import patch, MagicMock
+
 from governiq.core.cbm_checker import check_faq_cbm_coverage
 from governiq.core.manifest import FAQTask
 
@@ -13,8 +14,23 @@ def make_faq_task(task_id="FAQ-HOURS", question="What are your opening hours?"):
     )
 
 
+def make_mock_model(similarity_value=0.95):
+    """Return a mock model whose encode() returns unit vectors producing the given similarity."""
+    mock_model = MagicMock()
+    # When encoding N texts, return N identical unit vectors (dot product = 1.0)
+    def encode_side_effect(texts, convert_to_numpy=True):
+        n = len(texts)
+        arr = np.zeros((n, 3), dtype=np.float32)
+        arr[:, 0] = 1.0  # unit vectors all pointing in same direction
+        return arr
+    mock_model.encode.side_effect = encode_side_effect
+    return mock_model
+
+
 class TestFAQCBMCoverage:
-    def test_pass_when_faq_node_found_with_alternatives(self):
+    @patch("governiq.webhook.model_cache.get_shared_model")
+    def test_pass_when_faq_node_found_with_alternatives(self, mock_get_model):
+        mock_get_model.return_value = make_mock_model()
         faq_tasks = [make_faq_task()]
         cbm_faqs = [{
             "question": "What are your opening hours?",
@@ -32,7 +48,9 @@ class TestFAQCBMCoverage:
         assert result[0]["task_id"] == "FAQ-HOURS"
         assert "not found" in result[0]["message"].lower()
 
-    def test_warn_when_insufficient_alternatives(self):
+    @patch("governiq.webhook.model_cache.get_shared_model")
+    def test_warn_when_insufficient_alternatives(self, mock_get_model):
+        mock_get_model.return_value = make_mock_model()
         faq_tasks = [make_faq_task()]
         cbm_faqs = [{
             "question": "What are your opening hours?",
@@ -43,7 +61,9 @@ class TestFAQCBMCoverage:
         assert len(result) == 1
         assert "alternative" in result[0]["message"].lower()
 
-    def test_warn_when_answer_empty(self):
+    @patch("governiq.webhook.model_cache.get_shared_model")
+    def test_warn_when_answer_empty(self, mock_get_model):
+        mock_get_model.return_value = make_mock_model()
         faq_tasks = [make_faq_task()]
         cbm_faqs = [{
             "question": "What are your opening hours?",
