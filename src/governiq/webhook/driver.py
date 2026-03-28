@@ -23,6 +23,7 @@ import httpx
 from ..core.exceptions import EvaluationHaltedError
 from ..core.manifest import TaskDefinition
 from .message_normaliser import normalise_messages
+from .semantic_field_mapper import SemanticFieldMapper, MappingResult
 
 if TYPE_CHECKING:
     from ..core.eval_logger import EvalLogger
@@ -278,6 +279,90 @@ class LLMConversationDriver:
             return "entity_request"
 
         return "information"
+
+    async def resolve_rich_ui_reply(
+        self,
+        raw_messages: list[dict],
+        task: "TaskDefinition",
+        persona_state: dict[str, str] | None = None,
+    ) -> str | None:
+        """Resolve a reply for structured (rich UI) webhook responses.
+
+        Called by pattern executors after receiving raw webhook messages when the
+        task declares an expected_response_type. Returns the matched label/value
+        to send back, or None if the LLM actor should handle the turn instead.
+
+        Returns None (falls through to LLM path) when:
+        - task.expected_response_type is not set
+        - task.rich_ui_action is empty
+        - response_type_detector module is not yet available
+        - the detected response type does not match the expected type
+        - the structured payload is absent
+        """
+        if not task.expected_response_type or not task.rich_ui_action:
+            return None
+
+        try:
+            from .response_type_detector import detect_response_type, ResponseType
+        except ImportError:
+            logger.debug(
+                "response_type_detector not yet available — falling through to LLM path."
+            )
+            return None
+
+        response_type, structured_payload = detect_response_type(raw_messages)
+
+        if structured_payload is None or response_type.value != task.expected_response_type:
+            return None
+
+        action = task.rich_ui_action
+        entity_key = action.get("entity_key", "")
+        target_value = (persona_state or {}).get(entity_key, "")
+        mapper = SemanticFieldMapper()
+
+        if response_type == ResponseType.BUTTONS:
+            elements = structured_payload.get("elements", [])
+            if not elements:
+                return None
+            mapping = mapper.map_buttons(elements, target_value)
+            logger.info(
+                "Rich UI [buttons]: matched '%s' via %s (confidence=%.2f)",
+                mapping.matched_label, mapping.strategy, mapping.confidence,
+            )
+            return mapping.matched_label or target_value
+
+        if response_type == ResponseType.CAROUSEL:
+            elements = structured_payload.get("elements", [])
+            if not elements:
+                return None
+            strategy = action.get("strategy", "semantic")
+            mapping = mapper.map_carousel(elements, target_value, strategy=strategy)
+            logger.info(
+                "Rich UI [carousel]: matched '%s' via %s (confidence=%.2f)",
+                mapping.matched_label, mapping.strategy, mapping.confidence,
+            )
+            return mapping.matched_label or target_value
+
+        if response_type == ResponseType.INLINE_FORM:
+            import json
+            entity_map = action.get("entity_map", {})
+            if not entity_map:
+                return None
+            form_def = structured_payload.get("formDef", {})
+            components = form_def.get("components", [])
+            resolved_map: dict[str, dict] = {}
+            for comp_key, comp_info in entity_map.items():
+                ek = comp_info.get("entity_key", "")
+                value = (persona_state or {}).get(ek, "")
+                resolved_map[comp_key] = {
+                    "value": value,
+                    "label_hints": comp_info.get("label_hints", []),
+                }
+            field_values = mapper.map_form(components, resolved_map)
+            logger.info("Rich UI [inline_form]: mapped %d fields.", len(field_values))
+            return json.dumps(field_values)
+
+        return None
 
     async def close(self) -> None:
         if self._client:
