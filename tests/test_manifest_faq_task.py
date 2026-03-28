@@ -1,6 +1,11 @@
+import json
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 from governiq.core.manifest import FAQTask, UIPolicy, Manifest, TaskDefinition, EnginePattern
+
+_MANIFEST_PATH = Path(__file__).parent.parent / "manifests" / "medical_appointment_basic.json"
 
 
 class TestUIPolicy:
@@ -33,6 +38,16 @@ class TestUIPolicy:
                 ui_policy="allow_playwright",  # undefined — must be rejected
             )
 
+    def test_untestable_flag_value(self):
+        td = TaskDefinition(
+            task_id="t1",
+            task_name="Task 1",
+            pattern=EnginePattern.CREATE,
+            dialog_name="Book",
+            ui_policy="untestable_flag",
+        )
+        assert td.ui_policy == UIPolicy.UNTESTABLE_FLAG
+
 
 class TestFAQTask:
     def test_valid_faq_task(self):
@@ -61,6 +76,15 @@ class TestFAQTask:
                 question="q",
                 expected_answer="a",
                 similarity_threshold=1.5,  # > 1.0 — invalid
+            )
+
+    def test_threshold_lower_bound(self):
+        with pytest.raises(ValidationError):
+            FAQTask(
+                task_id="FAQ-X",
+                question="q",
+                expected_answer="a",
+                similarity_threshold=-0.1,  # < 0.0 — invalid
             )
 
     def test_alternative_questions_optional(self):
@@ -116,10 +140,7 @@ class TestRichUIFields:
 
 class TestManifestFAQTasks:
     def test_manifest_accepts_faq_tasks(self):
-        import json
-        from pathlib import Path
-        path = Path("manifests/medical_appointment_basic.json")
-        data = json.loads(path.read_text())
+        data = json.loads(_MANIFEST_PATH.read_text())
         data["faq_tasks"] = [
             {
                 "task_id": "FAQ-HOURS",
@@ -133,8 +154,6 @@ class TestManifestFAQTasks:
         assert m.faq_tasks[0].task_id == "FAQ-HOURS"
 
     def test_faq_tasks_defaults_to_empty(self):
-        import json
-        from pathlib import Path
-        data = json.loads(Path("manifests/medical_appointment_basic.json").read_text())
+        data = json.loads(_MANIFEST_PATH.read_text())
         m = Manifest(**data)
         assert m.faq_tasks == []
