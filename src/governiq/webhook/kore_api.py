@@ -107,14 +107,13 @@ class KoreAPIClient:
     # Bot Info
     # -----------------------------------------------------------------------
 
-    async def get_bot_details(self) -> dict[str, Any]:
-        """Fetch bot details (name, description, settings, channels, etc.)."""
-        endpoint = f"/api/public/bot/{self.credentials.bot_id}"
-        try:
-            return await self._api_get(endpoint)
-        except Exception as e:
-            logger.error("Failed to get bot details: %s", e)
-            return {"error": str(e)}
+    async def get_bot_details(self, bot_id: str) -> dict[str, Any]:
+        """Fetch bot metadata via GET /api/public/bot/{botId}.
+
+        Returns the full response dict. Raises httpx.HTTPStatusError on 401/404.
+        Caller inspects the dict for publish status and enabled channels.
+        """
+        return await self._api_get(f"/api/public/bot/{bot_id}")
 
     # -----------------------------------------------------------------------
     # Analytics
@@ -171,7 +170,7 @@ class KoreAPIClient:
         results: dict[str, Any] = {}
 
         try:
-            results["bot_details"] = await self.get_bot_details()
+            results["bot_details"] = await self.get_bot_details(self.credentials.bot_id)
         except Exception as e:
             results["bot_details"] = {"error": str(e)}
 
