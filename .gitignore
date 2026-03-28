@@ -17,3 +17,4 @@ data/
 
 # Claude Code local files
 .claude/settings.local.json
+.worktrees/
