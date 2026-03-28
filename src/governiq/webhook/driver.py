@@ -59,6 +59,7 @@ class LLMConversationDriver:
         self.extra_headers = extra_headers or {}
         self._client: httpx.AsyncClient | None = None
         self._eval_logger = eval_logger
+        self._field_mapper = SemanticFieldMapper()
 
     async def _get_client(self) -> httpx.AsyncClient:
         if not self._client:
@@ -318,7 +319,7 @@ class LLMConversationDriver:
         action = task.rich_ui_action
         entity_key = action.get("entity_key", "")
         target_value = (persona_state or {}).get(entity_key, "")
-        mapper = SemanticFieldMapper()
+        mapper = self._field_mapper
 
         if response_type == ResponseType.BUTTONS:
             elements = structured_payload.get("elements", [])

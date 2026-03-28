@@ -14,6 +14,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from .faq_evaluator import _MODEL_NAME
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,7 +37,7 @@ class SemanticFieldMapper:
     def _get_model(self):
         if self._model is None:
             from sentence_transformers import SentenceTransformer
-            self._model = SentenceTransformer("paraphrase-multilingual-mpnet-base-v2")
+            self._model = SentenceTransformer(_MODEL_NAME)
         return self._model
 
     def _semantic_best_match(
@@ -148,6 +150,19 @@ class SemanticFieldMapper:
             for i, title in enumerate(titles):
                 if target_value.lower() in title.lower():
                     return MappingResult(matched_label=title, strategy="contains", confidence=0.85, index=i)
+            # Requested strategy did not find a match — warn and return fallback
+            best_idx, best_sim = self._semantic_best_match(target_value, titles)
+            logger.warning(
+                "Carousel mapping: strategy='%s' found no match for '%s' in %s — "
+                "returning best candidate as fallback (semantic sim=%.2f).",
+                strategy, target_value, titles, best_sim,
+            )
+            return MappingResult(
+                matched_label=titles[best_idx],
+                strategy="fallback",
+                confidence=0.0,
+                index=best_idx,
+            )
 
         # Semantic (default)
         best_idx, best_sim = self._semantic_best_match(target_value, titles)
