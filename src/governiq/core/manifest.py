@@ -59,6 +59,13 @@ class EnginePattern(str, Enum):
     CBM_ONLY = "CBM_ONLY"           # Structural inspection via CBM only — no webhook conversation
 
 
+class UIPolicy(str, Enum):
+    """Routing policy — which driver handles this task's UI interaction."""
+    PREFER_WEBHOOK = "prefer_webhook"   # All interaction via webhook JSON (default)
+    WEB_DRIVER = "web_driver"           # Full Playwright web driver (Kore.ai Web SDK)
+    UNTESTABLE_FLAG = "untestable_flag" # Requires manual evaluation
+
+
 class DialogNamePolicy(str, Enum):
     """How dialog names are matched against the CBM."""
     EXACT = "exact"
@@ -163,6 +170,39 @@ class FAQConfig(BaseModel):
     required_faqs: list[FAQItem] = Field(default_factory=list)
     min_alternate_questions: int = Field(default=2)
     semantic_similarity_threshold: float = Field(default=0.80)
+
+
+class FAQTask(BaseModel):
+    """A single FAQ evaluated live via webhook + semantic similarity.
+
+    The webhook driver sends `question` in an isolated session.
+    The bot's response is compared against `expected_answer` using
+    a multilingual sentence-transformers model. Pass if similarity
+    >= similarity_threshold.
+    """
+    task_id: str = Field(..., description="Unique FAQ task ID, e.g. 'FAQ-HOURS'")
+    topic: str = Field(default="", description="Short topic label for display")
+    question: str = Field(..., description="Question to send to the bot")
+    alternative_questions: list[str] = Field(
+        default_factory=list,
+        description="Alternative phrasings — used for CBM structural check only",
+    )
+    expected_answer: str = Field(
+        ...,
+        description="Canonical answer from the knowledge graph. "
+                    "The bot response is compared against this.",
+    )
+    similarity_threshold: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Minimum cosine similarity to pass. Required — Manifest Readiness "
+                    "Validator raises MD-13 if missing.",
+    )
+    scoring: dict[str, Any] = Field(
+        default_factory=dict,
+        description="{'type': 'binary', 'maxPoints': N}",
+    )
 
 
 class ComplianceCheck(BaseModel):
@@ -297,6 +337,34 @@ class TaskDefinition(BaseModel):
     # Scoring weight override for this task
     weight: float = Field(default=1.0)
 
+    # Driver routing policy
+    ui_policy: UIPolicy = Field(
+        default=UIPolicy.PREFER_WEBHOOK,
+        description="Determines which driver evaluates this task's UI interaction.",
+    )
+
+    # Rich UI interaction — declared per task in the manifest
+    expected_response_type: str | None = Field(
+        default=None,
+        description=(
+            "Expected UI response type for this task's key interaction step. "
+            "Values: 'text' | 'buttons' | 'inline_form' | 'carousel' | 'external_url'. "
+            "If set, the webhook driver uses SemanticFieldMapper instead of the LLM actor "
+            "when the bot returns a structured response matching this type. "
+            "If None, the LLM actor handles all responses."
+        ),
+    )
+    rich_ui_action: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "How to handle the expected rich UI response. Keyed by response type:\n"
+            "  buttons:      {'entity_key': 'appointmentType', 'strategy': 'semantic'}\n"
+            "  inline_form:  {'entity_map': {'comp_key': {'entity_key': 'x', 'label_hints': ['...']}}}\n"
+            "  carousel:     {'entity_key': 'doctorName', 'strategy': 'semantic'}\n"
+            "Empty dict means no mapping is defined — LLM actor handles this task normally."
+        ),
+    )
+
     # Expected output — pass criteria authored at manifest time, validated in Phase 5
     expected_output: ExpectedOutput = Field(default_factory=ExpectedOutput)
 
@@ -333,6 +401,13 @@ class Manifest(BaseModel):
 
     # FAQ configuration
     faq_config: FAQConfig = Field(default_factory=FAQConfig)
+
+    # Live FAQ evaluation tasks (semantic similarity via sentence-transformers)
+    faq_tasks: list[FAQTask] = Field(
+        default_factory=list,
+        description="FAQ questions to send via webhook driver. "
+                    "Evaluated by multilingual semantic similarity, not keyword matching.",
+    )
 
     # Compliance checks
     compliance_checks: list[ComplianceCheck] = Field(default_factory=list)
